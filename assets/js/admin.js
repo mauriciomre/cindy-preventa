@@ -107,7 +107,6 @@ async function doLogin() {
             loadFavs();
             renderFavbar();
             checkLastImport();
-            loadPendientesManagerBadge();
         } else {
             document.getElementById("lerr").textContent =
                 "Usuario o contraseña incorrectos";
@@ -149,7 +148,6 @@ async function tryAutoLogin() {
             loadFavs();
             renderFavbar();
             checkLastImport();
-            loadPendientesManagerBadge();
         } else {
             localStorage.removeItem("tb_admin_user");
             localStorage.removeItem("tb_admin_pass");
@@ -287,8 +285,6 @@ function showSection(s, btn) {
     if (s === "colores") renderColoresTable();
     if (s === "pedidos") loadPedidos();
     if (s === "clientes") loadClientes();
-    if (s === "pendientesManager") loadPendientesManager();
-    if (s === "configuracion") loadSyncStatus();
 }
 
 // ── CONFIGURACIÓN ─────────────────────────────────────────────────────────────
@@ -1372,6 +1368,74 @@ function checkCodigo(input) {
             codigoOk = true;
         }
     }, 400);
+}
+
+async function buscarEnManager() {
+    var codigo = document.getElementById("fCodigo").value.trim();
+    var hint = document.getElementById("managerHint");
+    if (!codigo) {
+        toast("Ingresá un código primero", "#c62828");
+        return;
+    }
+    var btn = document.getElementById("btnBuscarManager");
+    btn.disabled = true;
+    var textoOriginal = btn.textContent;
+    btn.textContent = "Buscando...";
+    hint.textContent = "";
+    try {
+        var res = await fetch(API + "?action=manager_buscar_producto", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ _user: authUser, _pass: authPass, codigo: codigo }),
+        });
+        var json = await res.json();
+        if (!json.ok) {
+            hint.style.color = "#c62828";
+            hint.textContent = "Error: " + (json.error || "desconocido");
+            return;
+        }
+        if (!json.encontrado) {
+            hint.style.color = "var(--muted)";
+            hint.textContent = "No se encontró ese código en Manager (ambiente de prueba).";
+            return;
+        }
+        var p = json.producto;
+        document.getElementById("fDesc").value = p.descripcion || "";
+        if (p.precio_mayorista !== null) document.getElementById("fMay").value = Math.round(p.precio_mayorista);
+        if (p.pvp !== null) document.getElementById("fPvp").value = Math.round(p.pvp);
+
+        // Categoría: seleccionar si ya existe en el catálogo, o crearla si es nueva
+        // (el Rubro real de Manager tiene más variedad que las categorías ya cargadas)
+        if (p.categoria) {
+            var sel = document.getElementById("fCategoria");
+            var existe = Array.from(sel.options).some(function (o) {
+                return o.value === p.categoria;
+            });
+            if (!existe) {
+                await fetch(API + "?action=categoria_crear", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ _user: authUser, _pass: authPass, nombre: p.categoria }),
+                });
+                await loadCats();
+            }
+            setTimeout(function () {
+                document.getElementById("fCategoria").value = p.categoria;
+            }, 0);
+        }
+
+        hint.style.color = "var(--muted)";
+        hint.textContent =
+            "Prellenado desde Manager (ambiente de prueba" +
+            (p.marca ? ", marca " + p.marca : "") +
+            "). Revisá los datos antes de guardar.";
+    } catch (e) {
+        hint.style.color = "#c62828";
+        hint.textContent = "No se pudo conectar con Manager";
+    } finally {
+        btn.disabled = false;
+        btn.textContent = textoOriginal;
+    }
 }
 
 async function uploadImage(codigo) {
@@ -3178,333 +3242,6 @@ async function checkLastImport() {
             banner.style.display = "flex";
         }
     } catch (e) { /* silencioso */ }
-}
-
-// ── Sync con Manager2Max ─────────────────────────────────────────────────────
-var syncPreviewDiff = null;
-
-async function loadSyncStatus() {
-    try {
-        var res = await fetch(API + "?action=manager_sync_log_ultimo", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ _user: authUser, _pass: authPass }),
-        });
-        var json = await res.json();
-        if (!json.ok) return;
-        var radio = document.querySelector('input[name="syncMode"][value="' + json.modo + '"]');
-        if (radio) radio.checked = true;
-        var line = document.getElementById("syncStatusLine");
-        if (!line) return;
-        if (!json.run_id) {
-            line.textContent = "Todavía no se corrió ninguna sincronización.";
-            return;
-        }
-        var partes = json.filas.map(function (f) {
-            var estado = f.ok == 1 ? "OK" : "FALLÓ" + (f.mensaje ? " (" + f.mensaje + ")" : "");
-            var detalle = f.ok == 1 ? " (" + f.actualizados + " act., " + f.nuevos + " nuevos)" : "";
-            return f.marca + " " + estado + detalle;
-        });
-        var d = new Date(json.filas[0].created_at.replace(" ", "T"));
-        var fechaStr = d.toLocaleDateString("es-AR") + " " + d.getHours().toString().padStart(2, "0") + ":" + d.getMinutes().toString().padStart(2, "0");
-        line.innerHTML = "Última sync: " + fechaStr + " — " + partes.join(", ");
-    } catch (e) {}
-}
-
-async function setSyncMode(modo) {
-    var res = await fetch(API + "?action=config_set", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ _user: authUser, _pass: authPass, clave: "manager_sync_mode", valor: modo }),
-    });
-    var json = await res.json();
-    if (json.ok) toast("Modo de sincronización actualizado");
-}
-
-async function sincronizarManagerAhora() {
-    var modoSel = document.querySelector('input[name="syncMode"]:checked');
-    modoSel = modoSel ? modoSel.value : "manual";
-    var btn = document.getElementById("btnSyncNow");
-    btn.disabled = true;
-    btn.textContent = "Consultando Manager...";
-    try {
-        if (modoSel === "manual") {
-            var res = await fetch(API + "?action=manager_sync_preview", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ _user: authUser, _pass: authPass }),
-            });
-            var json = await res.json();
-            if (!json.ok) { toast("Error: " + json.error, "#c62828"); return; }
-            renderSyncPreview(json);
-            document.getElementById("syncPreviewModal").classList.add("open");
-        } else {
-            var res2 = await fetch(API + "?action=manager_sync_apply", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ _user: authUser, _pass: authPass }),
-            });
-            var json2 = await res2.json();
-            if (!json2.ok) { toast("Error: " + json2.error, "#c62828"); return; }
-            toast(
-                "Sync aplicada: " + json2.actualizados + " actualizados, " + json2.nuevos_creados + " nuevos" +
-                (json2.nuevos_pendientes ? ", " + json2.nuevos_pendientes + " pendientes de aprobar" : "")
-            );
-            loadSyncStatus();
-            loadPendientesManagerBadge();
-            await loadProducts();
-        }
-    } catch (e) {
-        toast("Error de conexión con Manager", "#c62828");
-    } finally {
-        btn.disabled = false;
-        btn.textContent = "🔄 Sincronizar ahora";
-    }
-}
-
-var _syncFilter = "todos";
-
-function renderSyncPreview(diff) {
-    syncPreviewDiff = diff;
-    _syncFilter = "todos";
-    var wrap = document.getElementById("syncPreviewWrap");
-    wrap.innerHTML = buildSyncPreviewHTML(diff);
-    var importable = diff.actualiza.length + diff.nuevos.length;
-    var btn = document.getElementById("btnSyncConfirm");
-    if (btn) btn.disabled = importable === 0;
-}
-
-function buildSyncPreviewHTML(diff) {
-    var counts = {
-        NUEVO: diff.nuevos.length,
-        ACTUALIZA: diff.actualiza.length,
-        SIN_CAMBIOS: diff.sin_cambios.length,
-    };
-    var all = diff.nuevos
-        .map(function (it) { return { it: it, status: "NUEVO" }; })
-        .concat(diff.actualiza.map(function (it) { return { it: it, status: "ACTUALIZA" }; }))
-        .concat(diff.sin_cambios.map(function (it) { return { it: it, status: "SIN_CAMBIOS" }; }));
-    var visible = _syncFilter === "todos" ? all : all.filter(function (r) { return r.status === _syncFilter; });
-
-    var html = "";
-
-    // ── Estado por marca (si alguna falló, se ve acá arriba de todo) ──
-    var partesMarca = Object.keys(diff.por_marca).map(function (m) {
-        var r = diff.por_marca[m];
-        return r.ok ? m + ": " + r.cantidad + " artículos" : m + ": ⚠ FALLÓ (" + r.mensaje + ")";
-    });
-    html += "<div style='font-size:12px;color:#888;margin-bottom:12px'>" + partesMarca.join(" · ") + "</div>";
-
-    // ── Stat tiles ──
-    html += "<div style='display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px'>";
-    html += importStatTile("✅ Nuevos", counts.NUEVO, "#1b5e20", "#e8f5e9");
-    html += importStatTile("🔄 Actualizan", counts.ACTUALIZA, "#0d47a1", "#e3f2fd");
-    html += importStatTile("⏭ Sin cambios", counts.SIN_CAMBIOS, "#555", "#f5f5f5");
-    html += "</div>";
-
-    // ── Filter tabs ──
-    html += "<div style='display:flex;gap:5px;margin-bottom:10px;flex-wrap:wrap'>";
-    html += syncFilterTab("todos", "Todos", all.length);
-    html += syncFilterTab("NUEVO", "Nuevos", counts.NUEVO);
-    html += syncFilterTab("ACTUALIZA", "Actualizan", counts.ACTUALIZA);
-    html += syncFilterTab("SIN_CAMBIOS", "Sin cambios", counts.SIN_CAMBIOS);
-    html += "</div>";
-
-    // ── Tabla con sticky header ──
-    var STATUS_BG = { NUEVO: "#e8f5e9", ACTUALIZA: "#e3f2fd", SIN_CAMBIOS: "#fafafa" };
-    var STATUS_BADGE = {
-        NUEVO: { bg: "#c8e6c9", color: "#1b5e20", label: "NUEVO" },
-        ACTUALIZA: { bg: "#bbdefb", color: "#0d47a1", label: "ACTUALIZA" },
-        SIN_CAMBIOS: { bg: "#eeeeee", color: "#757575", label: "SIN CAMBIOS" },
-    };
-    var CAMPOS = [
-        { key: "descripcion", label: "Descripción" },
-        { key: "categoria", label: "Categoría" },
-        { key: "precio_mayorista", label: "Mayorista", money: true },
-        { key: "pvp", label: "PVP", money: true },
-        { key: "estado", label: "Estado" },
-    ];
-
-    html += "<div style='overflow:auto;max-height:320px;border:1px solid #e0e0e0;border-radius:8px'>";
-    html += "<table class='import-preview-table' style='min-width:100%'><thead><tr>";
-    html += "<th style='min-width:90px'>Cambio</th><th>Código</th><th>Marca</th>";
-    CAMPOS.forEach(function (c) { html += "<th>" + c.label + "</th>"; });
-    html += "</tr></thead><tbody>";
-
-    if (!visible.length) {
-        html += "<tr><td colspan='" + (CAMPOS.length + 3) + "' style='text-align:center;padding:20px;color:#999'>Sin filas en este filtro</td></tr>";
-    }
-
-    visible.slice(0, 100).forEach(function (f) {
-        var it = f.it;
-        var badge = STATUS_BADGE[f.status];
-        html += "<tr style='background:" + STATUS_BG[f.status] + "'>";
-        html += "<td style='padding:6px 8px'><span class='imp-badge' style='background:" + badge.bg + ";color:" + badge.color + "'>" + badge.label + "</span></td>";
-        html += "<td style='padding:6px 8px'>" + esc(it.codigo) + "</td>";
-        html += "<td style='padding:6px 8px'>" + esc(it.marca_manager) + "</td>";
-        CAMPOS.forEach(function (c) {
-            var val = it[c.key];
-            var display = c.money ? "$" + Math.round(val || 0) : esc(String(val ?? ""));
-            if (f.status === "ACTUALIZA" && it._anterior) {
-                var oldVal = it._anterior[c.key];
-                var changed = c.money ? Math.round(parseFloat(oldVal) * 100) !== Math.round(parseFloat(val) * 100) : String(oldVal) !== String(val);
-                if (changed) {
-                    var oldDisplay = c.money ? "$" + Math.round(oldVal || 0) : esc(String(oldVal ?? ""));
-                    html += "<td style='padding:6px 8px;font-size:12px'><span style='text-decoration:line-through;color:#aaa'>" + oldDisplay + "</span> → <strong>" + display + "</strong></td>";
-                    return;
-                }
-            }
-            html += "<td style='padding:6px 8px'>" + display + "</td>";
-        });
-        html += "</tr>";
-    });
-
-    if (visible.length > 100) {
-        html += "<tr><td colspan='" + (CAMPOS.length + 3) + "' style='text-align:center;padding:10px;color:#999;font-size:12px'>… y " + (visible.length - 100) + " filas más</td></tr>";
-    }
-
-    html += "</tbody></table></div>";
-
-    if (counts.SIN_CAMBIOS > 0) {
-        html += "<p style='font-size:12px;color:#888;margin-top:8px'>⏭ Las " + counts.SIN_CAMBIOS + " fila(s) sin cambios no se van a tocar.</p>";
-    }
-
-    return html;
-}
-
-function syncFilterTab(value, label, count) {
-    var isActive = _syncFilter === value;
-    var cls = "imp-tab" + (isActive ? " active" : "");
-    return "<button class='" + cls + "' onclick='setSyncFilter(\"" + value + "\")'>" + label + " (" + count + ")</button>";
-}
-
-function setSyncFilter(value) {
-    _syncFilter = value;
-    if (syncPreviewDiff) document.getElementById("syncPreviewWrap").innerHTML = buildSyncPreviewHTML(syncPreviewDiff);
-}
-
-function closeSyncPreviewModal() {
-    document.getElementById("syncPreviewModal").classList.remove("open");
-    syncPreviewDiff = null;
-}
-
-async function confirmarSyncManager() {
-    var btn = document.getElementById("btnSyncConfirm");
-    btn.disabled = true;
-    btn.textContent = "Aplicando...";
-    try {
-        var res = await fetch(API + "?action=manager_sync_apply", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ _user: authUser, _pass: authPass }),
-        });
-        var json = await res.json();
-        if (!json.ok) { toast("Error: " + json.error, "#c62828"); return; }
-        toast("Sync aplicada: " + json.actualizados + " actualizados, " + json.nuevos_creados + " nuevos");
-        closeSyncPreviewModal();
-        loadSyncStatus();
-        loadPendientesManagerBadge();
-        await loadProducts();
-    } catch (e) {
-        toast("Error al aplicar la sync", "#c62828");
-    } finally {
-        btn.disabled = false;
-        btn.textContent = "Confirmar y aplicar";
-    }
-}
-
-// ── Pendientes de Manager (modo semiautomático) ─────────────────────────────
-async function loadPendientesManagerBadge() {
-    try {
-        var res = await fetch(API + "?action=manager_sync_pendientes_list", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ _user: authUser, _pass: authPass }),
-        });
-        var json = await res.json();
-        var n = Array.isArray(json) ? json.length : 0;
-        var badge = document.getElementById("pendMgrBadge");
-        if (badge) {
-            badge.textContent = n;
-            badge.style.display = n > 0 ? "" : "none";
-        }
-    } catch (e) {}
-}
-
-async function loadPendientesManager() {
-    var res = await fetch(API + "?action=manager_sync_pendientes_list", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ _user: authUser, _pass: authPass }),
-    });
-    var rows = await res.json();
-    var tbody = document.getElementById("pendMgrTbody");
-    if (!Array.isArray(rows) || !rows.length) {
-        tbody.innerHTML = "<tr><td colspan='9' style='text-align:center;color:#888'>No hay productos pendientes de aprobación</td></tr>";
-        var badge = document.getElementById("pendMgrBadge");
-        if (badge) badge.style.display = "none";
-        return;
-    }
-    tbody.innerHTML = rows
-        .map(function (p) {
-            return (
-                "<tr>" +
-                "<td><input type='checkbox' class='pendChk' value='" + p.id + "'></td>" +
-                "<td>" + esc(p.codigo) + "</td><td>" + esc(p.descripcion) + "</td><td>" + esc(p.categoria) + "</td>" +
-                "<td>$" + Math.round(p.precio_mayorista) + "</td><td>$" + Math.round(p.pvp || 0) + "</td><td>" + p.estado + "</td>" +
-                "<td>" + esc(p.marca_manager) + "</td>" +
-                "<td><button class='btn btn-primary' style='padding:4px 10px;font-size:11px' onclick='aprobarPendiente(" + p.id + ")'>✓ Aprobar</button> " +
-                "<button class='btn' style='padding:4px 10px;font-size:11px;color:#c62828' onclick='rechazarPendiente(" + p.id + ")'>✗ Rechazar</button></td>" +
-                "</tr>"
-            );
-        })
-        .join("");
-    var selAll = document.getElementById("pendSelectAll");
-    if (selAll) selAll.checked = false;
-}
-
-function toggleSelectAllPendientes(cb) {
-    document.querySelectorAll(".pendChk").forEach(function (el) { el.checked = cb.checked; });
-}
-
-function pendientesSeleccionados() {
-    return Array.from(document.querySelectorAll(".pendChk:checked")).map(function (el) { return parseInt(el.value); });
-}
-
-async function aprobarPendiente(id) { await aplicarAccionPendientes([id], "aprobar"); }
-async function rechazarPendiente(id) { await aplicarAccionPendientes([id], "rechazar"); }
-
-async function aprobarPendientesSeleccionados() {
-    var ids = pendientesSeleccionados();
-    if (!ids.length) { toast("Seleccioná al menos un producto", "#c62828"); return; }
-    await aplicarAccionPendientes(ids, "aprobar");
-}
-async function rechazarPendientesSeleccionados() {
-    var ids = pendientesSeleccionados();
-    if (!ids.length) { toast("Seleccioná al menos un producto", "#c62828"); return; }
-    await aplicarAccionPendientes(ids, "rechazar");
-}
-
-async function aplicarAccionPendientes(ids, accion) {
-    var action = accion === "aprobar" ? "manager_sync_pendientes_aprobar" : "manager_sync_pendientes_rechazar";
-    var res = await fetch(API + "?action=" + action, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ _user: authUser, _pass: authPass, ids: ids }),
-    });
-    var json = await res.json();
-    if (json.ok) {
-        toast(
-            accion === "aprobar"
-                ? (json.creados || ids.length) + " producto(s) aprobado(s)"
-                : (json.eliminados || ids.length) + " producto(s) rechazado(s)"
-        );
-        loadPendientesManager();
-        loadPendientesManagerBadge();
-        if (accion === "aprobar") await loadProducts();
-    } else {
-        toast("Error: " + json.error, "#c62828");
-    }
 }
 
 // ── Image bulk import ─────────────────────────────────────────────────────────

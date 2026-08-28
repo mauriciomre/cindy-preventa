@@ -24,6 +24,115 @@ function checkAuth($data) {
     }
 }
 
+// ── Búsqueda en Manager2Max (solo lectura) ───────────────────────────────────
+// Fase 2: prellenar código/descripción/categoría/precios al dar de alta un
+// producto de preventa. IDEmpresa=4 (TEST/sandbox) a propósito — decisión de
+// Mauricio (28/08/2026): siempre 4 para esto, nunca producción, sin excepción
+// (es de solo lectura así que no hay riesgo de escribir, pero al ser una copia
+// de la base real que no se autoactualiza, los datos pueden estar desfasados
+// respecto al Manager de producción — igual sirve para no tipear a mano).
+define('MANAGER_LISTA_MAYORISTA', 2); // "Mayorista" (real de Cindy, no la de Travel Blue)
+define('MANAGER_LISTA_PVP', 1);       // "Público General"
+
+function manager_login() {
+    $ch = curl_init(MANAGER_API_URL . '/Api/Login/LoginUsuarioEmpresa');
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json; charset=utf-8']);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
+        'CodigoUsuario' => MANAGER_API_USER,
+        'Contraseña' => MANAGER_API_PASS,
+        'IDEmpresa' => MANAGER_IDEMPRESA,
+    ], JSON_UNESCAPED_UNICODE));
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 20);
+    $resp = curl_exec($ch);
+    $err = curl_error($ch);
+    curl_close($ch);
+    if ($err) throw new Exception("Login Manager falló: $err");
+    $data = json_decode($resp, true);
+    if (empty($data['Token'])) throw new Exception("Login Manager sin token: " . ($data['ErrMessage'] ?? 'desconocido'));
+    return $data['Token'];
+}
+
+function manager_call($token, $endpoint, $body) {
+    $ch = curl_init(MANAGER_API_URL . $endpoint);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json; charset=utf-8', 'Authorization: Bearer ' . $token]);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body, JSON_UNESCAPED_UNICODE));
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    $resp = curl_exec($ch);
+    $err = curl_error($ch);
+    curl_close($ch);
+    if ($err) throw new Exception("Manager $endpoint falló: $err");
+    $data = json_decode($resp, true);
+    if (($data['ErrCode'] ?? null) !== 200) throw new Exception("Manager $endpoint error: " . ($data['ErrMessage'] ?? 'desconocido'));
+    return $data['Data']['DT']['data'] ?? [];
+}
+
+function manager_filtro_texto($valor, $criteria = 0) {
+    return [
+        '$type' => 'UpSoft.Framework.Data.Filters.FilterText, UpSoft.Framework.Data',
+        'Criteria' => $criteria,
+        'Value' => $valor,
+        'ArrayValue' => ['$type' => 'System.Collections.Generic.List`1[[System.String, mscorlib]], mscorlib', '$values' => ['']],
+        'FieldName' => '',
+        'ActiveFilter' => true,
+    ];
+}
+function manager_filtro_numero($valor) {
+    return [
+        '$type' => 'UpSoft.Framework.Data.Filters.FilterNumber, UpSoft.Framework.Data',
+        'Criteria' => 0, 'Value1' => $valor, 'Value2' => 0.0, 'FieldName' => '', 'ActiveFilter' => true,
+    ];
+}
+function manager_dict_filtros($filtros) {
+    return array_merge([
+        '$type' => 'System.Collections.Generic.Dictionary`2[[System.String, mscorlib],[UpSoft.Framework.Data.Filters.BaseFilter, UpSoft.Framework.Data]], mscorlib',
+    ], $filtros);
+}
+
+// Busca un artículo por código exacto en Manager (Contains del lado del
+// servidor, se filtra por igualdad exacta acá porque ese filtro no es
+// confiable como exact-match — ver Mi-Cerebro/conocimiento/manager2max.md).
+function manager_buscar_por_codigo($token, $codigo) {
+    $articulos = manager_call($token, '/Api/articulo/GetDTArticulos', [
+        'DTRequest' => ['draw' => 1, 'order' => [], 'start' => 0, 'length' => 20],
+        'DefinicionTablaFiltros' => false,
+        'CalculaTotales' => false,
+        'ListFilters' => manager_dict_filtros(['CodigoArticulo' => manager_filtro_texto($codigo)]),
+    ]);
+    foreach ($articulos as $a) {
+        if (trim($a['CodigoArticulo'] ?? '') === $codigo) return $a;
+    }
+    return null;
+}
+
+function manager_precio_por_codigo($token, $codigo, $idLista) {
+    $precios = manager_call($token, '/Api/articulo/GetDTArticulosPrecioExistencia', [
+        'DTRequest' => ['draw' => 1, 'order' => [], 'start' => 0, 'length' => 20],
+        'DefinicionTablaFiltros' => false,
+        'CalculaTotales' => false,
+        'ListFilters' => manager_dict_filtros([
+            'IDListaPrecio' => manager_filtro_numero($idLista),
+            'IDDeposito' => manager_filtro_numero(0),
+            'IDCliente' => manager_filtro_numero(0),
+            'IDProveedor' => manager_filtro_numero(0),
+            'IDMonedaComprobante' => manager_filtro_numero(1),
+            'FactorCotizacionMonCompMonLP' => manager_filtro_numero(1.0),
+            'ArticuloCompleto' => manager_filtro_texto($codigo, 1),
+        ]),
+    ]);
+    foreach ($precios as $p) {
+        if (trim($p['CodigoArticulo'] ?? '') === $codigo && isset($p['PrecioFinalLP'])) {
+            return round(floatval($p['PrecioFinalLP']), 2);
+        }
+    }
+    return null;
+}
+
 function setupDB($db) {
     $db->query("CREATE TABLE IF NOT EXISTS categorias (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -241,6 +350,34 @@ switch ($action) {
         $validPass = $row ? $row['valor'] : ADMIN_PASS;
         if ($u === ADMIN_USER && $p === $validPass) echo json_encode(['ok' => true]);
         else { http_response_code(401); echo json_encode(['error' => 'Credenciales inválidas']); }
+        break;
+
+    case 'manager_buscar_producto':
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $codigo = trim($data['codigo'] ?? '');
+        if (!$codigo) { http_response_code(400); die(json_encode(['error' => 'código requerido'])); }
+        try {
+            $token = manager_login();
+            $articulo = manager_buscar_por_codigo($token, $codigo);
+            if (!$articulo) { echo json_encode(['ok' => true, 'encontrado' => false]); break; }
+            $categoria = trim($articulo['Rubro'] ?? '');
+            echo json_encode([
+                'ok' => true,
+                'encontrado' => true,
+                'producto' => [
+                    'codigo' => $codigo,
+                    'descripcion' => trim($articulo['Descripcion'] ?? ''),
+                    'categoria' => $categoria !== '' ? mb_strtoupper($categoria, 'UTF-8') : '',
+                    'marca' => trim($articulo['Marca'] ?? ''),
+                    'precio_mayorista' => manager_precio_por_codigo($token, $codigo, MANAGER_LISTA_MAYORISTA),
+                    'pvp' => manager_precio_por_codigo($token, $codigo, MANAGER_LISTA_PVP),
+                ],
+            ]);
+        } catch (Exception $e) {
+            http_response_code(500);
+            echo json_encode(['error' => $e->getMessage()]);
+        }
         break;
 
     case 'producto':

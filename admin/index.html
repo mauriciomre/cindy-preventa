@@ -898,13 +898,29 @@
                             <div class="row2">
                                 <div class="field">
                                     <label>Código *</label>
-                                    <input
-                                        id="fCodigo"
-                                        oninput="checkCodigo(this)"
-                                    />
+                                    <div style="display: flex; gap: 6px">
+                                        <input
+                                            id="fCodigo"
+                                            oninput="checkCodigo(this)"
+                                            style="flex: 1"
+                                        />
+                                        <button
+                                            type="button"
+                                            id="btnBuscarManager"
+                                            onclick="buscarEnManager()"
+                                            style="padding: 9px 12px; cursor: pointer; white-space: nowrap"
+                                        >
+                                            🔎 Buscar en Manager
+                                        </button>
+                                    </div>
                                     <div
                                         class="field-hint"
                                         id="codigoHint"
+                                    ></div>
+                                    <div
+                                        class="field-hint"
+                                        id="managerHint"
+                                        style="color: var(--muted)"
                                     ></div>
                                 </div>
                                 <div class="field">
@@ -2423,23 +2439,6 @@
                 <div class="modal-foot">
                     <button class="btn" style="background:#eee" onclick="closeImgImportModal()">Cancelar</button>
                     <button id="btnImgUpload" class="btn btn-primary" disabled onclick="uploadImages()">Subir imágenes</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- SYNC MANAGER PREVIEW MODAL (modo manual) -->
-        <div class="modal-bg" id="syncPreviewModal" onclick="if(event.target===this)closeSyncPreviewModal()">
-            <div class="modal" style="max-width:760px;width:95%;padding:0">
-                <div class="modal-head">
-                    <h2>🔄 Sincronizar con Manager</h2>
-                    <button class="modal-close" onclick="closeSyncPreviewModal()">✕</button>
-                </div>
-                <div style="padding:20px 24px;max-height:60vh;overflow-y:auto">
-                    <div id="syncPreviewWrap"></div>
-                </div>
-                <div class="modal-foot">
-                    <button class="btn" style="background:#eee" onclick="closeSyncPreviewModal()">Cancelar</button>
-                    <button id="btnSyncConfirm" class="btn btn-primary" onclick="confirmarSyncManager()">Confirmar y aplicar</button>
                 </div>
             </div>
         </div>
