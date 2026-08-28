@@ -1,12 +1,13 @@
 :root {
-    --blue: #003087;
-    --blue2: #0055b3;
-    --pale: #e8f0fb;
+    --blue: #e84e1b;
+    --blue2: #c53f14;
+    --pale: #f6ece4;
     --red: #c62828;
     --green: #2e7d32;
-    --bg: #f0f4f8;
-    --border: #e0e0e0;
-    --muted: #666
+    --bg: #f6f2ec;
+    --border: #e5ded4;
+    --muted: #78706a;
+    --ink: #171412
 }
 
 * {
@@ -16,9 +17,9 @@
 }
 
 body {
-    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-family: 'Jost', 'Segoe UI', system-ui, sans-serif;
     background: var(--bg);
-    color: #1a1a1a
+    color: var(--ink)
 }
 
 /* TOPBAR */
@@ -44,8 +45,9 @@ header {
 }
 
 .topbar-brand {
-    font-size: 15px;
-    font-weight: 800;
+    font-family: 'Lora', serif;
+    font-size: 16px;
+    font-weight: 600;
     white-space: nowrap;
     margin-right: 4px
 }
@@ -388,7 +390,7 @@ header {
 }
 
 .btn-import {
-    background: #ff6f00;
+    background: #3a332c;
     color: #fff
 }
 
@@ -491,7 +493,7 @@ tr:hover td {
 /* DRAG & DROP */
 tr.dragging {
     opacity: .4;
-    background: #e8f0fb !important
+    background: var(--pale) !important
 }
 
 tr.drag-over td {
@@ -544,7 +546,7 @@ tr.drag-over td {
 }
 
 td.editing {
-    background: #f0f8ff !important
+    background: var(--pale) !important
 }
 
 /* MODAL */
@@ -725,14 +727,15 @@ td.editing {
     border-radius: 16px;
     padding: 36px;
     width: 340px;
-    box-shadow: 0 4px 24px rgba(0, 48, 135, .12);
+    box-shadow: 0 4px 24px rgba(23, 20, 18, .1);
     text-align: center
 }
 
 .login-box h2 {
+    font-family: 'Lora', serif;
     color: var(--blue);
-    font-size: 20px;
-    font-weight: 800;
+    font-size: 22px;
+    font-weight: 600;
     margin-bottom: 6px
 }
 
@@ -943,7 +946,7 @@ td.editing {
 }
 
 .color-option:hover {
-    background: #e8f0fb
+    background: var(--pale)
 }
 
 .color-option input[type=checkbox] {
