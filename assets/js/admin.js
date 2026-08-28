@@ -2054,8 +2054,7 @@ function imprimirPedido() {
     html +=
         '<th>Código</th><th>Descripción</th><th style="text-align:center">Cant.</th>';
     html += '<th style="text-align:left">Precio / Subtotal</th>';
-    html += '<th style="text-align:center;width:60px">Central</th>';
-    html += '<th style="text-align:center;width:60px">Seppey</th>';
+    html += '<th style="text-align:center;width:70px">Preparado</th>';
     html += "</tr></thead><tbody>";
     p.items.forEach(function (item) {
         html += "<tr>";
@@ -2071,8 +2070,6 @@ function imprimirPedido() {
             '</span><br><span class="price-sub">' +
             fmt(item.subtotal) +
             "</span></td>";
-        html +=
-            '<td style="text-align:center"><span class="deposit-box"></span></td>';
         html +=
             '<td style="text-align:center"><span class="deposit-box"></span></td>';
         html += "</tr>";
