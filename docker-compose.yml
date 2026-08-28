@@ -1,0 +1,39 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8081:80"
+    volumes:
+      - .:/var/www/html
+      # Volumen aislado para imgs/ — NUNCA la carpeta real, para que subir/borrar
+      # fotos de prueba no toque las imágenes reales de productos en disco.
+      - cindy_preventa_imgs_data:/var/www/html/imgs
+    environment:
+      DB_HOST: db
+      DB_USER: root
+      DB_PASS: root
+      DB_NAME: cindy_preventa
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: mysql:5.7
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: cindy_preventa
+    ports:
+      - "3309:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - cindy_preventa_db_data:/var/lib/mysql
+
+volumes:
+  cindy_preventa_db_data:
+  cindy_preventa_imgs_data:

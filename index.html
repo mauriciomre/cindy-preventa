@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="es">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+        />
+        <title>Cindy Mayorista — Preventa</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&family=Lora:wght@600&display=swap"
+            rel="stylesheet"
+        />
+        <link rel="stylesheet" href="assets/css/catalogo.css" />
+        <style>
+            /* ── Botón de escaneo en barra de búsqueda ── */
+            .search { display: flex; align-items: center; gap: 6px; padding: 6px 20px 12px; }
+            .search input { flex: 1; }
+            .scan-btn {
+                flex-shrink: 0;
+                background: var(--bg);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                color: var(--ink);
+                font-size: 1.15em;
+                padding: 6px 10px;
+                cursor: pointer;
+                line-height: 1;
+            }
+            .scan-btn:active { background: var(--pale); }
+            /* ── Modal escáner ── */
+            .scanner-modal-bg {
+                display: none;
+                position: fixed; inset: 0;
+                background: rgba(0,0,0,0.7);
+                z-index: 9999;
+                align-items: center;
+                justify-content: center;
+                padding: 16px;
+            }
+            .scanner-modal-bg.open { display: flex; }
+            .scanner-modal {
+                background: #fff;
+                border-radius: 12px;
+                overflow: hidden;
+                width: 100%;
+                max-width: 400px;
+            }
+            .scanner-modal-head {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 12px 16px;
+                background: var(--ink);
+                color: #fff;
+                font-weight: 700;
+                font-size: 0.95em;
+            }
+            .scanner-modal-head button {
+                background: none;
+                border: none;
+                color: #fff;
+                font-size: 1.2em;
+                cursor: pointer;
+                line-height: 1;
+                padding: 0 2px;
+            }
+            @keyframes focusPulse {
+                0%   { transform: scale(1.4); opacity: 1; }
+                60%  { transform: scale(1);   opacity: 1; }
+                100% { transform: scale(1);   opacity: 0; }
+            }
+            .focus-indicator {
+                position: fixed;
+                width: 56px; height: 56px;
+                border: 2px solid #fff;
+                border-radius: 4px;
+                pointer-events: none;
+                z-index: 99999;
+                transform-origin: center;
+                animation: focusPulse 0.6s ease-out forwards;
+                box-shadow: 0 0 0 1px rgba(0,0,0,0.3);
+            }
+        </style>
+    </head>
+    <body>
+        <header>
+            <div class="preventa-strip">
+                <span class="dot"></span>Preventa — Reservá antes de que llegue
+            </div>
+            <div class="h-top">
+                <div class="brand">
+                    <img
+                        src="assets/img/cindy-logo.png"
+                        alt="Cindy Mayorista"
+                        style="height: 34px"
+                    />
+                    <small>CATÁLOGO DE PREVENTA</small>
+                </div>
+                <div class="h-right">
+                    <div class="h-right-top">
+                        <a class="admin-btn" href="admin/"
+                            >⚙ <span class="admin-txt">Admin</span></a
+                        >
+                        <div class="view-btns">
+                            <button
+                                class="view-btn on"
+                                id="btnGrid"
+                                onclick="setView('grid')"
+                                title="Vista grilla"
+                            >
+                                ⊞
+                            </button>
+                            <button
+                                class="view-btn"
+                                id="btnList"
+                                onclick="setView('list')"
+                                title="Vista lista"
+                            >
+                                ☰
+                            </button>
+                        </div>
+                    </div>
+                    <div class="h-right-bottom">
+                        <button class="cart-btn" onclick="openCart()">
+                            🛒 Mi pedido
+                            <div class="cart-n" id="cartN">0</div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="search">
+                <input
+                    type="text"
+                    id="srch"
+                    placeholder="🔍  Buscar por nombre, código o barras..."
+                    oninput="doSearch()"
+                    onkeydown="doSearchEnter(event)"
+                />
+                <button
+                    class="scan-btn"
+                    onclick="openBarcodeScanner(function(code){document.getElementById('srch').value=code;doSearchEnter({key:'Enter'});})"
+                    title="Escanear código de barras"
+                >📷</button>
+            </div>
+        </header>
+
+        <div class="tabs" id="tabs"></div>
+        <div
+            class="cat-dropdown-wrap"
+            id="catDropdownWrap"
+            style="display: none"
+        >
+            <button
+                class="cat-dropdown-btn"
+                id="catDropdownBtn"
+                onclick="toggleCatDropdown()"
+            >
+                <span id="catDropdownLabel">TODOS</span> ▾
+            </button>
+            <div class="cat-dropdown-menu" id="catDropdownMenu"></div>
+        </div>
+        <div class="body" id="prods">
+            <div class="loading">
+                <div class="spin"></div>
+                Cargando catálogo...
+            </div>
+        </div>
+
+        <div class="overlay" id="overlay" onclick="bgClose(event)">
+            <div class="panel">
+                <div class="p-head">
+                    <h2>📋 Mi pedido</h2>
+                    <button class="cls" onclick="closeCart()">×</button>
+                </div>
+
+                <!-- ZONA 1: productos (scroll independiente) -->
+                <div class="p-products">
+                    <!-- Toggle (solo mobile) -->
+                    <button
+                        class="cart-section-toggle"
+                        id="toggleItemsBtn"
+                        onclick="toggleCartSection('items')"
+                    >
+                        <span id="toggleItemsLabel"
+                            >▼ Ver productos del pedido</span
+                        >
+                    </button>
+                    <div
+                        class="cart-items-section mobile-collapsed"
+                        id="cartItemsSection"
+                    >
+                        <div id="pitems"></div>
+                    </div>
+                </div>
+
+                <!-- ZONA 2: total + formulario (scroll independiente) -->
+                <div class="p-form-area">
+                    <div id="cartToast" class="cart-toast"></div>
+                    <div class="total-row">
+                        <span class="total-lbl">Total mayorista:</span
+                        ><span class="total-val" id="ptotal">$ 0</span>
+                    </div>
+                    <button class="continue-btn" onclick="closeCart()">
+                        ← Continuar comprando
+                    </button>
+
+                    <!-- Toggle formulario (solo mobile) -->
+                    <button
+                        class="cart-section-toggle"
+                        id="toggleFormBtn"
+                        onclick="toggleCartSection('form')"
+                        style="margin-top: 4px"
+                    >
+                        <span id="toggleFormLabel">▼ Datos del pedido</span>
+                    </button>
+                    <div class="cart-section-body" id="cartFormSection">
+                        <!-- TELÉFONO -->
+                        <div class="field-group" style="margin-top: 8px">
+                            <label class="field-lbl"
+                                >Teléfono <span class="req">*</span></label
+                            >
+                            <div class="tel-row">
+                                <input
+                                    id="cCaract"
+                                    type="tel"
+                                    placeholder="353"
+                                    maxlength="4"
+                                    oninput="onTelChange()"
+                                />
+                                <input
+                                    id="cNum"
+                                    type="tel"
+                                    placeholder="4140385"
+                                    maxlength="8"
+                                    oninput="onTelChange()"
+                                />
+                            </div>
+                            <div class="field-hint-sm">
+                                Característica sin 0 + número sin 15
+                            </div>
+                        </div>
+                        <!-- FORMULARIO CLIENTE -->
+                        <div id="clienteForm" style="display: none">
+                            <div class="form-section-title">
+                                Datos del pedido
+                            </div>
+                            <div class="field-group">
+                                <label class="field-lbl"
+                                    >Nombre / Razón Social
+                                    <span class="req">*</span></label
+                                >
+                                <input
+                                    id="cNombre"
+                                    type="text"
+                                    placeholder="Nombre o razón social"
+                                />
+                            </div>
+                            <div class="field-row">
+                                <div class="field-group">
+                                    <label class="field-lbl">CUIT / DNI</label>
+                                    <input
+                                        id="cCuitDni"
+                                        type="text"
+                                        placeholder="20-12345678-9"
+                                    />
+                                </div>
+                                <div class="field-group">
+                                    <label class="field-lbl">Email</label>
+                                    <input
+                                        id="cEmail"
+                                        type="email"
+                                        placeholder="mail@ejemplo.com"
+                                    />
+                                </div>
+                            </div>
+                            <div class="form-section-title">Datos de envío</div>
+                            <div class="field-group">
+                                <label class="field-lbl">Domicilio</label>
+                                <input
+                                    id="cDomicilio"
+                                    type="text"
+                                    placeholder="Calle y número"
+                                />
+                            </div>
+                            <div class="field-row">
+                                <div class="field-group">
+                                    <label class="field-lbl">Localidad</label>
+                                    <input
+                                        id="cLocalidad"
+                                        type="text"
+                                        placeholder="Ciudad"
+                                    />
+                                </div>
+                                <div class="field-group">
+                                    <label class="field-lbl">CP</label>
+                                    <input
+                                        id="cCP"
+                                        type="text"
+                                        placeholder="5000"
+                                    />
+                                </div>
+                            </div>
+                            <div class="field-group">
+                                <label class="field-lbl">Provincia</label>
+                                <input
+                                    id="cProvincia"
+                                    type="text"
+                                    placeholder="Córdoba"
+                                />
+                            </div>
+                            <div class="field-group">
+                                <label class="field-lbl">Transporte</label>
+                                <select
+                                    id="cTransporte"
+                                    onchange="onTransporteChange()"
+                                >
+                                    <option value="">— Seleccioná —</option>
+                                </select>
+                            </div>
+                            <div
+                                class="field-group"
+                                id="cTransporteOtroWrap"
+                                style="display: none"
+                            >
+                                <label class="field-lbl"
+                                    >Especificá el transporte</label
+                                >
+                                <input
+                                    id="cTransporteOtro"
+                                    type="text"
+                                    placeholder="Nombre del transporte"
+                                />
+                            </div>
+                            <div class="field-group">
+                                <label class="field-lbl"
+                                    >Notas / Aclaraciones</label
+                                >
+                                <textarea
+                                    id="cNotas"
+                                    placeholder="Indicaciones especiales..."
+                                    rows="2"
+                                ></textarea>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- end cartFormSection -->
+                    <button class="wa" onclick="sendWA()">
+                        📱 Confirmar y enviar pedido
+                    </button>
+                </div>
+                <!-- end p-form-area -->
+            </div>
+        </div>
+
+        <!-- BARCODE SCANNER MODAL -->
+        <div class="scanner-modal-bg" id="scannerModal" onclick="if(event.target===this)closeBarcodeScanner()">
+            <div class="scanner-modal">
+                <div class="scanner-modal-head">
+                    <span>📷 Escanear código de barras</span>
+                    <button onclick="closeBarcodeScanner()">✕</button>
+                </div>
+                <div style="padding:16px 16px 20px">
+                    <div id="scannerReader" style="width:100%"></div>
+                    <div id="scannerStatus" style="text-align:center;margin-top:10px;font-size:0.85em;color:#888">Apuntá la cámara al código de barras</div>
+                </div>
+            </div>
+        </div>
+
+        <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+        <script src="assets/js/catalogo.js"></script>
+    </body>
+</html>
