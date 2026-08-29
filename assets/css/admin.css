@@ -16,10 +16,32 @@
     padding: 0
 }
 
+.icon {
+    display: inline-block;
+    vertical-align: -3px;
+    flex-shrink: 0
+}
+
 body {
     font-family: 'Jost', 'Segoe UI', system-ui, sans-serif;
     background: var(--bg);
     color: var(--ink)
+}
+
+/* Feedback táctil universal: :active en vez de depender de :hover, que en
+   touch no dispara nunca (o queda "pegado" tras el tap). */
+button {
+    transition: transform .1s ease, background .15s ease, border-color .15s ease
+}
+
+button:active:not(:disabled) {
+    transform: scale(.97)
+}
+
+@media (prefers-reduced-motion: reduce) {
+    button:active:not(:disabled) {
+        transform: none
+    }
 }
 
 /* TOPBAR */
@@ -172,6 +194,49 @@ header {
 .sidebar.collapsed {
     width: 52px;
     min-width: 52px
+}
+
+/* Oculto por default siempre (no solo en mobile) — evita que el div del
+   backdrop se renderice como bloque a ancho de escritorio antes de que el
+   @media de abajo lo gobierne. */
+.sidebar-backdrop {
+    display: none
+}
+
+/* Mobile: el sidebar deja de ocupar espacio en el flex del layout (a 220px
+   fijos no queda lugar para nada más en ~375px de ancho) y pasa a ser un
+   drawer superpuesto. Reusa el mismo botón ☰ y toggleSidebar() ya
+   existentes: acá solo se reinterpreta qué significa visualmente
+   ".collapsed" en este breakpoint (cerrado/oculto en vez de angosto). */
+@media (max-width: 860px) {
+    .sidebar {
+        position: fixed;
+        top: 52px;
+        left: 0;
+        width: min(260px, 80vw);
+        min-width: 0;
+        z-index: 60;
+        transform: translateX(0);
+        transition: transform .2s;
+        box-shadow: 2px 0 14px rgba(23, 20, 18, .18)
+    }
+
+    .sidebar.collapsed {
+        width: min(260px, 80vw);
+        transform: translateX(-100%)
+    }
+
+    .sidebar-backdrop {
+        display: none;
+        position: fixed;
+        inset: 52px 0 0 0;
+        background: rgba(23, 20, 18, .45);
+        z-index: 55
+    }
+
+    .sidebar-backdrop.show {
+        display: block
+    }
 }
 
 .sidebar-group {
@@ -350,6 +415,78 @@ header {
     min-width: 200px
 }
 
+/* Reordenar el toolbar por rol (no por posición en el DOM) según el ancho
+   disponible, sin duplicar markup — mismo criterio que el header de listas
+   en tablas-admin-responsive.md. */
+.toolbar .hdr-buscador {
+    order: 1;
+    display: flex;
+    gap: 8px;
+    flex: 1 1 220px;
+    min-width: 200px
+}
+
+.toolbar .hdr-buscador input {
+    min-width: 0
+}
+
+.toolbar .hdr-filtros {
+    order: 2;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap
+}
+
+.toolbar .hdr-secundario {
+    order: 3;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap
+}
+
+.toolbar .hdr-principal {
+    order: 4;
+    margin-left: auto
+}
+
+@media (max-width: 640px) {
+    .toolbar .hdr-principal {
+        order: 1;
+        margin-left: 0
+    }
+
+    .toolbar .hdr-secundario {
+        order: 2
+    }
+
+    .toolbar .hdr-filtros {
+        order: 3;
+        flex-basis: 100%
+    }
+
+    .toolbar .hdr-buscador {
+        order: 4;
+        flex-basis: 100%
+    }
+}
+
+/* Texto de botón que se acorta a una palabra en pantallas muy chicas — ambos
+   textos quedan en el DOM, decide CSS cuál se ve (mejor para accesibilidad
+   que armar el string en JS). */
+.btn-txt-corta {
+    display: none
+}
+
+@media (max-width: 380px) {
+    .btn-txt-larga {
+        display: none
+    }
+
+    .btn-txt-corta {
+        display: inline
+    }
+}
+
 /* BUTTONS */
 .btn {
     padding: 9px 18px;
@@ -411,13 +548,27 @@ header {
 }
 
 /* TABLE */
-table {
-    width: 100%;
-    border-collapse: collapse;
+/* Wrapper de scroll horizontal en 2 divs: el exterior recorta las esquinas
+   redondeadas (overflow:hidden), el interior es el que realmente scrollea
+   (overflow-x:auto). Los dos ejes de overflow van explícitos siempre —
+   dejar overflow-y sin fijar puede generar una scrollbar vertical fantasma
+   por redondeos de subpíxel. Ver Mi-Cerebro/conocimiento/tablas-admin-responsive.md */
+.table-wrap {
     background: #fff;
     border-radius: 12px;
     overflow: hidden;
     box-shadow: 0 1px 4px rgba(0, 0, 0, .08)
+}
+
+.table-scroll {
+    overflow-x: auto;
+    overflow-y: hidden
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff
 }
 
 th {
@@ -442,6 +593,49 @@ tr:last-child td {
 
 tr:hover td {
     background: #fafbff
+}
+
+/* Primera columna fija al scrollear horizontal — necesita que ningún
+   ancestro entre ella y .table-scroll tenga overflow propio (por eso el
+   recorte de esquinas vive en .table-wrap, un div más afuera). */
+.sticky-col {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    box-shadow: 2px 0 4px -2px rgba(23, 20, 18, .15)
+}
+
+th.sticky-col {
+    background: var(--blue);
+    z-index: 2
+}
+
+td.sticky-col {
+    background: #fff
+}
+
+tr:hover td.sticky-col {
+    background: #fafbff
+}
+
+/* Ocultar columnas menos esenciales de forma progresiva (no todo o nada) —
+   el dato sigue disponible al abrir "Editar" en esa fila. */
+@media (max-width: 1200px) {
+    .col-hide-1 {
+        display: none !important
+    }
+}
+
+@media (max-width: 1000px) {
+    .col-hide-2 {
+        display: none !important
+    }
+}
+
+@media (max-width: 840px) {
+    .col-hide-3 {
+        display: none !important
+    }
 }
 
 .thumb {
@@ -578,6 +772,28 @@ td.editing {
     font-weight: 800;
     margin-bottom: 20px;
     color: var(--blue)
+}
+
+/* Target táctil de 40px mínimo — sin esto el "✕" queda con el tamaño
+   natural del texto, muy chico para tocar en mobile (mismo error que el
+   botón de 16x16 documentado en tablas-admin-responsive.md). */
+.modal-close {
+    min-width: 40px;
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    color: inherit
+}
+
+.modal-close:hover {
+    background: rgba(0, 0, 0, .06)
 }
 
 .field {

@@ -162,7 +162,10 @@ document.addEventListener("DOMContentLoaded", function () {
 var sidebarCollapsed = localStorage.getItem("tb_sidebar") === "collapsed";
 
 function initSidebar() {
-    if (sidebarCollapsed)
+    // En mobile ".collapsed" pasa a significar "drawer cerrado" — arranca
+    // siempre cerrado ahí, sin importar la preferencia de escritorio
+    // guardada (que significa otra cosa: rail angosto vs. ancho).
+    if (window.innerWidth <= 860 || sidebarCollapsed)
         document.getElementById("sidebar").classList.add("collapsed");
 }
 
@@ -170,20 +173,30 @@ function toggleSidebar() {
     var sb = document.getElementById("sidebar");
     sidebarCollapsed = !sidebarCollapsed;
     sb.classList.toggle("collapsed", sidebarCollapsed);
+    var backdrop = document.getElementById("sidebarBackdrop");
+    if (backdrop) backdrop.classList.toggle("show", !sidebarCollapsed);
     localStorage.setItem(
         "tb_sidebar",
         sidebarCollapsed ? "collapsed" : "expanded",
     );
 }
 
+function closeSidebarMobile() {
+    if (!sidebarCollapsed) toggleSidebar();
+}
+
+document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") closeSidebarMobile();
+});
+
 // ── FAVORITOS ─────────────────────────────────────────────────────────────────
 var ALL_SECTIONS = [
-    { key: "productos", label: "Productos", icon: "📋" },
-    { key: "categorias", label: "Categorías", icon: "🗂" },
-    { key: "colores", label: "Colores", icon: "🎨" },
-    { key: "pedidos", label: "Pedidos", icon: "🛒" },
-    { key: "clientes", label: "Clientes", icon: "👤" },
-    { key: "configuracion", label: "Configuración", icon: "⚙️" },
+    { key: "productos", label: "Productos", icon: "clipboard-list" },
+    { key: "categorias", label: "Categorías", icon: "folder" },
+    { key: "colores", label: "Colores", icon: "palette" },
+    { key: "pedidos", label: "Pedidos", icon: "shopping-cart" },
+    { key: "clientes", label: "Clientes", icon: "user" },
+    { key: "configuracion", label: "Configuración", icon: "settings" },
 ];
 var favSections = [];
 
@@ -214,7 +227,7 @@ function renderFavbar() {
                 '" onclick="showSection(\'' +
                 key +
                 "',this)\">" +
-                s.icon +
+                icon(s.icon) +
                 " " +
                 s.label +
                 "</button>"
@@ -234,7 +247,7 @@ function openFavModal() {
             '" ' +
             (checked ? "checked" : "") +
             "> " +
-            s.icon +
+            icon(s.icon) +
             " " +
             s.label +
             "</label>"
@@ -285,6 +298,7 @@ function showSection(s, btn) {
     if (s === "colores") renderColoresTable();
     if (s === "pedidos") loadPedidos();
     if (s === "clientes") loadClientes();
+    if (window.innerWidth <= 860) closeSidebarMobile();
 }
 
 // ── CONFIGURACIÓN ─────────────────────────────────────────────────────────────
@@ -375,13 +389,13 @@ function renderColoresTable(filter) {
         html +=
             '<td><div class="actions"><button class="btn btn-edit" onclick="openColorModal(' +
             c.id +
-            ')">✏ Editar</button>';
+            ')">' + icon("pencil") + ' Editar</button>';
         html +=
             '<button class="btn btn-danger" onclick="eliminarColor(' +
             c.id +
             ",'" +
             c.nombre +
-            "')\">🗑</button></div></td>";
+            "')\">" + icon("trash-2") + "</button></div></td>";
         html += "</tr>";
     });
     el.innerHTML =
@@ -631,7 +645,7 @@ function renderCatTable() {
         html +=
             '<td><div class="actions"><button class="btn btn-edit" onclick="openCatModal(' +
             c.id +
-            ')">✏ Editar</button>';
+            ')">' + icon("pencil") + ' Editar</button>';
         html +=
             '<button class="btn btn-danger" onclick="eliminarCategoria(' +
             c.id +
@@ -639,7 +653,7 @@ function renderCatTable() {
             c.nombre +
             "'," +
             count +
-            ')">🗑</button></div></td></tr>';
+            ')">' + icon("trash-2") + '</button></div></td></tr>';
     });
     document.getElementById("catTbody").innerHTML =
         html ||
@@ -853,16 +867,16 @@ function renderTableHeader() {
     var h = "<thead><tr>";
     if (col("handle")) h += "<th></th>";
     if (col("img")) h += "<th>Img</th>";
-    if (col("codigo")) h += "<th>Código</th>";
+    if (col("codigo")) h += '<th class="sticky-col">Código</th>';
     if (col("desc")) h += "<th>Descripción</th>";
-    if (col("cat")) h += "<th>Categoría</th>";
+    if (col("cat")) h += '<th class="col-hide-3">Categoría</th>';
     if (col("may")) h += "<th>Mayorista</th>";
-    if (col("pvp")) h += "<th>PVP</th>";
+    if (col("pvp")) h += '<th class="col-hide-2">PVP</th>';
     if (col("estado")) h += "<th>Estado</th>";
     if (col("stock")) h += "<th>Stock preventa</th>";
-    if (col("multiplo")) h += "<th>Múltiplo</th>";
-    if (col("barras")) h += "<th>Cód. Barras</th>";
-    if (col("colores")) h += "<th>Colores</th>";
+    if (col("multiplo")) h += '<th class="col-hide-1">Múltiplo</th>';
+    if (col("barras")) h += '<th class="col-hide-1">Cód. Barras</th>';
+    if (col("colores")) h += '<th class="col-hide-1">Colores</th>';
     if (col("acciones")) h += "<th>Acciones</th>";
     h += "</tr></thead>";
     document.querySelector("#mainTable thead") &&
@@ -896,11 +910,11 @@ function renderTableFromList(list) {
             html +=
                 '<td><img class="thumb" src="' +
                 imgUrl +
-                '" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'"><div class="thumb-ph" style="display:none">📦</div></td>';
+                '" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'"><div class="thumb-ph" style="display:none">' + icon("package") + '</div></td>';
         if (editMode) {
             if (col("codigo"))
                 html +=
-                    '<td class="editing"><input class="inline-input" value="' +
+                    '<td class="editing sticky-col"><input class="inline-input" value="' +
                     esc(p.codigo) +
                     '" data-field="codigo" data-id="' +
                     p.id +
@@ -914,7 +928,7 @@ function renderTableFromList(list) {
                     '" style="width:180px"></td>';
             if (col("cat"))
                 html +=
-                    '<td class="editing"><select class="inline-select" data-field="categoria" data-id="' +
+                    '<td class="editing col-hide-3"><select class="inline-select" data-field="categoria" data-id="' +
                     p.id +
                     '">' +
                     allCats
@@ -939,7 +953,7 @@ function renderTableFromList(list) {
                     '" style="width:90px"></td>';
             if (col("pvp"))
                 html +=
-                    '<td class="editing"><input class="inline-input" type="number" value="' +
+                    '<td class="editing col-hide-2"><input class="inline-input" type="number" value="' +
                     fmtInput(p.pvp) +
                     '" data-field="pvp" data-id="' +
                     p.id +
@@ -962,19 +976,19 @@ function renderTableFromList(list) {
                     '" style="width:70px" min="0"></td>';
             if (col("multiplo"))
                 html +=
-                    '<td class="editing"><input class="inline-input" type="number" value="' +
+                    '<td class="editing col-hide-1"><input class="inline-input" type="number" value="' +
                     multiplo +
                     '" data-field="multiplo" data-id="' +
                     p.id +
                     '" style="width:60px" min="1"></td>';
             if (col("barras"))
                 html +=
-                    '<td style="color:var(--muted);font-size:11px">' +
+                    '<td class="col-hide-1" style="color:var(--muted);font-size:11px">' +
                     (p.codigo_barras || "—") +
                     "</td>";
             if (col("colores"))
                 html +=
-                    '<td style="color:var(--muted);font-size:11px">' +
+                    '<td class="col-hide-1" style="color:var(--muted);font-size:11px">' +
                     (colores.length
                         ? colores
                               .map(function (c) {
@@ -993,17 +1007,17 @@ function renderTableFromList(list) {
                 html +=
                     '<td><button class="inline-save" onclick="saveInline(' +
                     p.id +
-                    ')">💾</button></td>';
+                    ')">' + icon("save") + '</button></td>';
         } else {
-            if (col("codigo")) html += "<td><code>" + p.codigo + "</code></td>";
+            if (col("codigo")) html += '<td class="sticky-col"><code>' + p.codigo + "</code></td>";
             if (col("desc")) html += "<td>" + p.descripcion + "</td>";
-            if (col("cat")) html += "<td>" + p.categoria + "</td>";
+            if (col("cat")) html += '<td class="col-hide-3">' + p.categoria + "</td>";
             if (col("may"))
                 html +=
                     '<td style="font-weight:800;color:var(--blue)">' +
                     fmt(p.precio_mayorista) +
                     "</td>";
-            if (col("pvp")) html += "<td>" + fmt(p.pvp) + "</td>";
+            if (col("pvp")) html += '<td class="col-hide-2">' + fmt(p.pvp) + "</td>";
             if (col("estado"))
                 html +=
                     '<td><span class="badge-' +
@@ -1020,17 +1034,17 @@ function renderTableFromList(list) {
                     "</td>";
             if (col("multiplo"))
                 html +=
-                    '<td style="color:var(--muted);font-size:12px">×' +
+                    '<td class="col-hide-1" style="color:var(--muted);font-size:12px">×' +
                     multiplo +
                     "</td>";
             if (col("barras"))
                 html +=
-                    '<td style="color:var(--muted);font-size:11px">' +
+                    '<td class="col-hide-1" style="color:var(--muted);font-size:11px">' +
                     (p.codigo_barras || "—") +
                     "</td>";
             if (col("colores"))
                 html +=
-                    "<td>" +
+                    '<td class="col-hide-1">' +
                     (colores.length
                         ? colores
                               .map(function (c) {
@@ -1049,13 +1063,13 @@ function renderTableFromList(list) {
                 html +=
                     '<td><div class="actions"><button class="btn btn-edit" onclick="editProduct(' +
                     p.id +
-                    ')">✏ Editar</button>';
+                    ')">' + icon("pencil") + ' Editar</button>';
                 html +=
                     '<button class="btn btn-danger" onclick="deleteProduct(' +
                     p.id +
                     ",'" +
                     p.descripcion.replace(/'/g, "") +
-                    "')\">🗑</button></div></td>";
+                    "')\">" + icon("trash-2") + "</button></div></td>";
             }
         }
         html += "</tr>";
@@ -1100,7 +1114,7 @@ async function saveAllInline() {
         if (!json.ok) errors++;
     }
     btn.disabled = false;
-    btn.textContent = "💾 Guardar todo";
+    btn.innerHTML = icon("save") + " Guardar todo";
     if (errors === 0) {
         toast("Todos los cambios guardados");
         await loadProducts();
@@ -1234,8 +1248,8 @@ function openModal(p) {
     document.getElementById("fFotoActual").value = p ? p.foto || "" : "";
     document.getElementById("fCodigo").value = p ? p.codigo : "";
     document.getElementById("fCodigo").className = "";
-    document.getElementById("codigoHint").textContent = p
-        ? "✓ Código existente"
+    document.getElementById("codigoHint").innerHTML = p
+        ? icon("check") + " Código existente"
         : "";
     document.getElementById("codigoHint").className = p
         ? "field-hint ok"
@@ -1293,11 +1307,11 @@ function openModal(p) {
         cur.src = getImgUrl(p);
         cur.style.display = "block";
         document.getElementById("imgLabelText").innerHTML =
-            "📷 Cambiar imagen<br><small>JPG, PNG o WebP — máx. 5MB</small>";
+            icon("camera") + " Cambiar imagen<br><small>JPG, PNG o WebP — máx. 5MB</small>";
     } else {
         cur.style.display = "none";
         document.getElementById("imgLabelText").innerHTML =
-            "📷 Hacé clic o arrastrá una imagen<br><small>JPG, PNG o WebP — máx. 5MB</small>";
+            icon("camera") + " Hacé clic o arrastrá una imagen<br><small>JPG, PNG o WebP — máx. 5MB</small>";
     }
     document.getElementById("modalBg").classList.add("open");
 }
@@ -1331,7 +1345,7 @@ function checkCodigo(input) {
         ? allProducts.find((p) => p.id == currentId)
         : null;
     if (editingProduct && editingProduct.codigo === codigo) {
-        hint.textContent = "✓ Código existente";
+        hint.innerHTML = icon("check") + " Código existente";
         hint.className = "field-hint ok";
         input.className = "ok";
         codigoOk = true;
@@ -1357,12 +1371,12 @@ function checkCodigo(input) {
         );
         var json = await res.json();
         if (json.exists) {
-            hint.textContent = "✗ Este código ya existe";
+            hint.innerHTML = icon("x") + " Este código ya existe";
             hint.className = "field-hint err";
             input.className = "err";
             codigoOk = false;
         } else {
-            hint.textContent = "✓ Código disponible";
+            hint.innerHTML = icon("check") + " Código disponible";
             hint.className = "field-hint ok";
             input.className = "ok";
             codigoOk = true;
@@ -1633,13 +1647,13 @@ function renderTransTable() {
         html +=
             '<td><div class="actions"><button class="btn btn-edit" onclick="openTransModal(' +
             t.id +
-            ')">✏ Editar</button>';
+            ')">' + icon("pencil") + ' Editar</button>';
         html +=
             '<button class="btn btn-danger" onclick="eliminarTransporte(' +
             t.id +
             ",'" +
             t.nombre +
-            "')\">🗑</button></div></td></tr>";
+            "')\">" + icon("trash-2") + "</button></div></td></tr>";
     });
     el.innerHTML =
         html ||
@@ -1777,15 +1791,15 @@ function renderPedidosTable() {
         html += "<tr" + (eliminado ? ' style="opacity:.5"' : "") + ">";
         html += "<td><strong>#" + p.id + "</strong></td>";
         html +=
-            '<td style="font-size:12px;white-space:nowrap">' + fecha + "</td>";
+            '<td class="col-hide-2" style="font-size:12px;white-space:nowrap">' + fecha + "</td>";
         html +=
-            '<td><button class="link-btn" onclick="abrirClienteDesdePedido(' +
+            '<td class="sticky-col"><button class="link-btn" onclick="abrirClienteDesdePedido(' +
             p.cliente_id +
             ')">' +
             p.cliente_nombre +
             "</button></td>";
         html +=
-            '<td><a href="https://wa.me/' +
+            '<td class="col-hide-1"><a href="https://wa.me/' +
             p.cliente_tel +
             '" target="_blank" style="color:var(--blue);text-decoration:none">+' +
             p.cliente_tel +
@@ -1808,7 +1822,7 @@ function renderPedidosTable() {
             html +=
                 '<button class="btn btn-danger" onclick="eliminarPedido(' +
                 p.id +
-                ')">🗑</button>';
+                ')">' + icon("trash-2") + '</button>';
         html += "</div></td>";
         html += "</tr>";
     });
@@ -1880,7 +1894,7 @@ async function openPedidoModal(id) {
     if (p.domicilio) html += p.domicilio + "<br>";
     if (p.localidad) html += p.localidad + " (" + (p.cp || "") + ")<br>";
     if (p.provincia) html += p.provincia + "<br>";
-    if (p.transporte) html += "🚚 " + p.transporte;
+    if (p.transporte) html += icon("truck") + " " + p.transporte;
     html += "</div></div>";
     // Estado
     html +=
@@ -1938,8 +1952,8 @@ async function openPedidoModal(id) {
             fmt(item.subtotal) +
             "</td><td>" +
             (item.en_lista_espera == 1
-                ? '<span class="badge-agot">⏳ LISTA DE ESPERA</span>'
-                : '<span class="badge-disp">✓ Confirmado</span>') +
+                ? '<span class="badge-agot">' + icon("clock") + ' LISTA DE ESPERA</span>'
+                : '<span class="badge-disp">' + icon("check") + ' Confirmado</span>') +
             "</td></tr>";
     });
     html += "</tbody></table>";
@@ -2101,16 +2115,16 @@ function imprimirPedido() {
 var allClientesAdmin = [];
 
 var CLIENT_COLS = [
-    { key: "nombre", label: "Nombre" },
+    { key: "nombre", label: "Nombre", cls: "sticky-col" },
     { key: "telefono", label: "Teléfono" },
-    { key: "cuit_dni", label: "CUIT / DNI" },
-    { key: "email", label: "Email" },
-    { key: "localidad", label: "Localidad" },
-    { key: "provincia", label: "Provincia" },
-    { key: "domicilio", label: "Domicilio" },
-    { key: "cp", label: "CP" },
+    { key: "cuit_dni", label: "CUIT / DNI", cls: "col-hide-2" },
+    { key: "email", label: "Email", cls: "col-hide-1" },
+    { key: "localidad", label: "Localidad", cls: "col-hide-1" },
+    { key: "provincia", label: "Provincia", cls: "col-hide-1" },
+    { key: "domicilio", label: "Domicilio", cls: "col-hide-1" },
+    { key: "cp", label: "CP", cls: "col-hide-1" },
     { key: "transporte", label: "Transporte" },
-    { key: "notas", label: "Notas" },
+    { key: "notas", label: "Notas", cls: "col-hide-1" },
     { key: "pedidos", label: "Pedidos" },
     { key: "acciones", label: "Acciones" },
 ];
@@ -2183,7 +2197,11 @@ function renderClientesTable() {
     // Header dinámico
     var thead = "<tr>";
     CLIENT_COLS.forEach(function (c) {
-        if (ccol(c.key)) thead += "<th>" + c.label + "</th>";
+        if (ccol(c.key))
+            thead +=
+                (c.cls ? '<th class="' + c.cls + '">' : "<th>") +
+                c.label +
+                "</th>";
     });
     thead += "</tr>";
     document.getElementById("clientesThead").innerHTML = thead;
@@ -2193,7 +2211,7 @@ function renderClientesTable() {
         var eliminado = parseInt(c.eliminado) === 1;
         html += "<tr" + (eliminado ? ' style="opacity:.5"' : "") + ">";
         if (ccol("nombre"))
-            html += "<td><strong>" + c.nombre + "</strong></td>";
+            html += '<td class="sticky-col"><strong>' + c.nombre + "</strong></td>";
         if (ccol("telefono"))
             html +=
                 '<td><a href="https://wa.me/' +
@@ -2201,17 +2219,17 @@ function renderClientesTable() {
                 '" target="_blank" style="color:var(--blue);text-decoration:none">+' +
                 c.telefono +
                 "</a></td>";
-        if (ccol("cuit_dni")) html += "<td>" + (c.cuit_dni || "—") + "</td>";
-        if (ccol("email")) html += "<td>" + (c.email || "—") + "</td>";
-        if (ccol("localidad")) html += "<td>" + (c.localidad || "—") + "</td>";
-        if (ccol("provincia")) html += "<td>" + (c.provincia || "—") + "</td>";
-        if (ccol("domicilio")) html += "<td>" + (c.domicilio || "—") + "</td>";
-        if (ccol("cp")) html += "<td>" + (c.cp || "—") + "</td>";
+        if (ccol("cuit_dni")) html += '<td class="col-hide-2">' + (c.cuit_dni || "—") + "</td>";
+        if (ccol("email")) html += '<td class="col-hide-1">' + (c.email || "—") + "</td>";
+        if (ccol("localidad")) html += '<td class="col-hide-1">' + (c.localidad || "—") + "</td>";
+        if (ccol("provincia")) html += '<td class="col-hide-1">' + (c.provincia || "—") + "</td>";
+        if (ccol("domicilio")) html += '<td class="col-hide-1">' + (c.domicilio || "—") + "</td>";
+        if (ccol("cp")) html += '<td class="col-hide-1">' + (c.cp || "—") + "</td>";
         if (ccol("transporte"))
             html += "<td>" + (c.transporte || "—") + "</td>";
         if (ccol("notas"))
             html +=
-                '<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+                '<td class="col-hide-1" style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
                 (c.notas || "—") +
                 "</td>";
         if (ccol("pedidos"))
@@ -2227,7 +2245,7 @@ function renderClientesTable() {
             html +=
                 '<td><div class="actions"><button class="btn btn-edit" onclick="openClienteModal(' +
                 c.id +
-                ')">✏ Editar</button>';
+                ')">' + icon("pencil") + ' Editar</button>';
             if (eliminado)
                 html +=
                     '<button class="btn" style="background:#e8f5e9;color:#2e7d32;padding:6px 12px;font-size:12px" onclick="restaurarCliente(' +
@@ -2239,7 +2257,7 @@ function renderClientesTable() {
                     c.id +
                     ",'" +
                     c.nombre.replace(/'/g, "") +
-                    "')\">🗑</button>";
+                    "')\">" + icon("trash-2") + "</button>";
             html += "</div></td>";
         }
         html += "</tr>";
@@ -2546,7 +2564,7 @@ function applyMapping() {
     document.getElementById("importMappingWrap").style.display = "none";
     setImportStep(3);
     document.getElementById("importPreviewWrap").innerHTML =
-        '<p style="text-align:center;padding:24px;color:#666">⏳ Analizando productos…</p>';
+        '<p style="text-align:center;padding:24px;color:#666"><span style="display:inline-block;animation:spin .6s linear infinite">' + icon("loader-circle") + '</span> Analizando productos…</p>';
 
     // Llamar check_codigos
     var codigos = rows.map(function(r) { return r["CODIGO"]; });
@@ -2663,10 +2681,10 @@ function buildImportPreviewHTML(enriched, counts, activeFields) {
 
     // ── Stat tiles ──
     html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">';
-    html += importStatTile("✅ Nuevos",      counts.NUEVO,       "#1b5e20", "#e8f5e9");
-    html += importStatTile("🔄 Actualizan", counts.ACTUALIZA,   "#0d47a1", "#e3f2fd");
-    html += importStatTile("❌ Errores",    counts.ERROR,        "#b71c1c", "#ffebee");
-    html += importStatTile("⏭ Sin cambios",counts.SIN_CAMBIOS,  "#555",    "#f5f5f5");
+    html += importStatTile(icon("circle-check-big") + " Nuevos",      counts.NUEVO,       "#1b5e20", "#e8f5e9");
+    html += importStatTile(icon("refresh-cw") + " Actualizan", counts.ACTUALIZA,   "#0d47a1", "#e3f2fd");
+    html += importStatTile(icon("circle-x") + " Errores",    counts.ERROR,        "#b71c1c", "#ffebee");
+    html += importStatTile(icon("skip-forward") + " Sin cambios",counts.SIN_CAMBIOS,  "#555",    "#f5f5f5");
     html += '</div>';
 
     // ── Filter tabs ──
@@ -2701,7 +2719,7 @@ function buildImportPreviewHTML(enriched, counts, activeFields) {
             + labelMap[st.status] + '</span>';
         if (st.errors.length) {
             html += '<div style="font-size:10px;color:#c62828;margin-top:3px;line-height:1.4">'
-                + st.errors.map(function(e) { return "⚠ " + e; }).join("<br>") + '</div>';
+                + st.errors.map(function(e) { return icon("triangle-alert") + " " + e; }).join("<br>") + '</div>';
         }
         html += '</td>';
 
@@ -2714,7 +2732,7 @@ function buildImportPreviewHTML(enriched, counts, activeFields) {
 
             // Celda de error: requerida vacía en producto nuevo
             if (st.status === "ERROR" && !val && (f === "DESCRIPCION" || f === "CATEGORIA") && !st.existing) {
-                html += '<td style="background:#ffcdd2;color:#c62828;font-size:11px;padding:6px 8px">⚠ vacío</td>';
+                html += '<td style="background:#ffcdd2;color:#c62828;font-size:11px;padding:6px 8px">' + icon("triangle-alert") + ' vacío</td>';
                 return;
             }
 
@@ -2746,11 +2764,11 @@ function buildImportPreviewHTML(enriched, counts, activeFields) {
     html += '</tbody></table></div>';
 
     if (counts.ERROR > 0) {
-        html += '<p style="font-size:12px;color:#c62828;margin-top:8px">⚠ Las '
+        html += '<p style="font-size:12px;color:#c62828;margin-top:8px">' + icon("triangle-alert") + ' Las '
             + counts.ERROR + ' fila(s) con error no serán importadas.</p>';
     }
     if (counts.SIN_CAMBIOS > 0) {
-        html += '<p style="font-size:12px;color:#888;margin-top:4px">⏭ Las '
+        html += '<p style="font-size:12px;color:#888;margin-top:4px">' + icon("skip-forward") + ' Las '
             + counts.SIN_CAMBIOS + ' fila(s) sin cambios serán omitidas.</p>';
     }
 
@@ -2802,7 +2820,7 @@ async function confirmImport() {
         });
         var json = await res.json();
         if (json.ok) {
-            var msg = "✅ " + (json.imported || 0) + " nuevos, " + (json.updated || 0) + " actualizados";
+            var msg = (json.imported || 0) + " nuevos, " + (json.updated || 0) + " actualizados";
             if (json.errors && json.errors.length) {
                 msg += " — " + json.errors.length + " error(es): "
                     + json.errors.map(function(e){ return e.codigo + " (" + e.motivo + ")"; }).join(", ");
@@ -2831,7 +2849,7 @@ function showUndoBanner(import_id, imported, updated) {
     banner.innerHTML =
         '<span>↩ Última importación (' + hora + '): ' + (imported||0) + ' nuevos + ' + (updated||0) + ' actualizados. ¿Salió mal?</span>' +
         '<button onclick="undoLastImport(\'' + import_id + '\')">Deshacer importación</button>' +
-        '<button onclick="hideUndoBanner()" style="background:transparent;color:inherit;opacity:.6;margin-left:4px">✕</button>';
+        '<button onclick="hideUndoBanner()" style="background:transparent;color:inherit;opacity:.6;margin-left:4px">' + icon("x") + '</button>';
     banner.style.display = "flex";
     banner._importId = import_id;
 }
@@ -2844,7 +2862,7 @@ function hideUndoBanner() {
 async function undoLastImport(import_id) {
     if (!confirm("¿Seguro que querés revertir la última importación? Los productos vuelven al estado anterior.")) return;
     var banner = document.getElementById("undoBanner");
-    if (banner) banner.innerHTML = '<span>⏳ Revirtiendo...</span>';
+    if (banner) banner.innerHTML = '<span><span style="display:inline-block;animation:spin .6s linear infinite">' + icon("loader-circle") + '</span> Revirtiendo...</span>';
     try {
         var res = await fetch(API + "?action=import_rollback", {
             method: "POST",
@@ -3235,7 +3253,7 @@ async function checkLastImport() {
             banner.innerHTML =
                 '<span>↩ Hay una importación reversible del ' + fechaStr + ' (' + json.n + ' producto(s)).</span>' +
                 '<button onclick="undoLastImport(\'' + json.import_id + '\')">Deshacer</button>' +
-                '<button onclick="hideUndoBanner()" style="background:transparent;color:inherit;opacity:.6;margin-left:4px">✕</button>';
+                '<button onclick="hideUndoBanner()" style="background:transparent;color:inherit;opacity:.6;margin-left:4px">' + icon("x") + '</button>';
             banner.style.display = "flex";
         }
     } catch (e) { /* silencioso */ }
@@ -3355,12 +3373,12 @@ function renderImgPreview() {
 
     if (zipItems.length) {
         html += '<div style="margin-bottom:14px">';
-        html += '<div style="font-weight:600;margin-bottom:8px;color:#555">📦 Archivos ZIP</div>';
+        html += '<div style="font-weight:600;margin-bottom:8px;color:#555">' + icon("package") + ' Archivos ZIP</div>';
         zipItems.forEach(function(item) {
             var mb = (item.file.size / 1024 / 1024).toFixed(2);
             html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;' +
                 'background:#f3e5f5;border-radius:8px;margin-bottom:6px">' +
-                '<span style="font-size:1.4rem">📦</span>' +
+                '<span style="font-size:1.4rem">' + icon("package", {size: 22}) + '</span>' +
                 '<div><div style="font-weight:600">' + escHtml(item.file.name) + '</div>' +
                 '<div style="font-size:.8rem;color:#888">' + mb + ' MB — el servidor procesará las imágenes según el nombre de archivo</div></div>' +
                 '</div>';
@@ -3369,21 +3387,21 @@ function renderImgPreview() {
     }
 
     if (imgItems.length) {
-        html += '<div style="font-weight:600;margin-bottom:8px;color:#555">🖼 Imágenes individuales</div>';
+        html += '<div style="font-weight:600;margin-bottom:8px;color:#555">' + icon("image") + ' Imágenes individuales</div>';
         html += '<div id="imgThumbGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px">';
         imgItems.forEach(function(item, idx) {
             var statusColor = item.matchStatus === "found"     ? "#2e7d32" :
                               item.matchStatus === "not_found" ? "#c62828" : "#f57c00";
             var statusBg    = item.matchStatus === "found"     ? "#e8f5e9" :
                               item.matchStatus === "not_found" ? "#ffebee" : "#fff3e0";
-            var statusLabel = item.matchStatus === "found"     ? "✔ OK" :
-                              item.matchStatus === "not_found" ? "✗ No encontrado" : "⚠ Error";
+            var statusLabel = item.matchStatus === "found"     ? icon("check") + " OK" :
+                              item.matchStatus === "not_found" ? icon("x") + " No encontrado" : icon("triangle-alert") + " Error";
             html += '<div id="imgCard_' + idx + '" style="border:1px solid #e0e0e0;border-radius:10px;' +
                 'overflow:hidden;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.07)">' +
                 '<div style="height:120px;background:#f5f5f5;display:flex;align-items:center;justify-content:center">' +
                 '<img id="imgThumb_' + idx + '" src="" alt="" ' +
                 'style="max-width:100%;max-height:120px;object-fit:contain;display:none">' +
-                '<span id="imgThumbIcon_' + idx + '" style="font-size:2rem">🖼</span>' +
+                '<span id="imgThumbIcon_' + idx + '" style="font-size:2rem">' + icon("image", {size: 32}) + '</span>' +
                 '</div>' +
                 '<div style="padding:8px 10px">' +
                 '<div style="font-size:.78rem;font-weight:600;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + escHtml(item.file.name) + '">' +
@@ -3499,8 +3517,8 @@ async function uploadImages() {
         allResults.forEach(function(r) {
             var statusColor = r.status === "updated"   ? "#2e7d32" :
                               r.status === "not_found" ? "#c62828" : "#e65100";
-            var statusLabel = r.status === "updated"   ? "✔ Actualizada" :
-                              r.status === "not_found" ? "✗ No encontrado" : "⚠ Error";
+            var statusLabel = r.status === "updated"   ? icon("check") + " Actualizada" :
+                              r.status === "not_found" ? icon("x") + " No encontrado" : icon("triangle-alert") + " Error";
             resHtml += '<tr style="border-bottom:1px solid #f0f0f0">' +
                 '<td style="padding:6px 10px;font-weight:600">' + escHtml(r.codigo || "-") + '</td>' +
                 '<td style="padding:6px 10px;color:' + statusColor + ';font-weight:600">' + statusLabel + '</td>' +

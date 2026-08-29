@@ -574,7 +574,7 @@ function cardHTML(p) {
                 : "") +
             ">" +
             (inCart
-                ? '✓ En pedido<br><span style="font-size:9px;opacity:.85">Quitar?</span>'
+                ? icon("check") + ' En pedido<br><span style="font-size:9px;opacity:.85">Quitar?</span>'
                 : "+ Agregar") +
             "</button></div>";
         if (multiplo > 1)
@@ -699,7 +699,7 @@ function listCardHTML(p) {
             '" onclick="addOrUpdate(\'' +
             p.CODIGO +
             "')\">" +
-            (inCart ? "✓" : "+ Agregar") +
+            (inCart ? icon("check") : "+ Agregar") +
             "</button>";
         html += "</div>";
     }
@@ -794,7 +794,7 @@ function listRowHTML(p) {
             '" onclick="addOrUpdate(\'' +
             p.CODIGO +
             "')\">" +
-            (inCart ? "✓ En pedido" : "+ Agregar") +
+            (inCart ? icon("check") + " En pedido" : "+ Agregar") +
             "</button></td>";
     }
     html += "</tr>";
@@ -816,7 +816,7 @@ function toggleRemove(code) {
             if (btn.dataset.confirm === "1") {
                 btn.dataset.confirm = "0";
                 btn.innerHTML =
-                    '✓ En pedido<br><span style="font-size:9px;opacity:.85">Quitar?</span>';
+                    icon("check") + ' En pedido<br><span style="font-size:9px;opacity:.85">Quitar?</span>';
                 btn.style.background = "";
                 btn.style.borderColor = "";
             }
@@ -825,7 +825,7 @@ function toggleRemove(code) {
     }
     btn.dataset.confirm = "0";
     rmCart(code);
-    btn.innerHTML = "Se quitó ✓";
+    btn.innerHTML = "Se quitó " + icon("check");
     btn.style.fontSize = "11px";
     btn.style.background = "#555";
     btn.style.borderColor = "#555";
@@ -889,7 +889,7 @@ function addOrUpdate(code) {
         var btn = document.getElementById("ab_" + id);
         if (btn) {
             btn.innerHTML =
-                '✓ En pedido<br><span style="font-size:9px;opacity:.85">Quitar?</span>';
+                icon("check") + ' En pedido<br><span style="font-size:9px;opacity:.85">Quitar?</span>';
             btn.style.fontSize = "10px";
             btn.style.lineHeight = "1.2";
             btn.style.padding = "5px 6px";
@@ -904,7 +904,7 @@ function addOrUpdate(code) {
         row.classList.add("picked-row");
         var lbtn = document.getElementById("ab_" + id);
         if (lbtn) {
-            lbtn.textContent = "✓ En pedido";
+            lbtn.innerHTML = icon("check") + " En pedido";
             lbtn.classList.add("on");
         }
     }
@@ -1008,7 +1008,7 @@ function updateCart() {
             fmt(sub) +
             '</span><button class="rm" onclick="rmCart(\'' +
             code +
-            "')\">🗑</button></div>";
+            "')\">" + icon("trash-2") + "</button></div>";
         html += "</div></div>";
     });
     el.innerHTML = html;
@@ -1244,7 +1244,7 @@ async function sendWA() {
     btn.disabled = true;
     btn.style.background = "#1a9e52";
     btn.innerHTML =
-        '<span style="display:inline-block;animation:spin .6s linear infinite;margin-right:8px">⏳</span> Verificando stock...';
+        '<span style="display:inline-block;animation:spin .6s linear infinite;margin-right:8px">' + icon("loader-circle") + '</span> Verificando stock...';
 
     // Verificar stock actualizado
     try {
@@ -1283,7 +1283,7 @@ async function sendWA() {
             updateCart();
             btn.disabled = false;
             btn.style.background = "";
-            btn.innerHTML = "📱 Confirmar y enviar pedido";
+            btn.innerHTML = icon("send") + " Confirmar y enviar pedido";
             alert(
                 "⚠️ Los siguientes artículos se agotaron y fueron quitados de tu pedido:\n\n" +
                     agotados.join("\n") +
@@ -1294,7 +1294,7 @@ async function sendWA() {
     } catch (e) {}
 
     btn.innerHTML =
-        '<span style="display:inline-block;animation:spin .6s linear infinite;margin-right:8px">⏳</span> Procesando...';
+        '<span style="display:inline-block;animation:spin .6s linear infinite;margin-right:8px">' + icon("loader-circle") + '</span> Procesando...';
     // Guardar cliente en BD
     var cRes = await fetch(API_URL + "?action=cliente_guardar", {
         method: "POST",
@@ -1306,7 +1306,7 @@ async function sendWA() {
         alert("Error al guardar datos del cliente");
         btn.disabled = false;
         btn.style.background = "";
-        btn.innerHTML = "📱 Confirmar y enviar pedido";
+        btn.innerHTML = icon("send") + " Confirmar y enviar pedido";
         return;
     }
     clienteId = cJson.id;
@@ -1341,7 +1341,7 @@ async function sendWA() {
         alert("Error al crear el pedido: " + (pedidoJson.error || ""));
         btn.disabled = false;
         btn.style.background = "";
-        btn.innerHTML = "📱 Confirmar y enviar pedido";
+        btn.innerHTML = icon("send") + " Confirmar y enviar pedido";
         return;
     }
     var itemsFinal = pedidoJson.items || itemsEnviar;
@@ -1399,7 +1399,7 @@ async function sendWA() {
     );
     // Botón queda en estado enviado
     btn.style.background = "#2e7d32";
-    btn.innerHTML = "✅ Pedido enviado";
+    btn.innerHTML = icon("circle-check-big") + " Pedido enviado";
     btn.disabled = true;
     // Limpiar carrito y resetear cards
     cart = {};
@@ -1438,7 +1438,7 @@ async function sendWA() {
     setTimeout(function () {
         btn.disabled = false;
         btn.style.background = "";
-        btn.innerHTML = "📱 Confirmar y enviar pedido";
+        btn.innerHTML = icon("send") + " Confirmar y enviar pedido";
     }, 3000);
 }
 
