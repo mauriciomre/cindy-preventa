@@ -638,7 +638,7 @@ function renderCatTable() {
     allCats.forEach(function (c, i) {
         var count = allProducts.filter((p) => p.categoria === c.nombre).length;
         html += '<tr draggable="true" data-cat-id="' + c.id + '">';
-        html += '<td><span class="drag-handle">⠿</span></td>';
+        html += '<td><span class="drag-handle">' + icon("grip-vertical", {size: 16}) + '</span></td>';
         html += "<td><strong>" + c.nombre + "</strong></td>";
         html +=
             "<td>" + count + " producto" + (count !== 1 ? "s" : "") + "</td>";
@@ -904,7 +904,7 @@ function renderTableFromList(list) {
         if (col("handle"))
             html +=
                 "<td>" +
-                (editMode ? '<span class="drag-handle">⠿</span>' : "") +
+                (editMode ? '<span class="drag-handle">' + icon("grip-vertical", {size: 16}) + '</span>' : "") +
                 "</td>";
         if (col("img"))
             html +=
@@ -1817,7 +1817,7 @@ function renderPedidosTable() {
             html +=
                 '<button class="btn" style="background:#e8f5e9;color:#2e7d32;padding:6px 12px;font-size:12px" onclick="restaurarPedido(' +
                 p.id +
-                ')">↩ Restaurar</button>';
+                ')">' + icon("undo-2", {size: 14}) + ' Restaurar</button>';
         else
             html +=
                 '<button class="btn btn-danger" onclick="eliminarPedido(' +
@@ -2250,7 +2250,7 @@ function renderClientesTable() {
                 html +=
                     '<button class="btn" style="background:#e8f5e9;color:#2e7d32;padding:6px 12px;font-size:12px" onclick="restaurarCliente(' +
                     c.id +
-                    ')">↩</button>';
+                    ')" title="Restaurar">' + icon("undo-2", {size: 14}) + '</button>';
             else
                 html +=
                     '<button class="btn btn-danger" onclick="eliminarCliente(' +
@@ -2847,7 +2847,7 @@ function showUndoBanner(import_id, imported, updated) {
     var d = new Date();
     var hora = d.getHours().toString().padStart(2,"0") + ":" + d.getMinutes().toString().padStart(2,"0");
     banner.innerHTML =
-        '<span>↩ Última importación (' + hora + '): ' + (imported||0) + ' nuevos + ' + (updated||0) + ' actualizados. ¿Salió mal?</span>' +
+        '<span>' + icon("undo-2", {size: 14}) + ' Última importación (' + hora + '): ' + (imported||0) + ' nuevos + ' + (updated||0) + ' actualizados. ¿Salió mal?</span>' +
         '<button onclick="undoLastImport(\'' + import_id + '\')">Deshacer importación</button>' +
         '<button onclick="hideUndoBanner()" style="background:transparent;color:inherit;opacity:.6;margin-left:4px">' + icon("x") + '</button>';
     banner.style.display = "flex";
@@ -2966,8 +2966,8 @@ function openPrintConfigModal() {
         div.dataset.cat = cat;
         div.innerHTML = '<span class="pcat-name">' + cat + '</span>' +
             '<span class="pcat-btns">' +
-            '<button type="button" onclick="movePrintCat(this,-1)" title="Subir">▲</button>' +
-            '<button type="button" onclick="movePrintCat(this,1)" title="Bajar">▼</button>' +
+            '<button type="button" onclick="movePrintCat(this,-1)" title="Subir">' + icon("chevron-up", {size: 14}) + '</button>' +
+            '<button type="button" onclick="movePrintCat(this,1)" title="Bajar">' + icon("chevron-down", {size: 14}) + '</button>' +
             '</span>';
         list.appendChild(div);
     });
@@ -3251,7 +3251,7 @@ async function checkLastImport() {
             var hora = d.getHours().toString().padStart(2,"0") + ":" + d.getMinutes().toString().padStart(2,"0");
             var fechaStr = d.toLocaleDateString("es-AR") + " " + hora;
             banner.innerHTML =
-                '<span>↩ Hay una importación reversible del ' + fechaStr + ' (' + json.n + ' producto(s)).</span>' +
+                '<span>' + icon("undo-2", {size: 14}) + ' Hay una importación reversible del ' + fechaStr + ' (' + json.n + ' producto(s)).</span>' +
                 '<button onclick="undoLastImport(\'' + json.import_id + '\')">Deshacer</button>' +
                 '<button onclick="hideUndoBanner()" style="background:transparent;color:inherit;opacity:.6;margin-left:4px">' + icon("x") + '</button>';
             banner.style.display = "flex";

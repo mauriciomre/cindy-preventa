@@ -110,7 +110,7 @@
                                 onclick="setView('grid')"
                                 title="Vista grilla"
                             >
-                                ⊞
+                                <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 12h18"/><path d="M12 3v18"/></svg>
                             </button>
                             <button
                                 class="view-btn"
@@ -157,7 +157,7 @@
                 id="catDropdownBtn"
                 onclick="toggleCatDropdown()"
             >
-                <span id="catDropdownLabel">TODOS</span> ▾
+                <span id="catDropdownLabel">TODOS</span> <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
             </button>
             <div class="cat-dropdown-menu" id="catDropdownMenu"></div>
         </div>
@@ -172,7 +172,7 @@
             <div class="panel">
                 <div class="p-head">
                     <h2><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg> Mi pedido</h2>
-                    <button class="cls" onclick="closeCart()">×</button>
+                    <button class="cls" onclick="closeCart()"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
                 </div>
 
                 <!-- ZONA 1: productos (scroll independiente) -->
@@ -184,7 +184,7 @@
                         onclick="toggleCartSection('items')"
                     >
                         <span id="toggleItemsLabel"
-                            >▼ Ver productos del pedido</span
+                            ><svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg> Ver productos del pedido</span
                         >
                     </button>
                     <div
@@ -203,7 +203,7 @@
                         ><span class="total-val" id="ptotal">$ 0</span>
                     </div>
                     <button class="continue-btn" onclick="closeCart()">
-                        ← Continuar comprando
+                        <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg> Continuar comprando
                     </button>
 
                     <!-- Toggle formulario (solo mobile) -->
@@ -213,7 +213,7 @@
                         onclick="toggleCartSection('form')"
                         style="margin-top: 4px"
                     >
-                        <span id="toggleFormLabel">▼ Datos del pedido</span>
+                        <span id="toggleFormLabel"><svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg> Datos del pedido</span>
                     </button>
                     <div class="cart-section-body" id="cartFormSection">
                         <!-- TELÉFONO -->

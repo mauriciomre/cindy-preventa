@@ -415,13 +415,13 @@ function renderProds() {
         '" data-sort="newest" onclick="setSort(\'newest\')">Más nuevo</button>' +
         '<button class="sort-btn' +
         (sortMode === "alpha" ? " on" : "") +
-        '" data-sort="alpha" onclick="setSort(\'alpha\')">A → Z</button>' +
+        '" data-sort="alpha" onclick="setSort(\'alpha\')">A ' + icon("arrow-right", {size: 13}) + ' Z</button>' +
         '<button class="sort-btn' +
         (sortMode === "price_asc" ? " on" : "") +
-        '" data-sort="price_asc" onclick="setSort(\'price_asc\')">$ ↑</button>' +
+        '" data-sort="price_asc" onclick="setSort(\'price_asc\')">$ ' + icon("arrow-up", {size: 13}) + '</button>' +
         '<button class="sort-btn' +
         (sortMode === "price_desc" ? " on" : "") +
-        '" data-sort="price_desc" onclick="setSort(\'price_desc\')">$ ↓</button>' +
+        '" data-sort="price_desc" onclick="setSort(\'price_desc\')">$ ' + icon("arrow-down", {size: 13}) + '</button>' +
         "</div>";
 
     if (viewMode === "grid") renderGrid(list, el, sortBar);
@@ -1022,7 +1022,7 @@ function openCart() {
         var sec = document.getElementById("cartItemsSection");
         if (sec) sec.classList.remove("mobile-collapsed");
         var lbl = document.getElementById("toggleItemsLabel");
-        if (lbl) lbl.textContent = "▲ Ocultar productos";
+        if (lbl) lbl.innerHTML = icon("chevron-up", {size: 14}) + " Ocultar productos";
     }
 }
 function closeCart() {
@@ -1037,14 +1037,16 @@ function toggleCartSection(which) {
         var sec = document.getElementById("cartItemsSection");
         var lbl = document.getElementById("toggleItemsLabel");
         var collapsed = sec.classList.toggle("mobile-collapsed");
-        lbl.textContent = collapsed
-            ? "▼ Ver productos del pedido"
-            : "▲ Ocultar productos";
+        lbl.innerHTML = collapsed
+            ? icon("chevron-down", {size: 14}) + " Ver productos del pedido"
+            : icon("chevron-up", {size: 14}) + " Ocultar productos";
     } else {
         var sec = document.getElementById("cartFormSection");
         var lbl = document.getElementById("toggleFormLabel");
         var collapsed = sec.classList.toggle("collapsed");
-        lbl.textContent = collapsed ? "▼ Datos del pedido" : "▲ Ocultar datos";
+        lbl.innerHTML = collapsed
+            ? icon("chevron-down", {size: 14}) + " Datos del pedido"
+            : icon("chevron-up", {size: 14}) + " Ocultar datos";
     }
 }
 
