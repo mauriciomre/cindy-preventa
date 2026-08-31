@@ -39,7 +39,7 @@ function checkAuth($data) {
 // la integración (antes usaba TEST/sandbox=4 a propósito mientras se probaba;
 // se dejó de usar porque esa copia no se autoactualiza y quedaba desfasada
 // para productos nuevos). Solo lectura en todos los casos, nunca escribe.
-define('MANAGER_LISTA_MAYORISTA', 2); // "Mayorista" (real de Cindy, no la de Travel Blue)
+define('MANAGER_LISTA_MAYORISTA', 3); // "Mayorista S" (real de Cindy, no la de Travel Blue — corregido 31/08/2026, ver cindy-preventa-catalogo.md)
 
 // El token de Manager dura 60 min (ver Mi-Cerebro/conocimiento/manager2max.md).
 // Cada request PHP es un proceso nuevo, así que sin esto un lote de N códigos
@@ -287,6 +287,13 @@ function setupDB($db) {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+    // Por defecto NO se muestra "Quedan N disponibles" en el catálogo público
+    // (decisión de Mauricio) — cada preventa lo habilita a propósito.
+    $colCheck = $db->query("SHOW COLUMNS FROM preventas LIKE 'mostrar_stock'");
+    if ($colCheck && $colCheck->num_rows === 0) {
+        $db->query("ALTER TABLE preventas ADD COLUMN mostrar_stock TINYINT NOT NULL DEFAULT 0");
+    }
+
     $colCheck = $db->query("SHOW COLUMNS FROM preventas LIKE 'detalle'");
     if ($colCheck && $colCheck->num_rows === 0) {
         $db->query("ALTER TABLE preventas ADD COLUMN detalle VARCHAR(300) DEFAULT NULL");
@@ -443,7 +450,7 @@ switch ($action) {
         $barcode  = $_GET['barcode'] ?? '';
         $preventa = $_GET['preventa'] ?? ''; // id de preventa, o 'sin' para sin preventa asignada
         $isAdmin  = isAdminAuth($_GET['_user'] ?? '', $_GET['_pass'] ?? '');
-        $sql = "SELECT p.*, COALESCE(c.orden, 0) as cat_orden, pv.nombre as preventa_nombre, pv.detalle as preventa_detalle, pv.activa as preventa_activa, pv.imagen as preventa_imagen, pv.orden as preventa_orden
+        $sql = "SELECT p.*, COALESCE(c.orden, 0) as cat_orden, pv.nombre as preventa_nombre, pv.detalle as preventa_detalle, pv.activa as preventa_activa, pv.imagen as preventa_imagen, pv.orden as preventa_orden, pv.mostrar_stock as preventa_mostrar_stock
                 FROM productos p
                 LEFT JOIN categorias c ON p.categoria = c.nombre
                 LEFT JOIN preventas pv ON p.preventa_id = pv.id
@@ -899,10 +906,11 @@ switch ($action) {
         $detalle = isset($data['detalle']) && $data['detalle'] !== '' ? trim($data['detalle']) : null;
         $imagen = isset($data['imagen']) && $data['imagen'] !== '' ? trim($data['imagen']) : null;
         $activa = !empty($data['activa']) ? 1 : 0;
+        $mostrarStock = !empty($data['mostrar_stock']) ? 1 : 0;
         $orden = intval($data['orden'] ?? 0);
         if (!$nombre) { http_response_code(400); die(json_encode(['error' => 'Nombre requerido'])); }
-        $stmt = $db->prepare("INSERT INTO preventas (nombre, detalle, imagen, activa, orden) VALUES (?, ?, ?, ?, ?)");
-        $stmt->bind_param('sssii', $nombre, $detalle, $imagen, $activa, $orden);
+        $stmt = $db->prepare("INSERT INTO preventas (nombre, detalle, imagen, activa, mostrar_stock, orden) VALUES (?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param('sssiii', $nombre, $detalle, $imagen, $activa, $mostrarStock, $orden);
         if ($stmt->execute()) echo json_encode(['ok' => true, 'id' => $db->insert_id]);
         else { http_response_code(400); echo json_encode(['error' => 'Ya existe esa preventa']); }
         break;
@@ -914,13 +922,14 @@ switch ($action) {
         $nombre = trim($data['nombre'] ?? '');
         $detalle = isset($data['detalle']) && $data['detalle'] !== '' ? trim($data['detalle']) : null;
         $activa = !empty($data['activa']) ? 1 : 0;
+        $mostrarStock = !empty($data['mostrar_stock']) ? 1 : 0;
         if (isset($data['imagen'])) {
             $imagen = $data['imagen'] !== '' ? trim($data['imagen']) : null;
-            $stmt = $db->prepare("UPDATE preventas SET nombre=?, detalle=?, imagen=?, activa=? WHERE id=?");
-            $stmt->bind_param('sssii', $nombre, $detalle, $imagen, $activa, $id);
+            $stmt = $db->prepare("UPDATE preventas SET nombre=?, detalle=?, imagen=?, activa=?, mostrar_stock=? WHERE id=?");
+            $stmt->bind_param('sssiii', $nombre, $detalle, $imagen, $activa, $mostrarStock, $id);
         } else {
-            $stmt = $db->prepare("UPDATE preventas SET nombre=?, detalle=?, activa=? WHERE id=?");
-            $stmt->bind_param('ssii', $nombre, $detalle, $activa, $id);
+            $stmt = $db->prepare("UPDATE preventas SET nombre=?, detalle=?, activa=?, mostrar_stock=? WHERE id=?");
+            $stmt->bind_param('ssiii', $nombre, $detalle, $activa, $mostrarStock, $id);
         }
         if ($stmt->execute()) echo json_encode(['ok' => true]);
         else { http_response_code(400); echo json_encode(['error' => $db->error]); }
