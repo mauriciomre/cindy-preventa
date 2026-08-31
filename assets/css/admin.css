@@ -863,6 +863,19 @@ td.editing {
     color: var(--blue)
 }
 
+/* Cabecera fija al scrollear el modal (imagen/código/categoría del alta de
+   producto) — el margin/top negativos compensan el padding de .modal para
+   que quede pegada al borde real del modal, no 28px más abajo. */
+.modal-sticky-top {
+    position: sticky;
+    top: -28px;
+    margin: -28px -28px 16px;
+    padding: 28px 28px 16px;
+    background: #fff;
+    z-index: 2;
+    box-shadow: 0 4px 6px -4px rgba(23, 20, 18, .12)
+}
+
 /* Target táctil de 40px mínimo — sin esto el "✕" queda con el tamaño
    natural del texto, muy chico para tocar en mobile (mismo error que el
    botón de 16x16 documentado en tablas-admin-responsive.md). */
