@@ -131,6 +131,7 @@ function start() {
                     PREVENTA_DETALLE: p.preventa_detalle || null,
                     PREVENTA_IMAGEN: p.preventa_imagen || null,
                     PREVENTA_ORDEN: p.preventa_orden != null ? Number(p.preventa_orden) : 0,
+                    PREVENTA_MOSTRAR_STOCK: String(p.preventa_mostrar_stock) === "1",
                     UPDATED_AT: p.updated_at
                         ? new Date(p.updated_at).getTime()
                         : Date.now(),
@@ -590,13 +591,15 @@ function cardHTML(p) {
     if (!sold) {
         html += waitlist
             ? '<div class="stock-hint wait">Sin stock · sujeto a confirmar</div>'
-            : '<div class="stock-hint' +
-              (p.STOCK_PREVENTA <= 2 ? " low" : "") +
-              '">' +
-              (p.STOCK_PREVENTA === 1
-                  ? "Queda 1 disponible"
-                  : "Quedan " + p.STOCK_PREVENTA + " disponibles") +
-              "</div>";
+            : p.PREVENTA_MOSTRAR_STOCK
+              ? '<div class="stock-hint' +
+                (p.STOCK_PREVENTA <= 2 ? " low" : "") +
+                '">' +
+                (p.STOCK_PREVENTA === 1
+                    ? "Queda 1 disponible"
+                    : "Quedan " + p.STOCK_PREVENTA + " disponibles") +
+                "</div>"
+              : "";
     }
     if (sold) {
         html += '<div class="na">No disponible por ahora</div>';
@@ -729,13 +732,15 @@ function listCardHTML(p) {
     if (!sold) {
         html += waitlist
             ? '<div class="stock-hint wait">Sujeto a confirmar</div>'
-            : '<div class="stock-hint' +
-              (p.STOCK_PREVENTA <= 2 ? " low" : "") +
-              '">' +
-              (p.STOCK_PREVENTA === 1
-                  ? "Queda 1"
-                  : "Quedan " + p.STOCK_PREVENTA) +
-              "</div>";
+            : p.PREVENTA_MOSTRAR_STOCK
+              ? '<div class="stock-hint' +
+                (p.STOCK_PREVENTA <= 2 ? " low" : "") +
+                '">' +
+                (p.STOCK_PREVENTA === 1
+                    ? "Queda 1"
+                    : "Quedan " + p.STOCK_PREVENTA) +
+                "</div>"
+              : "";
     }
     if (sold) {
         html += '<div style="color:#aaa;font-size:11px">No disponible</div>';
@@ -827,13 +832,15 @@ function listRowHTML(p) {
             '<td>' +
             (waitlist
                 ? '<div class="stock-hint wait">Sujeto a confirmar</div>'
-                : '<div class="stock-hint' +
-                  (p.STOCK_PREVENTA <= 2 ? " low" : "") +
-                  '">' +
-                  (p.STOCK_PREVENTA === 1
-                      ? "Queda 1"
-                      : "Quedan " + p.STOCK_PREVENTA) +
-                  "</div>") +
+                : p.PREVENTA_MOSTRAR_STOCK
+                  ? '<div class="stock-hint' +
+                    (p.STOCK_PREVENTA <= 2 ? " low" : "") +
+                    '">' +
+                    (p.STOCK_PREVENTA === 1
+                        ? "Queda 1"
+                        : "Quedan " + p.STOCK_PREVENTA) +
+                    "</div>"
+                  : "") +
             '<div class="list-qty"><button class="qb" onclick="chgQty(\'' +
             p.CODIGO +
             '\',-1)">−</button><input class="qn" type="number" id="qn_' +

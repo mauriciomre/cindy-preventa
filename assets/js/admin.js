@@ -965,6 +965,7 @@ function openPrevModal(id) {
     document.getElementById("prevEditNombre").value = pv.nombre;
     document.getElementById("prevEditDetalle").value = pv.detalle || "";
     document.getElementById("prevEditActiva").checked = pv.activa == 1;
+    document.getElementById("prevEditMostrarStock").checked = pv.mostrar_stock == 1;
     document.getElementById("prevEditImagen").value = "";
     var cur = document.getElementById("prevImgCurrent");
     if (pv.imagen) { cur.src = "../" + pv.imagen + "?v=" + Date.now(); cur.style.display = "block"; }
@@ -1004,8 +1005,9 @@ async function guardarPreventa() {
     var nombre = document.getElementById("prevEditNombre").value.trim();
     var detalle = document.getElementById("prevEditDetalle").value.trim();
     var activa = document.getElementById("prevEditActiva").checked;
+    var mostrar_stock = document.getElementById("prevEditMostrarStock").checked;
     if (!nombre) { toast("Ingresá un nombre", "#c62828"); return; }
-    var data = { _user: authUser, _pass: authPass, nombre, detalle, activa };
+    var data = { _user: authUser, _pass: authPass, nombre, detalle, activa, mostrar_stock };
     if (pendingPrevFile) {
         var url = await uploadPrevImage(id);
         if (url) data.imagen = url;
@@ -1029,7 +1031,7 @@ async function togglePreventaActiva(id, activa) {
     var res = await fetch(API + "?action=preventa_editar&id=" + id, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ _user: authUser, _pass: authPass, nombre: pv.nombre, detalle: pv.detalle || "", activa }),
+        body: JSON.stringify({ _user: authUser, _pass: authPass, nombre: pv.nombre, detalle: pv.detalle || "", activa, mostrar_stock: pv.mostrar_stock == 1 }),
     });
     var json = await res.json();
     if (json.ok) {
