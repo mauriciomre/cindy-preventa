@@ -62,7 +62,10 @@ function manager_login() {
     return $data['Token'];
 }
 
-function manager_call($token, $endpoint, $body) {
+// Llamada cruda: devuelve Data tal cual la responde Manager, sin asumir el
+// formato de listado paginado (DT.data). Necesaria para endpoints que no son
+// GetDTxxx, como /Api/Image/GetImage (devuelve ImageContent directo en Data).
+function manager_call_raw($token, $endpoint, $body) {
     $ch = curl_init(MANAGER_API_URL . $endpoint);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_POST, true);
@@ -76,7 +79,13 @@ function manager_call($token, $endpoint, $body) {
     if ($err) throw new Exception("Manager $endpoint falló: $err");
     $data = json_decode($resp, true);
     if (($data['ErrCode'] ?? null) !== 200) throw new Exception("Manager $endpoint error: " . ($data['ErrMessage'] ?? 'desconocido'));
-    return $data['Data']['DT']['data'] ?? [];
+    return $data['Data'] ?? [];
+}
+
+// GetDTxxx (listados con paginación) — la mayoría de los endpoints de Manager.
+function manager_call($token, $endpoint, $body) {
+    $data = manager_call_raw($token, $endpoint, $body);
+    return $data['DT']['data'] ?? [];
 }
 
 function manager_filtro_texto($valor, $criteria = 0) {
@@ -134,7 +143,7 @@ function manager_buscar_imagen_base64($token, $codigo) {
         if (trim($img['CodigoArticulo'] ?? '') === $codigo && intval($img['Orden'] ?? 0) === 1) { $principal = $img; break; }
     }
     if (!$principal) return null;
-    $imgResp = manager_call($token, '/Api/Image/GetImage', ['ImageFullPath' => $principal['PasoImagen']]);
+    $imgResp = manager_call_raw($token, '/Api/Image/GetImage', ['ImageFullPath' => $principal['PasoImagen']]);
     return $imgResp['ImageContent'] ?? null;
 }
 
