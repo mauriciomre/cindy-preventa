@@ -512,7 +512,7 @@ function chgColorQty(code, idx, delta) {
     if (!el) return;
     var next = Math.max(0, (parseInt(el.value) || 0) + delta * multiplo);
     el.value = next;
-    syncColorCartIfPresent(code);
+    onColorQtyInputChange(code);
 }
 
 function manualColorQty(code, idx, val) {
@@ -523,7 +523,27 @@ function manualColorQty(code, idx, val) {
     var snapped = num === 0 ? 0 : Math.max(multiplo, Math.round(num / multiplo) * multiplo);
     var el = document.getElementById("cq_" + sid(code) + "_" + idx);
     if (el) el.value = snapped;
-    syncColorCartIfPresent(code);
+    onColorQtyInputChange(code);
+}
+
+// Si el producto ya está en el carrito, sincroniza de una. Si todavía no
+// se agregó, solo resalta el botón "+ Agregar" con el total cargado —
+// hasta que se lo apreta, esas unidades no están en el pedido.
+function onColorQtyInputChange(code) {
+    if (cart[code]) {
+        syncColorCartIfPresent(code);
+        return;
+    }
+    var r = sumColorInputs(code);
+    var btn = document.getElementById("ab_" + sid(code));
+    if (!btn) return;
+    if (r.total > 0) {
+        btn.classList.add("pending");
+        btn.innerHTML = "+ Agregar (" + r.total + ")";
+    } else {
+        btn.classList.remove("pending");
+        btn.innerHTML = "+ Agregar";
+    }
 }
 
 // Si el producto ya está en el carrito, cada edición de un color actualiza
@@ -576,6 +596,7 @@ function addOrUpdateColores(code) {
             btn.style.lineHeight = "1.2";
             btn.style.padding = "5px 6px";
             btn.classList.add("on");
+            btn.classList.remove("pending");
             btn.onclick = function () { toggleRemove(code); };
         }
     }
@@ -586,6 +607,7 @@ function addOrUpdateColores(code) {
         if (lbtn) {
             lbtn.innerHTML = icon("check") + " En pedido";
             lbtn.classList.add("on");
+            lbtn.classList.remove("pending");
         }
     }
     saveCart();
@@ -702,11 +724,7 @@ function cardHTML(p) {
         '<div class="c-top"><span class="code">' +
         p.CODIGO +
         "</span>" +
-        (sold
-            ? '<span class="badge">AGOTADO</span>'
-            : waitlist
-              ? '<span class="badge badge-wait">LISTA DE ESPERA</span>'
-              : "") +
+        (sold ? '<span class="badge">AGOTADO</span>' : "") +
         "</div>";
     if (activePreventa === "TODAS" && p.PREVENTA_NOMBRE)
         html += '<div class="badge-preventa">' + p.PREVENTA_NOMBRE + "</div>";
@@ -736,18 +754,15 @@ function cardHTML(p) {
         '<div class="prices"><div class="price">' +
         fmt(p.PRECIO_MAYORISTA) +
         ' <span class="iva">+ IVA</span></div></div>';
-    if (!sold) {
-        infoHtml += waitlist
-            ? '<div class="stock-hint wait">Sin stock · sujeto a confirmar</div>'
-            : p.PREVENTA_MOSTRAR_STOCK
-              ? '<div class="stock-hint' +
-                (p.STOCK_PREVENTA <= 2 ? " low" : "") +
-                '">' +
-                (p.STOCK_PREVENTA === 1
-                    ? "Queda 1 disponible"
-                    : "Quedan " + p.STOCK_PREVENTA + " disponibles") +
-                "</div>"
-              : "";
+    if (!sold && !waitlist && p.PREVENTA_MOSTRAR_STOCK) {
+        infoHtml +=
+            '<div class="stock-hint' +
+            (p.STOCK_PREVENTA <= 2 ? " low" : "") +
+            '">' +
+            (p.STOCK_PREVENTA === 1
+                ? "Queda 1 disponible"
+                : "Quedan " + p.STOCK_PREVENTA + " disponibles") +
+            "</div>";
     }
 
     var addBtnHtml =
@@ -772,11 +787,10 @@ function cardHTML(p) {
         "</button>";
 
     if (hasColores && !sold) {
-        // Título/marca/precio a la izquierda, botón a la derecha (aprovecha
-        // el espacio libre) — las filas de color van aparte, abajo, a todo
-        // el ancho.
-        html += '<div class="head-colores"><div class="head-colores-info">' + infoHtml + "</div>" + addBtnHtml + "</div>";
-        html += '<div class="foot foot-colores">' + colorQtyRowsHTML(p) + "</div>";
+        // Mismo orden que un producto sin color: primero se elige (acá,
+        // cantidad por color), el botón "+ Agregar" va al final de todo.
+        html += infoHtml;
+        html += '<div class="foot foot-colores">' + colorQtyRowsHTML(p) + addBtnHtml + "</div>";
     } else {
         html += infoHtml;
         if (sold) {
@@ -878,11 +892,7 @@ function listCardHTML(p) {
         p.DESCRIPCION +
         '</div><div class="lc-code">' +
         p.CODIGO +
-        (sold
-            ? ' <span class="badge">AGOTADO</span>'
-            : waitlist
-              ? ' <span class="badge badge-wait">LISTA DE ESPERA</span>'
-              : "") +
+        (sold ? ' <span class="badge">AGOTADO</span>' : "") +
         (activePreventa === "TODAS" && p.PREVENTA_NOMBRE
             ? '<div class="badge-preventa" style="margin-top:4px">' + p.PREVENTA_NOMBRE + "</div>"
             : "") +
@@ -892,18 +902,15 @@ function listCardHTML(p) {
         '<div class="lc-price">' +
         fmt(p.PRECIO_MAYORISTA) +
         ' <span class="iva">+ IVA</span></div>';
-    if (!sold) {
-        html += waitlist
-            ? '<div class="stock-hint wait">Sujeto a confirmar</div>'
-            : p.PREVENTA_MOSTRAR_STOCK
-              ? '<div class="stock-hint' +
-                (p.STOCK_PREVENTA <= 2 ? " low" : "") +
-                '">' +
-                (p.STOCK_PREVENTA === 1
-                    ? "Queda 1"
-                    : "Quedan " + p.STOCK_PREVENTA) +
-                "</div>"
-              : "";
+    if (!sold && !waitlist && p.PREVENTA_MOSTRAR_STOCK) {
+        html +=
+            '<div class="stock-hint' +
+            (p.STOCK_PREVENTA <= 2 ? " low" : "") +
+            '">' +
+            (p.STOCK_PREVENTA === 1
+                ? "Queda 1"
+                : "Quedan " + p.STOCK_PREVENTA) +
+            "</div>";
     }
     var hasColores = p.COLORES && p.COLORES.length > 0;
     if (sold) {
@@ -984,11 +991,7 @@ function listRowHTML(p) {
         '<td><span class="code">' +
         p.CODIGO +
         "</span>" +
-        (sold
-            ? ' <span class="badge">AGOTADO</span>'
-            : waitlist
-              ? ' <span class="badge badge-wait">LISTA DE ESPERA</span>'
-              : "") +
+        (sold ? ' <span class="badge">AGOTADO</span>' : "") +
         "</td>";
     html +=
         '<td style="font-weight:600">' +
@@ -1009,10 +1012,8 @@ function listRowHTML(p) {
     } else if (hasColores) {
         html +=
             '<td>' +
-            (waitlist
-                ? '<div class="stock-hint wait">Sujeto a confirmar</div>'
-                : p.PREVENTA_MOSTRAR_STOCK
-                  ? '<div class="stock-hint' +
+            (!waitlist && p.PREVENTA_MOSTRAR_STOCK
+                ? '<div class="stock-hint' +
                     (p.STOCK_PREVENTA <= 2 ? " low" : "") +
                     '">' +
                     (p.STOCK_PREVENTA === 1
@@ -1035,10 +1036,8 @@ function listRowHTML(p) {
     } else {
         html +=
             '<td>' +
-            (waitlist
-                ? '<div class="stock-hint wait">Sujeto a confirmar</div>'
-                : p.PREVENTA_MOSTRAR_STOCK
-                  ? '<div class="stock-hint' +
+            (!waitlist && p.PREVENTA_MOSTRAR_STOCK
+                ? '<div class="stock-hint' +
                     (p.STOCK_PREVENTA <= 2 ? " low" : "") +
                     '">' +
                     (p.STOCK_PREVENTA === 1
@@ -1188,6 +1187,7 @@ function addOrUpdate(code) {
         if (lbtn) {
             lbtn.innerHTML = icon("check") + " En pedido";
             lbtn.classList.add("on");
+            lbtn.classList.remove("pending");
         }
     }
     saveCart();

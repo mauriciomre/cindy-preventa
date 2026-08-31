@@ -510,12 +510,6 @@ header {
     border-radius: 10px
 }
 
-.badge-wait {
-    background: var(--pale);
-    color: var(--ink);
-    border: 1px solid var(--border)
-}
-
 .iva {
     font-size: 10px;
     font-weight: 600;
@@ -530,11 +524,6 @@ header {
 
 .stock-hint.low {
     color: var(--blue2)
-}
-
-.stock-hint.wait {
-    color: var(--muted);
-    font-style: italic
 }
 
 .name {
@@ -573,45 +562,34 @@ header {
     margin-top: 2px
 }
 
-/* Con colores, la fila de steppers ya ocupa el ancho completo — el botón
-   "+ Agregar" al lado quedaba empujado fuera de la card (le pisaban el
-   ancho). Pasa a ir debajo, también a todo el ancho. */
+/* Con colores, las filas de cantidad por color van primero (a todo el
+   ancho) y el botón "+ Agregar" queda al final, debajo de todo — mismo
+   orden lógico que un producto sin color (elegís cantidad, después
+   agregás), en vez de tener el botón arriba antes de elegir nada. */
 .foot-colores {
     flex-direction: column;
-    align-items: stretch
-}
-
-/* Nombre/marca/precio (columna angosta, texto corto) al lado del botón
-   "+ Agregar" — aprovecha el espacio que ese bloque deja libre en vez de
-   dejarlo vacío, y el botón queda arriba en vez de perdido abajo del todo
-   tras la lista de colores. */
-.head-colores {
-    display: flex;
     align-items: stretch;
-    gap: 10px;
-    margin-top: 2px
+    gap: 8px
 }
 
-.head-colores-info {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 2px
+/* Mientras hay cantidad cargada en algún color pero el producto todavía
+   no se agregó al pedido, el botón se resalta y muestra el total elegido
+   — señal de que hace falta apretarlo para que se sume al carrito. */
+.add.pending {
+    background: var(--blue);
+    color: #fff;
+    border-color: var(--blue);
+    animation: addPulse 1.2s ease-in-out infinite
 }
 
-.head-colores .add {
-    flex: 0 0 auto;
-    align-self: center;
-    padding: 8px 12px;
-    white-space: nowrap
-}
+@keyframes addPulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(232, 78, 27, .35)
+    }
 
-/* Con el botón al lado, la columna de info es angosta — si el precio no
-   entra en una línea (montos grandes, cards de 4-5 por fila), que pase a
-   la siguiente en vez de desbordarse fuera de su columna. */
-.head-colores-info .price {
-    white-space: normal
+    50% {
+        box-shadow: 0 0 0 6px rgba(232, 78, 27, 0)
+    }
 }
 
 .qty {
@@ -1446,7 +1424,7 @@ header {
 
 @media(max-width:640px) {
     .grid {
-        grid-template-columns: 1fr 1fr
+        grid-template-columns: 1fr
     }
 
     .tabs {
