@@ -21,6 +21,7 @@ var COLS = [
     { key: "codigo", label: "Código", default: true },
     { key: "desc", label: "Descripción", default: true },
     { key: "cat", label: "Categoría", default: true },
+    { key: "marca", label: "Marca", default: true },
     { key: "preventa", label: "Preventa", default: true },
     { key: "may", label: "Mayorista", default: true },
     { key: "estado", label: "Estado", default: true },
@@ -1245,7 +1246,9 @@ function filterTable() {
     renderTable(getFiltered());
 }
 function fmt(v) {
-    return v ? "$ " + Math.round(parseFloat(v)).toLocaleString("es-AR") : "—";
+    // Espacio irrompible entre "$" y el monto — que nunca se corte en dos
+    // líneas en una tabla angosta ("$" arriba, monto abajo).
+    return v ? "$ " + Math.round(parseFloat(v)).toLocaleString("es-AR") : "—";
 }
 function fmtInput(v) {
     return v ? Math.round(parseFloat(v)) : "";
@@ -1277,6 +1280,7 @@ function renderTableHeader() {
     if (col("codigo")) h += '<th class="sticky-col">Código</th>';
     if (col("desc")) h += "<th>Descripción</th>";
     if (col("cat")) h += '<th class="col-hide-3">Categoría</th>';
+    if (col("marca")) h += '<th class="col-hide-2">Marca</th>';
     if (col("preventa")) h += '<th class="col-hide-3">Preventa</th>';
     if (col("may")) h += "<th>Mayorista</th>";
     if (col("estado")) h += "<th>Estado</th>";
@@ -1351,6 +1355,13 @@ function renderTableFromList(list) {
                         )
                         .join("") +
                     "</select></td>";
+            if (col("marca"))
+                html +=
+                    '<td class="editing col-hide-2"><input class="inline-input" value="' +
+                    esc(p.marca || "") +
+                    '" data-field="marca" data-id="' +
+                    p.id +
+                    '" style="width:90px"></td>';
             if (col("preventa"))
                 html +=
                     '<td class="editing col-hide-3"><select class="inline-select" data-field="preventa_id" data-id="' +
@@ -1433,6 +1444,7 @@ function renderTableFromList(list) {
             if (col("codigo")) html += '<td class="sticky-col"><code>' + p.codigo + "</code></td>";
             if (col("desc")) html += "<td>" + p.descripcion + "</td>";
             if (col("cat")) html += '<td class="col-hide-3">' + p.categoria + "</td>";
+            if (col("marca")) html += '<td class="col-hide-2">' + esc(p.marca || "—") + "</td>";
             if (col("preventa")) html += '<td class="col-hide-3">' + preventaBadge(p) + "</td>";
             if (col("may"))
                 html +=
@@ -1683,6 +1695,7 @@ function openModal(p) {
         updatePreventaHint();
     }, 0);
     document.getElementById("fDesc").value = p ? p.descripcion : "";
+    document.getElementById("fMarca").value = p ? (p.marca || "") : "";
     document.getElementById("fMay").value = p
         ? Math.round(p.precio_mayorista)
         : "";
@@ -1829,11 +1842,12 @@ async function buscarEnManager() {
         }
         if (!json.encontrado) {
             hint.style.color = "var(--muted)";
-            hint.textContent = "No se encontró ese código en Manager (ambiente de prueba).";
+            hint.textContent = "No se encontró ese código en Manager.";
             return;
         }
         var p = json.producto;
         document.getElementById("fDesc").value = p.descripcion || "";
+        document.getElementById("fMarca").value = p.marca || "";
         if (p.precio_mayorista !== null) document.getElementById("fMay").value = Math.round(p.precio_mayorista);
 
         // Categoría: seleccionar si ya existe en el catálogo, o crearla si es nueva
@@ -1857,10 +1871,7 @@ async function buscarEnManager() {
         }
 
         hint.style.color = "var(--muted)";
-        hint.textContent =
-            "Prellenado desde Manager (ambiente de prueba" +
-            (p.marca ? ", marca " + p.marca : "") +
-            "). Revisá los datos antes de guardar.";
+        hint.textContent = "Prellenado desde Manager. Revisá los datos antes de guardar.";
     } catch (e) {
         hint.style.color = "#c62828";
         hint.textContent = "No se pudo conectar con Manager";
@@ -1904,6 +1915,7 @@ async function saveProduct() {
     var id = document.getElementById("fId").value;
     var codigo = document.getElementById("fCodigo").value.trim();
     var descripcion = document.getElementById("fDesc").value.trim();
+    var marca = document.getElementById("fMarca").value.trim() || null;
     var categoria = document.getElementById("fCategoria").value;
     var may = document.getElementById("fMay").value;
     var multiplo = Math.max(
@@ -1950,6 +1962,7 @@ async function saveProduct() {
         _pass: authPass,
         codigo,
         descripcion,
+        marca,
         categoria,
         precio_mayorista: parseFloat(may) || 0,
         foto: fotoUrl,
@@ -2846,6 +2859,7 @@ var SYSTEM_FIELDS = [
     { key: "CODIGO_BARRAS",    label: "Código de barras", required: false },
     { key: "DESCRIPCION",      label: "Descripción",      required: false },
     { key: "CATEGORIA",        label: "Categoría",        required: false },
+    { key: "MARCA",            label: "Marca",            required: false },
     { key: "PRECIO_MAYORISTA", label: "Precio mayorista", required: false },
     { key: "ESTADO",           label: "Estado",           required: false },
     { key: "PREVENTA",         label: "Preventa",         required: false },
@@ -2856,6 +2870,7 @@ var FIELD_ALIASES = {
     "CODIGO_BARRAS":    ["CODIGO_BARRAS", "CODIGOBARRAS", "BARRAS", "EAN", "EAN13", "BARCODE", "GTIN"],
     "DESCRIPCION":      ["DESCRIPCION", "DESC", "NOMBRE", "PRODUCTO", "NAME", "DESCRIPTION", "DETALLE"],
     "CATEGORIA":        ["CATEGORIA", "CAT", "CATEGORY", "RUBRO", "LINEA", "FAMILIA"],
+    "MARCA":            ["MARCA", "BRAND", "FABRICANTE"],
     "PRECIO_MAYORISTA": ["PRECIO_MAYORISTA", "PRECIO", "PRECIO_MAY", "MAYORISTA", "PRICE", "COSTO", "PRECIO_COSTO"],
     "ESTADO":           ["ESTADO", "STATUS", "STATE", "DISPONIBILIDAD", "ACTIVO"],
     "PREVENTA":         ["PREVENTA", "CAMPAÑA", "CAMPANIA", "PROMO"],
@@ -3040,6 +3055,7 @@ function getRowStatus(row, existingData) {
     var fieldMap = {
         DESCRIPCION:      "descripcion",
         CATEGORIA:        "categoria",
+        MARCA:            "marca",
         PRECIO_MAYORISTA: "precio_mayorista",
         ESTADO:           "estado",
         CODIGO_BARRAS:    "codigo_barras",
@@ -3087,7 +3103,7 @@ function renderImportPreview(rows, existingData) {
     enriched.forEach(function(r) { counts[r._status.status]++; });
 
     // Detectar qué campos vinieron en el archivo
-    var ORDERED = ["CODIGO","CODIGO_BARRAS","DESCRIPCION","CATEGORIA","PRECIO_MAYORISTA","ESTADO","PREVENTA"];
+    var ORDERED = ["CODIGO","CODIGO_BARRAS","DESCRIPCION","CATEGORIA","MARCA","PRECIO_MAYORISTA","ESTADO","PREVENTA"];
     var activeFields = ORDERED.filter(function(f) {
         return rows.some(function(r) { return r[f] !== undefined && r[f] !== ""; });
     });
@@ -3107,7 +3123,7 @@ function buildImportPreviewHTML(enriched, counts, activeFields) {
         : enriched.filter(function(r) { return r._status.status === _importFilter; });
 
     var fieldMap = {
-        DESCRIPCION: "descripcion", CATEGORIA: "categoria",
+        DESCRIPCION: "descripcion", CATEGORIA: "categoria", MARCA: "marca",
         PRECIO_MAYORISTA: "precio_mayorista",
         ESTADO: "estado", CODIGO_BARRAS: "codigo_barras",
     };
@@ -3132,8 +3148,14 @@ function buildImportPreviewHTML(enriched, counts, activeFields) {
     html += '</div>';
 
     // ── Tabla con sticky header ──
-    html += '<div style="overflow:auto;max-height:320px;border:1px solid #e0e0e0;border-radius:8px">';
-    html += '<table class="import-preview-table" style="min-width:100%"><thead><tr>';
+    // table-layout:fixed usa todo el ancho disponible del modal sin pedir
+    // scroll horizontal cuando entra (columna Estado con ancho fijo, el
+    // resto se reparte el espacio en partes iguales); el wrap sigue
+    // permitiendo scroll si la pantalla es angosta (mobile).
+    html += '<div style="overflow-x:auto;max-height:320px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:8px">';
+    html += '<table class="import-preview-table" style="width:100%;table-layout:fixed">';
+    html += '<colgroup><col style="width:130px">' + activeFields.map(function() { return '<col>'; }).join('') + '</colgroup>';
+    html += '<thead><tr>';
     html += '<th style="min-width:90px">Estado</th>';
     activeFields.forEach(function(f) { html += '<th>' + f + '</th>'; });
     html += '</tr></thead><tbody>';
@@ -3164,10 +3186,13 @@ function buildImportPreviewHTML(enriched, counts, activeFields) {
             var dbKey  = fieldMap[f];
             var oldVal = (st.existing && dbKey) ? String(st.existing[dbKey] || "").trim() : "";
             var cellBg = "";
+            // Precios: nunca partirlos (evita que "$ 15000" se corte entre el
+            // signo y el monto) — el resto de columnas sí puede hacer wrap.
+            var wrapStyle = f === "PRECIO_MAYORISTA" ? "white-space:nowrap" : "word-break:break-word";
 
             // Celda de error: requerida vacía en producto nuevo
             if (st.status === "ERROR" && !val && (f === "DESCRIPCION" || f === "CATEGORIA") && !st.existing) {
-                html += '<td style="background:#ffcdd2;color:#c62828;font-size:11px;padding:6px 8px">' + icon("triangle-alert") + ' vacío</td>';
+                html += '<td style="background:#ffcdd2;color:#c62828;font-size:11px;padding:6px 8px;' + wrapStyle + '">' + icon("triangle-alert") + ' vacío</td>';
                 return;
             }
 
@@ -3178,14 +3203,14 @@ function buildImportPreviewHTML(enriched, counts, activeFields) {
                     ? Math.round(parseFloat(val) * 100) !== Math.round(parseFloat(oldVal) * 100)
                     : val.toUpperCase() !== oldVal.toUpperCase();
                 if (reallyChanged) {
-                    html += '<td style="padding:6px 8px;font-size:12px">'
+                    html += '<td style="padding:6px 8px;font-size:12px;' + wrapStyle + '">'
                         + '<span style="text-decoration:line-through;color:#aaa">' + esc(oldVal) + '</span>'
                         + ' → <strong>' + esc(val) + '</strong></td>';
                     return;
                 }
             }
 
-            html += '<td style="padding:6px 8px">' + esc(val) + '</td>';
+            html += '<td style="padding:6px 8px;' + wrapStyle + '">' + esc(val) + '</td>';
         });
 
         html += '</tr>';
@@ -3391,13 +3416,23 @@ async function iniciarBusquedaSku() {
 }
 
 function renderImportSkuPreview() {
-    var html = '<div style="overflow:auto;max-height:320px;border:1px solid #e0e0e0;border-radius:8px">' +
-        '<table class="import-preview-table" style="min-width:100%"><thead><tr>' +
-        "<th>Img</th><th>Código</th><th>Descripción</th><th>Categoría</th><th>P. Mayorista</th><th>Cód. Barras</th><th>Estado</th>" +
+    // table-layout:fixed + colgroup en % — usa todo el ancho disponible del
+    // modal sin pedir scroll horizontal cuando entra; si la pantalla es
+    // angosta (mobile), el wrap de abajo sigue permitiendo scroll como red
+    // de seguridad, pero deja de ser necesario en desktop.
+    var html = '<div style="overflow-x:auto;max-height:320px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:8px">' +
+        '<table class="import-preview-table" style="width:100%;table-layout:fixed">' +
+        '<colgroup>' +
+            '<col style="width:6%"><col style="width:9%"><col style="width:26%">' +
+            '<col style="width:12%"><col style="width:10%"><col style="width:10%">' +
+            '<col style="width:12%"><col style="width:15%">' +
+        '</colgroup>' +
+        '<thead><tr>' +
+        "<th>Img</th><th>Código</th><th>Descripción</th><th>Categoría</th><th>Marca</th><th>P. Mayorista</th><th>Cód. Barras</th><th>Estado</th>" +
         "</tr></thead><tbody>";
     importSkuRows.forEach(function (r) {
         if (!r.encontrado) {
-            html += '<tr style="background:#ffebee"><td colspan="6" style="padding:6px 8px"><code>' + esc(r.codigo) + "</code></td>" +
+            html += '<tr style="background:#ffebee"><td colspan="7" style="padding:6px 8px;word-break:break-word"><code>' + esc(r.codigo) + "</code></td>" +
                 '<td style="padding:6px 8px"><span class="imp-badge" style="background:#ffcdd2;color:#b71c1c">NO ENCONTRADO</span></td></tr>';
             return;
         }
@@ -3410,12 +3445,13 @@ function renderImportSkuPreview() {
             : '<div class="thumb-ph" style="width:36px;height:36px">' + icon("package") + "</div>";
         html += "<tr>" +
             '<td style="padding:6px 8px">' + thumb + "</td>" +
-            '<td style="padding:6px 8px"><code>' + esc(r.codigo) + "</code></td>" +
-            '<td style="padding:6px 8px">' + esc(r.descripcion) + "</td>" +
-            '<td style="padding:6px 8px">' + esc(r.categoria) + "</td>" +
-            '<td style="padding:6px 8px">' + fmt(r.precio_mayorista) + "</td>" +
-            '<td style="padding:6px 8px">' + esc(r.codigo_barras || "—") + "</td>" +
-            '<td style="padding:6px 8px;white-space:nowrap">' + badges + "</td>" +
+            '<td style="padding:6px 8px;word-break:break-word"><code>' + esc(r.codigo) + "</code></td>" +
+            '<td style="padding:6px 8px;word-break:break-word">' + esc(r.descripcion) + "</td>" +
+            '<td style="padding:6px 8px;word-break:break-word">' + esc(r.categoria) + "</td>" +
+            '<td style="padding:6px 8px;word-break:break-word">' + esc(r.marca || "—") + "</td>" +
+            '<td style="padding:6px 8px;white-space:nowrap">' + fmt(r.precio_mayorista) + "</td>" +
+            '<td style="padding:6px 8px;word-break:break-word">' + esc(r.codigo_barras || "—") + "</td>" +
+            '<td style="padding:6px 8px">' + badges + "</td>" +
             "</tr>";
     });
     html += "</tbody></table></div>";
@@ -3435,6 +3471,7 @@ async function confirmarImportSku() {
                 codigo: r.codigo,
                 descripcion: r.descripcion,
                 categoria: r.categoria,
+                marca: r.marca,
                 precio_mayorista: r.precio_mayorista,
                 codigo_barras: r.codigo_barras,
                 imagen_base64: r.imagen_base64,
@@ -3537,13 +3574,13 @@ async function undoLastImport(import_id) {
 // ── Exportar plantilla vacía ──────────────────────────────────────────────────
 function exportTemplate() {
     if (typeof XLSX === 'undefined') { alert('Cargando SheetJS, intentá de nuevo.'); return; }
-    var headers = ['CODIGO', 'CODIGO_BARRAS', 'DESCRIPCION', 'CATEGORIA', 'PRECIO_MAYORISTA', 'ESTADO', 'PREVENTA'];
+    var headers = ['CODIGO', 'CODIGO_BARRAS', 'DESCRIPCION', 'CATEGORIA', 'MARCA', 'PRECIO_MAYORISTA', 'ESTADO', 'PREVENTA'];
     var wb = XLSX.utils.book_new();
     var ws = XLSX.utils.aoa_to_sheet([headers]);
     // Ancho de columna aproximado
     ws['!cols'] = [
         {wch: 14}, {wch: 16}, {wch: 40}, {wch: 22},
-        {wch: 18}, {wch: 12}, {wch: 22}
+        {wch: 18}, {wch: 18}, {wch: 12}, {wch: 22}
     ];
     XLSX.utils.book_append_sheet(wb, ws, 'Productos');
     XLSX.writeFile(wb, 'plantilla_importacion_travelblue.xlsx');
@@ -3556,13 +3593,14 @@ async function exportCatalog() {
         var res  = await fetch(API + '?action=productos&_user=' + encodeURIComponent(authUser) + '&_pass=' + encodeURIComponent(authPass));
         var json = await res.json();
         if (!Array.isArray(json) || !json.length) { alert('No hay productos para exportar.'); return; }
-        var headers = ['CODIGO', 'CODIGO_BARRAS', 'DESCRIPCION', 'CATEGORIA', 'PRECIO_MAYORISTA', 'ESTADO', 'PREVENTA'];
+        var headers = ['CODIGO', 'CODIGO_BARRAS', 'DESCRIPCION', 'CATEGORIA', 'MARCA', 'PRECIO_MAYORISTA', 'ESTADO', 'PREVENTA'];
         var rows = json.map(function(p) {
             return [
                 p.codigo        || '',
                 p.codigo_barras || '',
                 p.descripcion   || '',
                 p.categoria     || '',
+                p.marca         || '',
                 p.precio_mayorista != null ? Number(p.precio_mayorista) : '',
                 p.estado        || '',
                 p.preventa_nombre || ''
@@ -3681,7 +3719,8 @@ function executePrint() {
     // Formato moneda
     function fmtP(v) {
         if (v == null || v === '') return '—';
-        return '$ ' + Number(v).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        // Espacio irrompible: ver nota en fmt() más arriba en el archivo.
+        return '$ ' + Number(v).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
     }
 
     var fecha = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });

@@ -117,6 +117,7 @@ function start() {
                     DESCRIPCION: p.descripcion,
                     CATEGORIA: p.categoria,
                     PRECIO_MAYORISTA: p.precio_mayorista,
+                    MARCA: p.marca || null,
                     FOTO: p.foto,
                     ESTADO: p.estado,
                     ORDEN: p.orden,
@@ -415,7 +416,9 @@ function getVisible() {
 }
 
 function fmt(v) {
-    return "$ " + Math.round(parseFloat(v) || 0).toLocaleString("es-AR");
+    //   = espacio irrompible entre "$" y el monto — nunca se corta en
+    // dos líneas en un contenedor angosto ("$" arriba, monto abajo).
+    return "$ " + Math.round(parseFloat(v) || 0).toLocaleString("es-AR");
 }
 function sid(code) {
     return "p" + code.replace(/[^a-zA-Z0-9]/g, "_");
@@ -566,6 +569,7 @@ function cardHTML(p) {
     if (activePreventa === "TODAS" && p.PREVENTA_NOMBRE)
         html += '<div class="badge-preventa">' + p.PREVENTA_NOMBRE + "</div>";
     html += '<div class="name">' + p.DESCRIPCION + "</div>";
+    if (p.MARCA) html += '<div class="brand">' + p.MARCA + "</div>";
     // Círculos de colores
     if (p.COLORES && p.COLORES.length > 0) {
         html += '<div class="color-dots"><span class="color-lbl">Color</span>';
@@ -809,6 +813,7 @@ function listRowHTML(p) {
         (multiplo > 1
             ? ' <small style="color:var(--muted)">(x' + multiplo + ")</small>"
             : "") +
+        (p.MARCA ? '<div style="font-weight:400;font-size:11px;color:var(--muted)">' + p.MARCA + "</div>" : "") +
         "</td>";
     html +=
         '<td style="font-weight:800;color:var(--blue)">' +

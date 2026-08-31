@@ -34,11 +34,11 @@ function checkAuth($data) {
 
 // ── Búsqueda en Manager2Max (solo lectura) ───────────────────────────────────
 // Fase 2: prellenar código/descripción/categoría/precios al dar de alta un
-// producto de preventa. IDEmpresa=4 (TEST/sandbox) a propósito — decisión de
-// Mauricio (28/08/2026): siempre 4 para esto, nunca producción, sin excepción
-// (es de solo lectura así que no hay riesgo de escribir, pero al ser una copia
-// de la base real que no se autoactualiza, los datos pueden estar desfasados
-// respecto al Manager de producción — igual sirve para no tipear a mano).
+// producto de preventa. IDEmpresa se define en db.php (MANAGER_IDEMPRESA) —
+// producción (3) desde el 31/08/2026, decisión de Mauricio una vez validada
+// la integración (antes usaba TEST/sandbox=4 a propósito mientras se probaba;
+// se dejó de usar porque esa copia no se autoactualiza y quedaba desfasada
+// para productos nuevos). Solo lectura en todos los casos, nunca escribe.
 define('MANAGER_LISTA_MAYORISTA', 2); // "Mayorista" (real de Cindy, no la de Travel Blue)
 
 function manager_login() {
@@ -220,6 +220,11 @@ function setupDB($db) {
     if ($colCheck && $colCheck->num_rows === 0) {
         $db->query("ALTER TABLE productos ADD COLUMN codigo_barras VARCHAR(50) DEFAULT NULL");
         $db->query("ALTER TABLE productos ADD INDEX idx_codigo_barras (codigo_barras)");
+    }
+
+    $colCheck = $db->query("SHOW COLUMNS FROM productos LIKE 'marca'");
+    if ($colCheck && $colCheck->num_rows === 0) {
+        $db->query("ALTER TABLE productos ADD COLUMN marca VARCHAR(100) DEFAULT NULL");
     }
 
     // Control de stock de preventa: no viene de Manager, se carga a mano acá
@@ -492,10 +497,11 @@ switch ($action) {
         $orden = intval($data['orden'] ?? 0);
         $multiplo = max(1, intval($data['multiplo'] ?? 1));
         $codigoBarras = isset($data['codigo_barras']) && $data['codigo_barras'] !== '' ? trim($data['codigo_barras']) : null;
+        $marca = isset($data['marca']) && $data['marca'] !== '' ? trim($data['marca']) : null;
         $stockInicial = max(0, intval($data['stock_preventa'] ?? 0));
         $preventaId = isset($data['preventa_id']) && $data['preventa_id'] !== '' ? intval($data['preventa_id']) : null;
-        $stmt = $db->prepare("INSERT INTO productos (codigo,descripcion,categoria,precio_mayorista,foto,estado,orden,multiplo,codigo_barras,stock_preventa,stock_preventa_inicial,preventa_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
-        $stmt->bind_param('sssdssiisiii', $data['codigo'], $data['descripcion'], $data['categoria'], $data['precio_mayorista'], $data['foto'], $data['estado'], $orden, $multiplo, $codigoBarras, $stockInicial, $stockInicial, $preventaId);
+        $stmt = $db->prepare("INSERT INTO productos (codigo,descripcion,categoria,marca,precio_mayorista,foto,estado,orden,multiplo,codigo_barras,stock_preventa,stock_preventa_inicial,preventa_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
+        $stmt->bind_param('ssssdssiisiii', $data['codigo'], $data['descripcion'], $data['categoria'], $marca, $data['precio_mayorista'], $data['foto'], $data['estado'], $orden, $multiplo, $codigoBarras, $stockInicial, $stockInicial, $preventaId);
         if ($stmt->execute()) {
             $newId = $db->insert_id;
             $colores = $data['colores'] ?? [];
@@ -515,6 +521,7 @@ switch ($action) {
         checkAuth($data);
         $multiplo = max(1, intval($data['multiplo'] ?? 1));
         $codigoBarras = isset($data['codigo_barras']) && $data['codigo_barras'] !== '' ? trim($data['codigo_barras']) : null;
+        $marca = isset($data['marca']) && $data['marca'] !== '' ? trim($data['marca']) : null;
         $ordenActual = $db->query("SELECT orden FROM productos WHERE id=$id")->fetch_assoc();
         $orden = isset($data['orden']) && $data['orden'] !== '' ? intval($data['orden']) : ($ordenActual['orden'] ?? 0);
         // stock_preventa se puede corregir a mano desde el formulario de edición
@@ -522,8 +529,8 @@ switch ($action) {
         // además lleva el acumulado en stock_preventa_inicial).
         $stock = max(0, intval($data['stock_preventa'] ?? 0));
         $preventaId = isset($data['preventa_id']) && $data['preventa_id'] !== '' ? intval($data['preventa_id']) : null;
-        $stmt = $db->prepare("UPDATE productos SET codigo=?,descripcion=?,categoria=?,precio_mayorista=?,foto=?,estado=?,orden=?,multiplo=?,codigo_barras=?,stock_preventa=?,preventa_id=?,updated_at=NOW() WHERE id=?");
-        $stmt->bind_param('sssdssiisiii', $data['codigo'], $data['descripcion'], $data['categoria'], $data['precio_mayorista'], $data['foto'], $data['estado'], $orden, $multiplo, $codigoBarras, $stock, $preventaId, $id);
+        $stmt = $db->prepare("UPDATE productos SET codigo=?,descripcion=?,categoria=?,marca=?,precio_mayorista=?,foto=?,estado=?,orden=?,multiplo=?,codigo_barras=?,stock_preventa=?,preventa_id=?,updated_at=NOW() WHERE id=?");
+        $stmt->bind_param('ssssdssiisiii', $data['codigo'], $data['descripcion'], $data['categoria'], $marca, $data['precio_mayorista'], $data['foto'], $data['estado'], $orden, $multiplo, $codigoBarras, $stock, $preventaId, $id);
         if ($stmt->execute()) {
             if (isset($data['colores'])) {
                 $delStmt = $db->prepare("DELETE FROM producto_colores WHERE producto_id=?");
@@ -655,7 +662,7 @@ switch ($action) {
             $codigo = trim($p['CODIGO'] ?? '');
             if (!$codigo) { $errors[] = ['codigo' => '(vacío)', 'motivo' => 'CODIGO obligatorio']; continue; }
 
-            $chk = $db->prepare("SELECT codigo,descripcion,categoria,precio_mayorista,estado,codigo_barras FROM productos WHERE codigo=?");
+            $chk = $db->prepare("SELECT codigo,descripcion,categoria,marca,precio_mayorista,estado,codigo_barras FROM productos WHERE codigo=?");
             $chk->bind_param('s', $codigo); $chk->execute();
             $existing = $chk->get_result()->fetch_assoc();
 
@@ -672,6 +679,7 @@ switch ($action) {
                 $sets = []; $params = []; $types = '';
                 if (isset($p['DESCRIPCION'])    && $p['DESCRIPCION']    !== '') { $sets[] = 'descripcion=?';      $params[] = trim($p['DESCRIPCION']);           $types .= 's'; }
                 if (isset($p['CATEGORIA'])      && $p['CATEGORIA']      !== '') { $sets[] = 'categoria=?';        $params[] = trim($p['CATEGORIA']);             $types .= 's'; }
+                if (isset($p['MARCA'])          && $p['MARCA']          !== '') { $sets[] = 'marca=?';            $params[] = trim($p['MARCA']);                 $types .= 's'; }
                 if (isset($p['PRECIO_MAYORISTA']) && $p['PRECIO_MAYORISTA'] !== '') { $sets[] = 'precio_mayorista=?'; $params[] = floatval($p['PRECIO_MAYORISTA']); $types .= 'd'; }
                 if (isset($p['ESTADO'])         && $p['ESTADO']         !== '') { $sets[] = 'estado=?';           $params[] = strtoupper(trim($p['ESTADO']));    $types .= 's'; }
                 if (isset($p['CODIGO_BARRAS'])  && $p['CODIGO_BARRAS']  !== '') { $sets[] = 'codigo_barras=?';    $params[] = trim($p['CODIGO_BARRAS']);          $types .= 's'; }
@@ -689,6 +697,7 @@ switch ($action) {
 
                 $desc   = trim($p['DESCRIPCION'] ?? '');
                 $cat    = trim($p['CATEGORIA']   ?? '');
+                $marca  = isset($p['MARCA']) && $p['MARCA'] !== '' ? trim($p['MARCA']) : null;
                 $may    = floatval($p['PRECIO_MAYORISTA'] ?? 0);
                 $estado = strtoupper(trim($p['ESTADO'] ?? 'DISPONIBLE'));
                 $cb     = isset($p['CODIGO_BARRAS']) && $p['CODIGO_BARRAS'] !== '' ? trim($p['CODIGO_BARRAS']) : null;
@@ -696,8 +705,8 @@ switch ($action) {
                 $preventaId = resolver_preventa_id($db, $p['PREVENTA'] ?? '');
                 if (!$desc || !$cat) { $errors[] = ['codigo' => $codigo, 'motivo' => 'DESCRIPCION y CATEGORIA obligatorias para producto nuevo']; continue; }
                 $o = 0; $multiplo = 1;
-                $stmt = $db->prepare("INSERT INTO productos (codigo,descripcion,categoria,precio_mayorista,estado,orden,multiplo,codigo_barras,stock_preventa,stock_preventa_inicial,preventa_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
-                $stmt->bind_param('sssdsiisiii', $codigo, $desc, $cat, $may, $estado, $o, $multiplo, $cb, $stock, $stock, $preventaId);
+                $stmt = $db->prepare("INSERT INTO productos (codigo,descripcion,categoria,marca,precio_mayorista,estado,orden,multiplo,codigo_barras,stock_preventa,stock_preventa_inicial,preventa_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
+                $stmt->bind_param('ssssdsiisiii', $codigo, $desc, $cat, $marca, $may, $estado, $o, $multiplo, $cb, $stock, $stock, $preventaId);
                 if ($stmt->execute()) $imported++;
                 else $errors[] = ['codigo' => $codigo, 'motivo' => $db->error];
             }
@@ -718,7 +727,7 @@ switch ($action) {
         if (!$codigos) { echo json_encode(['ok' => true, 'productos' => (object)[]]); break; }
         $ph = implode(',', array_fill(0, count($codigos), '?'));
         $types = str_repeat('s', count($codigos));
-        $stmt = $db->prepare("SELECT codigo, descripcion, categoria, precio_mayorista, estado, codigo_barras FROM productos WHERE codigo IN ($ph)");
+        $stmt = $db->prepare("SELECT codigo, descripcion, categoria, marca, precio_mayorista, estado, codigo_barras FROM productos WHERE codigo IN ($ph)");
         $stmt->bind_param($types, ...$codigos);
         $stmt->execute();
         $res = $stmt->get_result();
@@ -752,14 +761,15 @@ switch ($action) {
                     if (!$prev) { $errors[] = ['codigo' => $row['codigo'], 'motivo' => 'snapshot JSON inválido']; continue; }
                     $desc  = $prev['descripcion']     ?? '';
                     $cat   = $prev['categoria']       ?? '';
+                    $marca = isset($prev['marca']) && $prev['marca'] !== null ? strval($prev['marca']) : null;
                     $pmay  = floatval($prev['precio_mayorista'] ?? 0);
                     $est   = $prev['estado']          ?? 'DISPONIBLE';
                     $cb    = isset($prev['codigo_barras']) && $prev['codigo_barras'] !== null ? strval($prev['codigo_barras']) : null;
                     $cod   = $row['codigo'];
 
-                    $stmt = $db->prepare("UPDATE productos SET descripcion=?,categoria=?,precio_mayorista=?,estado=?,codigo_barras=? WHERE codigo=?");
+                    $stmt = $db->prepare("UPDATE productos SET descripcion=?,categoria=?,marca=?,precio_mayorista=?,estado=?,codigo_barras=? WHERE codigo=?");
                     if (!$stmt) throw new Exception("prepare UPDATE falló para " . $cod . ": " . $db->error);
-                    $stmt->bind_param('ssdsss', $desc, $cat, $pmay, $est, $cb, $cod);
+                    $stmt->bind_param('sssdsss', $desc, $cat, $marca, $pmay, $est, $cb, $cod);
                     if ($stmt->execute()) $restored++;
                     else $errors[] = ['codigo' => $cod, 'motivo' => $stmt->error];
                     $stmt->close();
@@ -1004,6 +1014,7 @@ switch ($action) {
 
             $categoria = trim($articulo['Rubro'] ?? '');
             $codigoBarras = trim($articulo['CodigoAuxiliar'] ?? '');
+            $marca = trim($articulo['Marca'] ?? '');
             $imagenBase64 = manager_buscar_imagen_base64($token, $codigo);
 
             $chk = $db->prepare("SELECT codigo FROM productos WHERE codigo=?");
@@ -1018,6 +1029,7 @@ switch ($action) {
                 'existe' => $existe,
                 'descripcion' => trim($articulo['Descripcion'] ?? ''),
                 'categoria' => $categoria !== '' ? mb_strtoupper($categoria, 'UTF-8') : '',
+                'marca' => $marca !== '' ? $marca : null,
                 'precio_mayorista' => manager_precio_por_codigo($token, $codigo, MANAGER_LISTA_MAYORISTA),
                 'codigo_barras' => $codigoBarras !== '' ? $codigoBarras : null,
                 'imagen_base64' => $imagenBase64,
@@ -1061,6 +1073,7 @@ switch ($action) {
 
             $precio = floatval($p['precio_mayorista'] ?? 0);
             $codigoBarras = isset($p['codigo_barras']) && $p['codigo_barras'] !== '' ? trim($p['codigo_barras']) : null;
+            $marca = isset($p['marca']) && $p['marca'] !== '' ? trim($p['marca']) : null;
             $foto = !empty($p['imagen_base64']) ? guardar_imagen_base64($p['imagen_base64'], $codigo) : null;
 
             $chk = $db->prepare("SELECT id FROM productos WHERE codigo=?");
@@ -1070,18 +1083,18 @@ switch ($action) {
 
             if ($existing) {
                 if ($foto) {
-                    $stmt = $db->prepare("UPDATE productos SET descripcion=?,categoria=?,precio_mayorista=?,codigo_barras=?,foto=?,preventa_id=?,updated_at=NOW() WHERE codigo=?");
-                    $stmt->bind_param('ssdssis', $descripcion, $categoria, $precio, $codigoBarras, $foto, $preventaId, $codigo);
+                    $stmt = $db->prepare("UPDATE productos SET descripcion=?,categoria=?,marca=?,precio_mayorista=?,codigo_barras=?,foto=?,preventa_id=?,updated_at=NOW() WHERE codigo=?");
+                    $stmt->bind_param('sssdssis', $descripcion, $categoria, $marca, $precio, $codigoBarras, $foto, $preventaId, $codigo);
                 } else {
-                    $stmt = $db->prepare("UPDATE productos SET descripcion=?,categoria=?,precio_mayorista=?,codigo_barras=?,preventa_id=?,updated_at=NOW() WHERE codigo=?");
-                    $stmt->bind_param('ssdsis', $descripcion, $categoria, $precio, $codigoBarras, $preventaId, $codigo);
+                    $stmt = $db->prepare("UPDATE productos SET descripcion=?,categoria=?,marca=?,precio_mayorista=?,codigo_barras=?,preventa_id=?,updated_at=NOW() WHERE codigo=?");
+                    $stmt->bind_param('sssdsis', $descripcion, $categoria, $marca, $precio, $codigoBarras, $preventaId, $codigo);
                 }
                 if ($stmt->execute()) $actualizados++;
                 else $errores[] = ['codigo' => $codigo, 'motivo' => $db->error];
             } else {
                 $estado = 'DISPONIBLE'; $orden = 0; $multiplo = 1; $stock = 0;
-                $stmt = $db->prepare("INSERT INTO productos (codigo,descripcion,categoria,precio_mayorista,codigo_barras,foto,estado,orden,multiplo,stock_preventa,stock_preventa_inicial,preventa_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
-                $stmt->bind_param('sssdsssiiiii', $codigo, $descripcion, $categoria, $precio, $codigoBarras, $foto, $estado, $orden, $multiplo, $stock, $stock, $preventaId);
+                $stmt = $db->prepare("INSERT INTO productos (codigo,descripcion,categoria,marca,precio_mayorista,codigo_barras,foto,estado,orden,multiplo,stock_preventa,stock_preventa_inicial,preventa_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                $stmt->bind_param('ssssdsssiiiii', $codigo, $descripcion, $categoria, $marca, $precio, $codigoBarras, $foto, $estado, $orden, $multiplo, $stock, $stock, $preventaId);
                 if ($stmt->execute()) $creados++;
                 else $errores[] = ['codigo' => $codigo, 'motivo' => $db->error];
             }
