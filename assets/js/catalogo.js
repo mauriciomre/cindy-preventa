@@ -710,29 +710,34 @@ function cardHTML(p) {
         "</div>";
     if (activePreventa === "TODAS" && p.PREVENTA_NOMBRE)
         html += '<div class="badge-preventa">' + p.PREVENTA_NOMBRE + "</div>";
-    html += '<div class="name">' + p.DESCRIPCION + "</div>";
-    if (p.MARCA) html += '<div class="brand">' + p.MARCA + "</div>";
     var hasColores = p.COLORES && p.COLORES.length > 0;
+
+    // Bloque de info (nombre/marca/precio/stock) — con colores y stock, se
+    // arma aparte para poder ponerlo al lado del botón "+ Agregar" en vez
+    // de dejar ese espacio vacío (el título/marca/precio no llenan el ancho
+    // de la card, y las filas de color sí lo ocupan entero más abajo).
+    var infoHtml = '<div class="name">' + p.DESCRIPCION + "</div>";
+    if (p.MARCA) infoHtml += '<div class="brand">' + p.MARCA + "</div>";
     // Sin stock/vendido: solo círculos decorativos (no hay nada para elegir).
-    // Con stock: los colores se eligen con cantidad más abajo, en el "foot".
+    // Con stock: los colores se eligen con cantidad más abajo.
     if (hasColores && sold) {
-        html += '<div class="color-dots"><span class="color-lbl">Color</span>';
+        infoHtml += '<div class="color-dots"><span class="color-lbl">Color</span>';
         p.COLORES.forEach(function (c) {
-            html +=
+            infoHtml +=
                 '<span class="color-dot" style="background:' +
                 c.hex +
                 '" title="' +
                 c.nombre +
                 '"></span>';
         });
-        html += "</div>";
+        infoHtml += "</div>";
     }
-    html +=
+    infoHtml +=
         '<div class="prices"><div class="price">' +
         fmt(p.PRECIO_MAYORISTA) +
         ' <span class="iva">+ IVA</span></div></div>';
     if (!sold) {
-        html += waitlist
+        infoHtml += waitlist
             ? '<div class="stock-hint wait">Sin stock · sujeto a confirmar</div>'
             : p.PREVENTA_MOSTRAR_STOCK
               ? '<div class="stock-hint' +
@@ -744,14 +749,40 @@ function cardHTML(p) {
                 "</div>"
               : "";
     }
-    if (sold) {
-        html += '<div class="na">No disponible por ahora</div>';
+
+    var addBtnHtml =
+        '<button class="add' +
+        (inCart ? " on" : "") +
+        '" id="ab_' +
+        id +
+        '" onclick="' +
+        (inCart
+            ? "toggleRemove('" + p.CODIGO + "')"
+            : hasColores
+              ? "addOrUpdateColores('" + p.CODIGO + "')"
+              : "addOrUpdate('" + p.CODIGO + "')") +
+        '"' +
+        (inCart
+            ? ' style="font-size:10px;line-height:1.2;padding:5px 6px"'
+            : "") +
+        ">" +
+        (inCart
+            ? icon("check") + ' En pedido<br><span style="font-size:9px;opacity:.85">Quitar?</span>'
+            : "+ Agregar") +
+        "</button>";
+
+    if (hasColores && !sold) {
+        // Título/marca/precio a la izquierda, botón a la derecha (aprovecha
+        // el espacio libre) — las filas de color van aparte, abajo, a todo
+        // el ancho.
+        html += '<div class="head-colores"><div class="head-colores-info">' + infoHtml + "</div>" + addBtnHtml + "</div>";
+        html += '<div class="foot foot-colores">' + colorQtyRowsHTML(p) + "</div>";
     } else {
-        html += '<div class="foot' + (hasColores ? " foot-colores" : "") + '">';
-        if (hasColores) {
-            html += colorQtyRowsHTML(p);
+        html += infoHtml;
+        if (sold) {
+            html += '<div class="na">No disponible por ahora</div>';
         } else {
-            html += '<div class="qty">';
+            html += '<div class="foot"><div class="qty">';
             html +=
                 '<button class="qb" onclick="chgQty(\'' +
                 p.CODIGO +
@@ -775,31 +806,13 @@ function cardHTML(p) {
             html +=
                 '<button class="qb" onclick="chgQty(\'' +
                 p.CODIGO +
-                "',1)\">+</button></div>";
+                "',1)\">+</button></div>" +
+                addBtnHtml +
+                "</div>";
+            if (multiplo > 1)
+                html +=
+                    '<div class="multiplo-hint">Múltiplo de ' + multiplo + "</div>";
         }
-        html +=
-            '<button class="add' +
-            (inCart ? " on" : "") +
-            '" id="ab_' +
-            id +
-            '" onclick="' +
-            (inCart
-                ? "toggleRemove('" + p.CODIGO + "')"
-                : hasColores
-                  ? "addOrUpdateColores('" + p.CODIGO + "')"
-                  : "addOrUpdate('" + p.CODIGO + "')") +
-            '"' +
-            (inCart
-                ? ' style="font-size:10px;line-height:1.2;padding:5px 6px"'
-                : "") +
-            ">" +
-            (inCart
-                ? icon("check") + ' En pedido<br><span style="font-size:9px;opacity:.85">Quitar?</span>'
-                : "+ Agregar") +
-            "</button></div>";
-        if (!hasColores && multiplo > 1)
-            html +=
-                '<div class="multiplo-hint">Múltiplo de ' + multiplo + "</div>";
     }
     html += "</div></div>";
     return html;

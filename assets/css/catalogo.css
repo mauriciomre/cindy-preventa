@@ -581,6 +581,39 @@ header {
     align-items: stretch
 }
 
+/* Nombre/marca/precio (columna angosta, texto corto) al lado del botón
+   "+ Agregar" — aprovecha el espacio que ese bloque deja libre en vez de
+   dejarlo vacío, y el botón queda arriba en vez de perdido abajo del todo
+   tras la lista de colores. */
+.head-colores {
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+    margin-top: 2px
+}
+
+.head-colores-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px
+}
+
+.head-colores .add {
+    flex: 0 0 auto;
+    align-self: center;
+    padding: 8px 12px;
+    white-space: nowrap
+}
+
+/* Con el botón al lado, la columna de info es angosta — si el precio no
+   entra en una línea (montos grandes, cards de 4-5 por fila), que pase a
+   la siguiente en vez de desbordarse fuera de su columna. */
+.head-colores-info .price {
+    white-space: normal
+}
+
 .qty {
     display: flex;
     align-items: center;
