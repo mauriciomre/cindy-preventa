@@ -10,6 +10,7 @@ var pendingFile = null,
     codigoOk = true,
     checkTimeout = null;
 var pendingPrevFile = null;
+var pendingPrevUrl = null;
 var editMode = false,
     dragSrc = null;
 var sortedProducts = null;
@@ -961,6 +962,8 @@ function openPrevModal(id) {
     var pv = allPreventas.find((p) => parseInt(p.id) === parseInt(id));
     if (!pv) return;
     pendingPrevFile = null;
+    pendingPrevUrl = null;
+    document.getElementById("prevImgUrl").value = "";
     document.getElementById("prevEditId").value = pv.id;
     document.getElementById("prevEditNombre").value = pv.nombre;
     document.getElementById("prevEditDetalle").value = pv.detalle || "";
@@ -985,6 +988,8 @@ function closePrevModal() {
 function previewPrevImg(input) {
     if (!input.files || !input.files[0]) return;
     pendingPrevFile = input.files[0];
+    pendingPrevUrl = null;
+    document.getElementById("prevImgUrl").value = "";
     var reader = new FileReader();
     reader.onload = function (e) {
         var cur = document.getElementById("prevImgCurrent");
@@ -994,10 +999,26 @@ function previewPrevImg(input) {
     };
     reader.readAsDataURL(pendingPrevFile);
 }
+// Alternativa a elegir un archivo: pegar la URL de una imagen (ej. copiada
+// de Google Imágenes) — se descarga y procesa del lado del servidor recién
+// al guardar, mismo pipeline de resize que un archivo subido a mano.
+function usarUrlPrevImg() {
+    var url = document.getElementById("prevImgUrl").value.trim();
+    if (!url) { toast("Pegá una URL de imagen primero", "#c62828"); return; }
+    if (!/^https?:\/\//i.test(url)) { toast("La URL debe empezar con http:// o https://", "#c62828"); return; }
+    pendingPrevUrl = url;
+    pendingPrevFile = null;
+    document.getElementById("prevEditImagen").value = "";
+    var cur = document.getElementById("prevImgCurrent");
+    cur.src = url;
+    cur.style.display = "block";
+    document.getElementById("prevImgLabelText").textContent = "✓ URL pegada — se procesa al guardar";
+}
 async function uploadPrevImage(id) {
-    if (!pendingPrevFile) return null;
+    if (!pendingPrevFile && !pendingPrevUrl) return null;
     var fd = new FormData();
-    fd.append("imagen", pendingPrevFile);
+    if (pendingPrevFile) fd.append("imagen", pendingPrevFile);
+    else fd.append("imagen_url", pendingPrevUrl);
     fd.append("codigo", "preventa_" + id);
     fd.append("tipo", "preventa");
     fd.append("_user", authUser);
@@ -1016,9 +1037,10 @@ async function guardarPreventa() {
     var mostrar_stock = document.getElementById("prevEditMostrarStock").checked;
     if (!nombre) { toast("Ingresá un nombre", "#c62828"); return; }
     var data = { _user: authUser, _pass: authPass, nombre, detalle, activa, mostrar_stock };
-    if (pendingPrevFile) {
+    if (pendingPrevFile || pendingPrevUrl) {
         var url = await uploadPrevImage(id);
         if (url) data.imagen = url;
+        else return;
     }
     var res = await fetch(API + "?action=preventa_editar&id=" + id, {
         method: "POST",
