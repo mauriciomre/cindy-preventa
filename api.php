@@ -117,6 +117,43 @@ function manager_buscar_por_codigo($token, $codigo) {
     return null;
 }
 
+// Devuelve el Base64 crudo (sin decodificar) de la foto principal (Orden=1)
+// de un artículo en Manager, o null si no existe. Solo-lectura
+// (GetDTArticulosImagenes/GetImage) — compartida entre "manager_imagen_producto"
+// (guarda directo a disco) y el lookup de "Importar por código" (guarda en
+// memoria del navegador para el preview, recién se escribe a disco al confirmar).
+function manager_buscar_imagen_base64($token, $codigo) {
+    $imagenes = manager_call($token, '/Api/ECommerce/GetDTArticulosImagenes', [
+        'DTRequest' => ['draw' => 1, 'order' => [], 'start' => 0, 'length' => 20],
+        'DefinicionTablaFiltros' => false,
+        'CalculaTotales' => false,
+        'ListFilters' => manager_dict_filtros(['CodigoArticulo' => manager_filtro_texto($codigo)]),
+    ]);
+    $principal = null;
+    foreach ($imagenes as $img) {
+        if (trim($img['CodigoArticulo'] ?? '') === $codigo && intval($img['Orden'] ?? 0) === 1) { $principal = $img; break; }
+    }
+    if (!$principal) return null;
+    $imgResp = manager_call($token, '/Api/Image/GetImage', ['ImageFullPath' => $principal['PasoImagen']]);
+    return $imgResp['ImageContent'] ?? null;
+}
+
+// Decodifica un Base64 de imagen, lo redimensiona a cuadro blanco 800x800
+// (mismo criterio que el resto del catálogo) y lo guarda en imgs/<codigo>.jpeg.
+// Devuelve la ruta relativa guardada, o null si el Base64 es ilegible.
+function guardar_imagen_base64($base64, $codigo) {
+    $bytes = base64_decode($base64);
+    $src = @imagecreatefromstring($bytes);
+    if (!$src) return null;
+    $dst = redimensionar_a_cuadro($src, 800, 800);
+    if (!is_dir(__DIR__ . '/imgs')) mkdir(__DIR__ . '/imgs', 0755, true);
+    $filename = str_replace('/', '_', $codigo) . '.jpeg';
+    imagejpeg($dst, __DIR__ . '/imgs/' . $filename, 85);
+    imagedestroy($src);
+    imagedestroy($dst);
+    return 'imgs/' . $filename;
+}
+
 function manager_precio_por_codigo($token, $codigo, $idLista) {
     $precios = manager_call($token, '/Api/articulo/GetDTArticulosPrecioExistencia', [
         'DTRequest' => ['draw' => 1, 'order' => [], 'start' => 0, 'length' => 20],
@@ -934,34 +971,12 @@ switch ($action) {
         if (!$codigo) { http_response_code(400); die(json_encode(['error' => 'código requerido'])); }
         try {
             $token = manager_login();
-            $imagenes = manager_call($token, '/Api/ECommerce/GetDTArticulosImagenes', [
-                'DTRequest' => ['draw' => 1, 'order' => [], 'start' => 0, 'length' => 20],
-                'DefinicionTablaFiltros' => false,
-                'CalculaTotales' => false,
-                'ListFilters' => manager_dict_filtros(['CodigoArticulo' => manager_filtro_texto($codigo)]),
-            ]);
-            $principal = null;
-            foreach ($imagenes as $img) {
-                if (trim($img['CodigoArticulo'] ?? '') === $codigo && intval($img['Orden'] ?? 0) === 1) { $principal = $img; break; }
-            }
-            if (!$principal) { echo json_encode(['ok' => true, 'encontrada' => false]); break; }
-
-            $imgResp = manager_call($token, '/Api/Image/GetImage', ['ImageFullPath' => $principal['PasoImagen']]);
-            $base64 = $imgResp['ImageContent'] ?? null;
+            $base64 = manager_buscar_imagen_base64($token, $codigo);
             if (!$base64) { echo json_encode(['ok' => true, 'encontrada' => false]); break; }
 
-            $bytes = base64_decode($base64);
-            $src = imagecreatefromstring($bytes);
-            if (!$src) { echo json_encode(['ok' => true, 'encontrada' => false, 'error' => 'Imagen de Manager ilegible']); break; }
+            $foto = guardar_imagen_base64($base64, $codigo);
+            if (!$foto) { echo json_encode(['ok' => true, 'encontrada' => false, 'error' => 'Imagen de Manager ilegible']); break; }
 
-            $dst = redimensionar_a_cuadro($src, 800, 800);
-            if (!is_dir(__DIR__ . '/imgs')) mkdir(__DIR__ . '/imgs', 0755, true);
-            $filename = str_replace('/', '_', $codigo) . '.jpeg';
-            imagejpeg($dst, __DIR__ . '/imgs/' . $filename, 85);
-            imagedestroy($src);
-            imagedestroy($dst);
-
-            $foto = 'imgs/' . $filename;
             $stmt = $db->prepare("UPDATE productos SET foto=? WHERE codigo=?");
             $stmt->bind_param('ss', $foto, $codigo);
             $stmt->execute();
@@ -971,6 +986,107 @@ switch ($action) {
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);
         }
+        break;
+
+    // ── IMPORTAR POR CÓDIGO (autocompletar desde Manager) ───────────────────────
+    // Paso 1 (preview, uno por uno): busca en Manager sin escribir nada en la
+    // base ni en disco — la foto se trae como Base64 a memoria del navegador,
+    // recién se guarda a disco cuando se confirma el lote completo.
+    case 'manager_lookup_producto':
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $codigo = trim($data['codigo'] ?? '');
+        if (!$codigo) { http_response_code(400); die(json_encode(['error' => 'código requerido'])); }
+        try {
+            $token = manager_login();
+            $articulo = manager_buscar_por_codigo($token, $codigo);
+            if (!$articulo) { echo json_encode(['ok' => true, 'codigo' => $codigo, 'encontrado' => false]); break; }
+
+            $categoria = trim($articulo['Rubro'] ?? '');
+            $codigoBarras = trim($articulo['CodigoAuxiliar'] ?? '');
+            $imagenBase64 = manager_buscar_imagen_base64($token, $codigo);
+
+            $chk = $db->prepare("SELECT codigo FROM productos WHERE codigo=?");
+            $chk->bind_param('s', $codigo);
+            $chk->execute();
+            $existe = (bool) $chk->get_result()->fetch_assoc();
+
+            echo json_encode([
+                'ok' => true,
+                'codigo' => $codigo,
+                'encontrado' => true,
+                'existe' => $existe,
+                'descripcion' => trim($articulo['Descripcion'] ?? ''),
+                'categoria' => $categoria !== '' ? mb_strtoupper($categoria, 'UTF-8') : '',
+                'precio_mayorista' => manager_precio_por_codigo($token, $codigo, MANAGER_LISTA_MAYORISTA),
+                'codigo_barras' => $codigoBarras !== '' ? $codigoBarras : null,
+                'imagen_base64' => $imagenBase64,
+            ]);
+        } catch (Exception $e) {
+            http_response_code(500);
+            echo json_encode(['error' => $e->getMessage()]);
+        }
+        break;
+
+    // Paso 2 (confirmar): recibe las filas YA buscadas en el paso anterior
+    // (sin volver a pegarle a Manager) y escribe todo de una — altas,
+    // actualizaciones, categorías nuevas si el Rubro no existe, imágenes a
+    // disco, y la preventa elegida asignada a todo el lote.
+    case 'manager_importar_lote':
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $preventaId = intval($data['preventa_id'] ?? 0);
+        if (!$preventaId) { http_response_code(400); die(json_encode(['error' => 'preventa_id requerido'])); }
+        $filas = $data['productos'] ?? [];
+        if (!$filas) { http_response_code(400); die(json_encode(['error' => 'Sin productos'])); }
+
+        $creados = 0; $actualizados = 0; $errores = [];
+        foreach ($filas as $p) {
+            $codigo = trim($p['codigo'] ?? '');
+            $descripcion = trim($p['descripcion'] ?? '');
+            $categoria = trim($p['categoria'] ?? '');
+            if (!$codigo || !$descripcion || !$categoria) { $errores[] = ['codigo' => $codigo ?: '(vacío)', 'motivo' => 'Faltan datos obligatorios']; continue; }
+
+            // Crea la categoría sola si el Rubro de Manager no existe todavía
+            // (mismo comportamiento que el alta individual "Buscar en Manager").
+            $catCheck = $db->prepare("SELECT id FROM categorias WHERE nombre=?");
+            $catCheck->bind_param('s', $categoria);
+            $catCheck->execute();
+            if (!$catCheck->get_result()->fetch_assoc()) {
+                $cCount = $db->query("SELECT COUNT(*) as n FROM categorias")->fetch_assoc()['n'];
+                $insCat = $db->prepare("INSERT IGNORE INTO categorias (nombre, orden) VALUES (?, ?)");
+                $insCat->bind_param('si', $categoria, $cCount);
+                $insCat->execute();
+            }
+
+            $precio = floatval($p['precio_mayorista'] ?? 0);
+            $codigoBarras = isset($p['codigo_barras']) && $p['codigo_barras'] !== '' ? trim($p['codigo_barras']) : null;
+            $foto = !empty($p['imagen_base64']) ? guardar_imagen_base64($p['imagen_base64'], $codigo) : null;
+
+            $chk = $db->prepare("SELECT id FROM productos WHERE codigo=?");
+            $chk->bind_param('s', $codigo);
+            $chk->execute();
+            $existing = $chk->get_result()->fetch_assoc();
+
+            if ($existing) {
+                if ($foto) {
+                    $stmt = $db->prepare("UPDATE productos SET descripcion=?,categoria=?,precio_mayorista=?,codigo_barras=?,foto=?,preventa_id=?,updated_at=NOW() WHERE codigo=?");
+                    $stmt->bind_param('ssdssis', $descripcion, $categoria, $precio, $codigoBarras, $foto, $preventaId, $codigo);
+                } else {
+                    $stmt = $db->prepare("UPDATE productos SET descripcion=?,categoria=?,precio_mayorista=?,codigo_barras=?,preventa_id=?,updated_at=NOW() WHERE codigo=?");
+                    $stmt->bind_param('ssdsis', $descripcion, $categoria, $precio, $codigoBarras, $preventaId, $codigo);
+                }
+                if ($stmt->execute()) $actualizados++;
+                else $errores[] = ['codigo' => $codigo, 'motivo' => $db->error];
+            } else {
+                $estado = 'DISPONIBLE'; $orden = 0; $multiplo = 1; $stock = 0;
+                $stmt = $db->prepare("INSERT INTO productos (codigo,descripcion,categoria,precio_mayorista,codigo_barras,foto,estado,orden,multiplo,stock_preventa,stock_preventa_inicial,preventa_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
+                $stmt->bind_param('sssdsssiiiii', $codigo, $descripcion, $categoria, $precio, $codigoBarras, $foto, $estado, $orden, $multiplo, $stock, $stock, $preventaId);
+                if ($stmt->execute()) $creados++;
+                else $errores[] = ['codigo' => $codigo, 'motivo' => $db->error];
+            }
+        }
+        echo json_encode(['ok' => true, 'creados' => $creados, 'actualizados' => $actualizados, 'errores' => $errores]);
         break;
 
     // ── COLORES ───────────────────────────────────────────────────────────────

@@ -3328,6 +3328,167 @@ async function buscarFotosManagerLote(codigos) {
     await loadProducts();
 }
 
+// ── IMPORTAR POR CÓDIGO (autocompletar desde Manager) ────────────────────────
+// A diferencia del wizard de Excel, acá solo se pega una lista de SKUs — todo
+// lo demás (descripción, categoría, precio mayorista, código de barras, foto)
+// se busca solo en Manager. Primero un preview (uno por uno, sin escribir
+// nada todavía — la foto viaja como Base64 en memoria del navegador) y recién
+// al confirmar se escribe todo de una en un solo request.
+var importSkuRows = [];
+
+function openImportSkuModal() {
+    document.getElementById("importSkuCodigos").value = "";
+    var sel = document.getElementById("importSkuPreventa");
+    sel.innerHTML = '<option value="">— Seleccioná —</option>' +
+        allPreventas.map((pv) => '<option value="' + pv.id + '">' + esc(pv.nombre) + (pv.activa ? "" : " (inactiva)") + "</option>").join("");
+    document.getElementById("importSkuStep1").style.display = "block";
+    document.getElementById("importSkuStep2").style.display = "none";
+    document.getElementById("importSkuPreviewWrap").innerHTML = "";
+    document.getElementById("importSkuProgress").innerHTML = "";
+    importSkuRows = [];
+    document.getElementById("importSkuModalBg").classList.add("open");
+}
+function closeImportSkuModal() {
+    document.getElementById("importSkuModalBg").classList.remove("open");
+}
+
+async function iniciarBusquedaSku() {
+    var raw = document.getElementById("importSkuCodigos").value.trim();
+    var preventaId = document.getElementById("importSkuPreventa").value;
+    if (!raw) { toast("Pegá al menos un código", "#c62828"); return; }
+    if (!preventaId) { toast("Elegí una preventa para el lote", "#c62828"); return; }
+    var codigos = Array.from(new Set(raw.split(/[\s,]+/).map((c) => c.trim()).filter(Boolean)));
+
+    document.getElementById("importSkuStep1").style.display = "none";
+    document.getElementById("importSkuStep2").style.display = "block";
+    document.getElementById("btnImportSkuConfirm").disabled = true;
+    document.getElementById("btnImportSkuConfirm").style.display = "";
+    importSkuRows = [];
+    renderImportSkuPreview();
+
+    for (var i = 0; i < codigos.length; i++) {
+        var codigo = codigos[i];
+        document.getElementById("importSkuProgress").innerHTML =
+            '<p style="text-align:center;padding:16px;color:#666">' +
+            '<span style="display:inline-block;animation:spin .6s linear infinite">' + icon("loader-circle") + '</span> ' +
+            "Buscando " + (i + 1) + " de " + codigos.length + " en Manager (" + esc(codigo) + ")…</p>";
+        try {
+            var res = await fetch(API + "?action=manager_lookup_producto", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ _user: authUser, _pass: authPass, codigo: codigo }),
+            });
+            var json = await res.json();
+            importSkuRows.push(json.ok ? json : { codigo: codigo, encontrado: false });
+        } catch (e) {
+            importSkuRows.push({ codigo: codigo, encontrado: false });
+        }
+        renderImportSkuPreview();
+    }
+    document.getElementById("importSkuProgress").innerHTML = "";
+    var validos = importSkuRows.filter((r) => r.encontrado).length;
+    document.getElementById("btnImportSkuConfirm").disabled = validos === 0;
+}
+
+function renderImportSkuPreview() {
+    var html = '<div style="overflow:auto;max-height:320px;border:1px solid #e0e0e0;border-radius:8px">' +
+        '<table class="import-preview-table" style="min-width:100%"><thead><tr>' +
+        "<th>Img</th><th>Código</th><th>Descripción</th><th>Categoría</th><th>P. Mayorista</th><th>Cód. Barras</th><th>Estado</th>" +
+        "</tr></thead><tbody>";
+    importSkuRows.forEach(function (r) {
+        if (!r.encontrado) {
+            html += '<tr style="background:#ffebee"><td colspan="6" style="padding:6px 8px"><code>' + esc(r.codigo) + "</code></td>" +
+                '<td style="padding:6px 8px"><span class="imp-badge" style="background:#ffcdd2;color:#b71c1c">NO ENCONTRADO</span></td></tr>';
+            return;
+        }
+        var badges = r.existe
+            ? '<span class="imp-badge" style="background:#bbdefb;color:#0d47a1">ACTUALIZA</span>'
+            : '<span class="imp-badge" style="background:#c8e6c9;color:#1b5e20">NUEVO</span>';
+        if (!r.imagen_base64) badges += ' <span class="imp-badge" style="background:#ffe0b2;color:#e65100">SIN FOTO</span>';
+        var thumb = r.imagen_base64
+            ? '<img src="data:image/jpeg;base64,' + r.imagen_base64 + '" style="width:36px;height:36px;object-fit:contain;border-radius:4px;border:1px solid #eee">'
+            : '<div class="thumb-ph" style="width:36px;height:36px">' + icon("package") + "</div>";
+        html += "<tr>" +
+            '<td style="padding:6px 8px">' + thumb + "</td>" +
+            '<td style="padding:6px 8px"><code>' + esc(r.codigo) + "</code></td>" +
+            '<td style="padding:6px 8px">' + esc(r.descripcion) + "</td>" +
+            '<td style="padding:6px 8px">' + esc(r.categoria) + "</td>" +
+            '<td style="padding:6px 8px">' + fmt(r.precio_mayorista) + "</td>" +
+            '<td style="padding:6px 8px">' + esc(r.codigo_barras || "—") + "</td>" +
+            '<td style="padding:6px 8px;white-space:nowrap">' + badges + "</td>" +
+            "</tr>";
+    });
+    html += "</tbody></table></div>";
+    var contador = document.createElement("div");
+    contador.style.cssText = "font-size:12px;color:var(--muted);margin-bottom:8px";
+    var noEncontrados = importSkuRows.filter((r) => !r.encontrado).length;
+    contador.textContent = importSkuRows.length + " código(s) revisado(s)" + (noEncontrados ? " — " + noEncontrados + " no encontrado(s)" : "");
+    document.getElementById("importSkuPreviewWrap").innerHTML = contador.outerHTML + html;
+}
+
+async function confirmarImportSku() {
+    var preventaId = document.getElementById("importSkuPreventa").value;
+    var productos = importSkuRows
+        .filter((r) => r.encontrado)
+        .map(function (r) {
+            return {
+                codigo: r.codigo,
+                descripcion: r.descripcion,
+                categoria: r.categoria,
+                precio_mayorista: r.precio_mayorista,
+                codigo_barras: r.codigo_barras,
+                imagen_base64: r.imagen_base64,
+            };
+        });
+    if (!productos.length) return;
+
+    var btn = document.getElementById("btnImportSkuConfirm");
+    btn.disabled = true;
+    btn.textContent = "Importando...";
+    try {
+        var res = await fetch(API + "?action=manager_importar_lote", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ _user: authUser, _pass: authPass, preventa_id: preventaId, productos: productos }),
+        });
+        var json = await res.json();
+        if (!json.ok) { toast("Error: " + (json.error || "desconocido"), "#c62828"); return; }
+
+        var noEncontrados = importSkuRows.filter((r) => !r.encontrado).map((r) => r.codigo);
+        var sinFoto = importSkuRows.filter((r) => r.encontrado && !r.imagen_base64).map((r) => r.codigo);
+        var errores = json.errores || [];
+
+        var log = '<div style="font-size:13px">';
+        log += '<div style="color:#2e7d32;font-weight:600">' + icon("circle-check-big") + " " +
+            json.creados + " creado(s), " + json.actualizados + " actualizado(s)</div>";
+        if (sinFoto.length) {
+            log += '<div style="color:#e65100;margin-top:8px">' + icon("triangle-alert") + " " + sinFoto.length +
+                " sin foto en Manager — cargarla a mano:</div>" +
+                '<div style="font-size:11px;color:var(--muted)">' + sinFoto.map(esc).join(", ") + "</div>";
+        }
+        if (noEncontrados.length) {
+            log += '<div style="color:#c62828;margin-top:8px">' + icon("triangle-alert") + " " + noEncontrados.length +
+                " no encontrado(s) en Manager:</div>" +
+                '<div style="font-size:11px;color:var(--muted)">' + noEncontrados.map(esc).join(", ") + "</div>";
+        }
+        if (errores.length) {
+            log += '<div style="color:#c62828;margin-top:8px">' + icon("triangle-alert") + " " + errores.length + " error(es) al guardar:</div>" +
+                '<div style="font-size:11px;color:var(--muted)">' + errores.map((e) => esc(e.codigo) + " (" + esc(e.motivo) + ")").join(", ") + "</div>";
+        }
+        log += "</div>";
+        document.getElementById("importSkuPreviewWrap").innerHTML = log;
+        document.getElementById("importSkuProgress").innerHTML = "";
+        btn.style.display = "none";
+
+        toast(json.creados + " creado(s), " + json.actualizados + " actualizado(s)", (noEncontrados.length || sinFoto.length || errores.length) ? "#e65100" : undefined);
+        await loadPreventas();
+        await loadProducts();
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "Confirmar importación";
+    }
+}
+
 // ── DESHACER IMPORTACIÓN ──────────────────────────────────────────────────────
 
 function showUndoBanner(import_id, imported, updated) {

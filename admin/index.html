@@ -524,6 +524,17 @@
                                     <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M8 13h2"/><path d="M14 13h2"/><path d="M8 17h2"/><path d="M14 17h2"/></svg> Importar Excel
                                 </button>
                             </div>
+                            <div class="config-box" data-keywords="importar codigo sku manager autocompletar foto precio descripcion preventa">
+                                <h3><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> Importar por código</h3>
+                                <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
+                                    Pegá una lista de códigos y elegí una preventa — el resto (descripción,
+                                    categoría, precio mayorista, código de barras y foto) se completa solo
+                                    desde Manager2Max. Ideal para altas rápidas sin tipear nada a mano.
+                                </p>
+                                <button class="btn" style="background:#0d6efd;color:#fff" onclick="openImportSkuModal()">
+                                    <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> Importar por código
+                                </button>
+                            </div>
                             <div class="config-box" data-keywords="descargar plantilla excel encabezados vacía">
                                 <h3><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg> Descargar plantilla</h3>
                                 <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
@@ -1382,6 +1393,41 @@
                     </div>
 
                     <!-- MODAL PRODUCTOS DE UNA PREVENTA -->
+                    <!-- MODAL IMPORTAR POR CÓDIGO (autocompletar desde Manager) -->
+                    <div class="modal-bg" id="importSkuModalBg">
+                        <div class="modal" style="max-width: 760px; width: 95%">
+                            <div class="modal-head">
+                                <h2><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> Importar por código</h2>
+                                <button class="modal-close" onclick="closeImportSkuModal()"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+                            </div>
+                            <div style="padding: 20px 24px">
+                                <div id="importSkuStep1">
+                                    <div class="field">
+                                        <label>Códigos (uno por línea, o separados por coma/espacio)</label>
+                                        <textarea id="importSkuCodigos" rows="6" placeholder="41736&#10;33020&#10;..."></textarea>
+                                    </div>
+                                    <div class="field">
+                                        <label>Preventa para todo el lote *</label>
+                                        <select id="importSkuPreventa">
+                                            <option value="">— Seleccioná —</option>
+                                        </select>
+                                        <div class="field-hint">Todos los productos de este lote quedan asignados a esta preventa.</div>
+                                    </div>
+                                    <button class="btn btn-primary" onclick="iniciarBusquedaSku()">Buscar en Manager</button>
+                                </div>
+
+                                <div id="importSkuStep2" style="display: none">
+                                    <div id="importSkuProgress"></div>
+                                    <div id="importSkuPreviewWrap"></div>
+                                    <div class="modal-foot">
+                                        <button class="btn" style="background: #eee" onclick="closeImportSkuModal()">Cerrar</button>
+                                        <button class="btn btn-primary" id="btnImportSkuConfirm" disabled onclick="confirmarImportSku()">Confirmar importación</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="modal-bg" id="prevProductosModalBg">
                         <div class="modal" style="max-width: 640px">
                             <h2 id="prevProdModalTitle">Productos de la preventa</h2>
