@@ -968,8 +968,15 @@ function openPrevModal(id) {
     document.getElementById("prevEditMostrarStock").checked = pv.mostrar_stock == 1;
     document.getElementById("prevEditImagen").value = "";
     var cur = document.getElementById("prevImgCurrent");
-    if (pv.imagen) { cur.src = "../" + pv.imagen + "?v=" + Date.now(); cur.style.display = "block"; }
-    else cur.style.display = "none";
+    var lbl = document.getElementById("prevImgLabelText");
+    if (pv.imagen) {
+        cur.src = "../" + pv.imagen + "?v=" + Date.now();
+        cur.style.display = "block";
+        lbl.innerHTML = icon("camera") + " Cambiar imagen<br><small>JPG, PNG o WebP</small>";
+    } else {
+        cur.style.display = "none";
+        lbl.innerHTML = icon("camera") + " Hacé clic o arrastrá una imagen<br><small>JPG, PNG o WebP</small>";
+    }
     document.getElementById("prevModalBg").classList.add("open");
 }
 function closePrevModal() {
@@ -983,6 +990,7 @@ function previewPrevImg(input) {
         var cur = document.getElementById("prevImgCurrent");
         cur.src = e.target.result;
         cur.style.display = "block";
+        document.getElementById("prevImgLabelText").textContent = "✓ " + pendingPrevFile.name;
     };
     reader.readAsDataURL(pendingPrevFile);
 }
@@ -1265,6 +1273,16 @@ function esc(s) {
     return String(s || "")
         .replace(/"/g, "&quot;")
         .replace(/</g, "&lt;");
+}
+
+// pedido_items.colores_detalle: JSON {"Negro":2,"Blanco":1} o null si el
+// producto no maneja colores. Devuelve "Negro: 2 · Blanco: 1" o "".
+function formatColoresDetalle(json) {
+    if (!json) return "";
+    var obj;
+    try { obj = JSON.parse(json); } catch (e) { return ""; }
+    var partes = Object.keys(obj).map(function (k) { return esc(k) + ": " + obj[k]; });
+    return partes.join(" · ");
 }
 
 function renderTable(list) {
@@ -2377,6 +2395,9 @@ async function openPedidoModal(id) {
             item.codigo +
             "</code></td><td>" +
             item.descripcion +
+            (item.colores_detalle
+                ? '<div style="font-size:11px;color:var(--muted)">' + formatColoresDetalle(item.colores_detalle) + "</div>"
+                : "") +
             '</td><td style="text-align:center">' +
             item.cantidad +
             "</td><td>" +
@@ -2518,7 +2539,11 @@ function imprimirPedido() {
         grupos[nombreGrupo].forEach(function (item) {
             html += "<tr>";
             html += '<td style="white-space:nowrap">' + item.codigo + "</td>";
-            html += '<td class="desc">' + item.descripcion + "</td>";
+            html += '<td class="desc">' + item.descripcion +
+                (item.colores_detalle
+                    ? '<div style="font-size:10px;color:#666;margin-top:2px">' + formatColoresDetalle(item.colores_detalle) + "</div>"
+                    : "") +
+                "</td>";
             html +=
                 '<td style="text-align:center;font-weight:bold">' +
                 item.cantidad +
