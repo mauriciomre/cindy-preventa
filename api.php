@@ -41,7 +41,23 @@ function checkAuth($data) {
 // para productos nuevos). Solo lectura en todos los casos, nunca escribe.
 define('MANAGER_LISTA_MAYORISTA', 2); // "Mayorista" (real de Cindy, no la de Travel Blue)
 
+// El token de Manager dura 60 min (ver Mi-Cerebro/conocimiento/manager2max.md).
+// Cada request PHP es un proceso nuevo, así que sin esto un lote de N códigos
+// (ej. "Importar por código") hacía N logins de más — uno por código, aunque
+// el token del código anterior siguiera vigente. Se cachea en la tabla
+// `config` (clave 'manager_token', valor JSON {token, exp}) para que todas
+// las llamadas dentro de la ventana de 60 min reusen el mismo token.
 function manager_login() {
+    global $db;
+    $r = $db->query("SELECT valor FROM config WHERE clave='manager_token' LIMIT 1");
+    $row = $r ? $r->fetch_assoc() : null;
+    if ($row) {
+        $cache = json_decode($row['valor'], true);
+        if ($cache && !empty($cache['token']) && ($cache['exp'] ?? 0) > time() + 60) {
+            return $cache['token'];
+        }
+    }
+
     $ch = curl_init(MANAGER_API_URL . '/Api/Login/LoginUsuarioEmpresa');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_POST, true);
@@ -59,7 +75,14 @@ function manager_login() {
     if ($err) throw new Exception("Login Manager falló: $err");
     $data = json_decode($resp, true);
     if (empty($data['Token'])) throw new Exception("Login Manager sin token: " . ($data['ErrMessage'] ?? 'desconocido'));
-    return $data['Token'];
+
+    $token = $data['Token'];
+    $valor = json_encode(['token' => $token, 'exp' => time() + 55 * 60]);
+    $stmt = $db->prepare("INSERT INTO config (clave, valor) VALUES ('manager_token', ?) ON DUPLICATE KEY UPDATE valor=?");
+    $stmt->bind_param('ss', $valor, $valor);
+    $stmt->execute();
+
+    return $token;
 }
 
 // Llamada cruda: devuelve Data tal cual la responde Manager, sin asumir el
@@ -289,6 +312,14 @@ function setupDB($db) {
         clave VARCHAR(50) PRIMARY KEY,
         valor VARCHAR(255) NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // VARCHAR(255) se quedaba corto para cachear el token de Manager (JWT de
+    // ~670 caracteres) — el INSERT fallaba en silencio y nunca cacheaba nada.
+    $colCheck = $db->query("SHOW COLUMNS FROM config LIKE 'valor'");
+    $colInfo = $colCheck ? $colCheck->fetch_assoc() : null;
+    if ($colInfo && stripos($colInfo['Type'], 'varchar') !== false) {
+        $db->query("ALTER TABLE config MODIFY valor TEXT NOT NULL");
+    }
 
     $db->query("CREATE TABLE IF NOT EXISTS colores (
         id INT AUTO_INCREMENT PRIMARY KEY,
