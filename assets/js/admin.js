@@ -1827,7 +1827,7 @@ async function buscarEnManager() {
     }
     var btn = document.getElementById("btnBuscarManager");
     btn.disabled = true;
-    var textoOriginal = btn.textContent;
+    var htmlOriginal = btn.innerHTML;
     btn.textContent = "Buscando...";
     hint.textContent = "";
     try {
@@ -1879,7 +1879,7 @@ async function buscarEnManager() {
         hint.textContent = "No se pudo conectar con Manager";
     } finally {
         btn.disabled = false;
-        btn.textContent = textoOriginal;
+        btn.innerHTML = htmlOriginal;
     }
 }
 
