@@ -374,6 +374,16 @@ header {
     max-width: 1200px
 }
 
+/* Las secciones con tablas anchas (muchas columnas) necesitan más espacio
+   que el resto (formularios/tarjetas, que se leen mejor angostos) — sin
+   este override, en pantallas grandes la tabla generaba scroll horizontal
+   innecesario mientras quedaba espacio libre sin usar a la derecha. */
+#secProductos.wrap,
+#secPedidos.wrap,
+#secClientes.wrap {
+    max-width: none
+}
+
 .section {
     display: none
 }
