@@ -468,8 +468,8 @@ function colorQtyRowsHTML(p) {
         var q = getColorQty(p.CODIGO, c.nombre);
         html +=
             '<div class="color-qty-row">' +
-            '<span class="color-dot" style="background:' + c.hex + '"></span>' +
-            '<span class="color-qty-name">' + esc(c.nombre) + '</span>' +
+            '<span class="color-qty-info"><span class="color-dot" style="background:' + c.hex + '"></span>' +
+            '<span class="color-qty-name">' + esc(c.nombre) + '</span></span>' +
             '<div class="qty qty-sm">' +
             '<button class="qb" onclick="chgColorQty(\'' + p.CODIGO + "'," + idx + ',-1)">−</button>' +
             '<input class="qn" type="number" id="cq_' + sid(p.CODIGO) + '_' + idx +
