@@ -40,7 +40,6 @@ function checkAuth($data) {
 // de la base real que no se autoactualiza, los datos pueden estar desfasados
 // respecto al Manager de producción — igual sirve para no tipear a mano).
 define('MANAGER_LISTA_MAYORISTA', 2); // "Mayorista" (real de Cindy, no la de Travel Blue)
-define('MANAGER_LISTA_PVP', 1);       // "Público General"
 
 function manager_login() {
     $ch = curl_init(MANAGER_API_URL . '/Api/Login/LoginUsuarioEmpresa');
@@ -436,7 +435,6 @@ switch ($action) {
                     'categoria' => $categoria !== '' ? mb_strtoupper($categoria, 'UTF-8') : '',
                     'marca' => trim($articulo['Marca'] ?? ''),
                     'precio_mayorista' => manager_precio_por_codigo($token, $codigo, MANAGER_LISTA_MAYORISTA),
-                    'pvp' => manager_precio_por_codigo($token, $codigo, MANAGER_LISTA_PVP),
                 ],
             ]);
         } catch (Exception $e) {
@@ -448,14 +446,13 @@ switch ($action) {
     case 'producto':
         $data = json_decode(file_get_contents('php://input'), true);
         checkAuth($data);
-        $pvp = isset($data['pvp']) && $data['pvp'] !== '' ? floatval($data['pvp']) : null;
         $orden = intval($data['orden'] ?? 0);
         $multiplo = max(1, intval($data['multiplo'] ?? 1));
         $codigoBarras = isset($data['codigo_barras']) && $data['codigo_barras'] !== '' ? trim($data['codigo_barras']) : null;
         $stockInicial = max(0, intval($data['stock_preventa'] ?? 0));
         $preventaId = isset($data['preventa_id']) && $data['preventa_id'] !== '' ? intval($data['preventa_id']) : null;
-        $stmt = $db->prepare("INSERT INTO productos (codigo,descripcion,categoria,precio_mayorista,pvp,foto,estado,orden,multiplo,codigo_barras,stock_preventa,stock_preventa_inicial,preventa_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
-        $stmt->bind_param('sssddssiisiii', $data['codigo'], $data['descripcion'], $data['categoria'], $data['precio_mayorista'], $pvp, $data['foto'], $data['estado'], $orden, $multiplo, $codigoBarras, $stockInicial, $stockInicial, $preventaId);
+        $stmt = $db->prepare("INSERT INTO productos (codigo,descripcion,categoria,precio_mayorista,foto,estado,orden,multiplo,codigo_barras,stock_preventa,stock_preventa_inicial,preventa_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
+        $stmt->bind_param('sssdssiisiii', $data['codigo'], $data['descripcion'], $data['categoria'], $data['precio_mayorista'], $data['foto'], $data['estado'], $orden, $multiplo, $codigoBarras, $stockInicial, $stockInicial, $preventaId);
         if ($stmt->execute()) {
             $newId = $db->insert_id;
             $colores = $data['colores'] ?? [];
@@ -473,7 +470,6 @@ switch ($action) {
         $id = intval($_GET['id'] ?? 0);
         $data = json_decode(file_get_contents('php://input'), true);
         checkAuth($data);
-        $pvp = isset($data['pvp']) && $data['pvp'] !== '' ? floatval($data['pvp']) : null;
         $multiplo = max(1, intval($data['multiplo'] ?? 1));
         $codigoBarras = isset($data['codigo_barras']) && $data['codigo_barras'] !== '' ? trim($data['codigo_barras']) : null;
         $ordenActual = $db->query("SELECT orden FROM productos WHERE id=$id")->fetch_assoc();
@@ -483,8 +479,8 @@ switch ($action) {
         // además lleva el acumulado en stock_preventa_inicial).
         $stock = max(0, intval($data['stock_preventa'] ?? 0));
         $preventaId = isset($data['preventa_id']) && $data['preventa_id'] !== '' ? intval($data['preventa_id']) : null;
-        $stmt = $db->prepare("UPDATE productos SET codigo=?,descripcion=?,categoria=?,precio_mayorista=?,pvp=?,foto=?,estado=?,orden=?,multiplo=?,codigo_barras=?,stock_preventa=?,preventa_id=?,updated_at=NOW() WHERE id=?");
-        $stmt->bind_param('sssddssiisiii', $data['codigo'], $data['descripcion'], $data['categoria'], $data['precio_mayorista'], $pvp, $data['foto'], $data['estado'], $orden, $multiplo, $codigoBarras, $stock, $preventaId, $id);
+        $stmt = $db->prepare("UPDATE productos SET codigo=?,descripcion=?,categoria=?,precio_mayorista=?,foto=?,estado=?,orden=?,multiplo=?,codigo_barras=?,stock_preventa=?,preventa_id=?,updated_at=NOW() WHERE id=?");
+        $stmt->bind_param('sssdssiisiii', $data['codigo'], $data['descripcion'], $data['categoria'], $data['precio_mayorista'], $data['foto'], $data['estado'], $orden, $multiplo, $codigoBarras, $stock, $preventaId, $id);
         if ($stmt->execute()) {
             if (isset($data['colores'])) {
                 $delStmt = $db->prepare("DELETE FROM producto_colores WHERE producto_id=?");
@@ -581,13 +577,12 @@ switch ($action) {
             $stmt->execute();
         }
         foreach ($productos as $p) {
-            $pvp = isset($p['PVP']) && $p['PVP'] !== '' ? floatval($p['PVP']) : null;
             $foto = $p['FOTO'] ?? null; $o = 0; $multiplo = 1;
             $estado = strtoupper($p['ESTADO'] ?? 'DISPONIBLE');
             $codigoBarras = isset($p['CODIGO_BARRAS']) && $p['CODIGO_BARRAS'] !== '' ? trim($p['CODIGO_BARRAS']) : null;
             $stock = max(0, intval($p['STOCK_PREVENTA'] ?? 0));
-            $stmt = $db->prepare("INSERT IGNORE INTO productos (codigo,descripcion,categoria,precio_mayorista,pvp,foto,estado,orden,multiplo,codigo_barras,stock_preventa,stock_preventa_inicial) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
-            $stmt->bind_param('sssddssiisii', $p['CODIGO'], $p['DESCRIPCION'], $p['CATEGORIA'], $p['PRECIO_MAYORISTA'], $pvp, $foto, $estado, $o, $multiplo, $codigoBarras, $stock, $stock);
+            $stmt = $db->prepare("INSERT IGNORE INTO productos (codigo,descripcion,categoria,precio_mayorista,foto,estado,orden,multiplo,codigo_barras,stock_preventa,stock_preventa_inicial) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
+            $stmt->bind_param('sssdssiisii', $p['CODIGO'], $p['DESCRIPCION'], $p['CATEGORIA'], $p['PRECIO_MAYORISTA'], $foto, $estado, $o, $multiplo, $codigoBarras, $stock, $stock);
             if ($stmt->execute()) $imported++;
             else $errors[] = $p['CODIGO'];
         }
@@ -617,7 +612,7 @@ switch ($action) {
             $codigo = trim($p['CODIGO'] ?? '');
             if (!$codigo) { $errors[] = ['codigo' => '(vacío)', 'motivo' => 'CODIGO obligatorio']; continue; }
 
-            $chk = $db->prepare("SELECT codigo,descripcion,categoria,precio_mayorista,pvp,estado,codigo_barras FROM productos WHERE codigo=?");
+            $chk = $db->prepare("SELECT codigo,descripcion,categoria,precio_mayorista,estado,codigo_barras FROM productos WHERE codigo=?");
             $chk->bind_param('s', $codigo); $chk->execute();
             $existing = $chk->get_result()->fetch_assoc();
 
@@ -635,7 +630,6 @@ switch ($action) {
                 if (isset($p['DESCRIPCION'])    && $p['DESCRIPCION']    !== '') { $sets[] = 'descripcion=?';      $params[] = trim($p['DESCRIPCION']);           $types .= 's'; }
                 if (isset($p['CATEGORIA'])      && $p['CATEGORIA']      !== '') { $sets[] = 'categoria=?';        $params[] = trim($p['CATEGORIA']);             $types .= 's'; }
                 if (isset($p['PRECIO_MAYORISTA']) && $p['PRECIO_MAYORISTA'] !== '') { $sets[] = 'precio_mayorista=?'; $params[] = floatval($p['PRECIO_MAYORISTA']); $types .= 'd'; }
-                if (isset($p['PVP'])            && $p['PVP']            !== '') { $sets[] = 'pvp=?';              $params[] = floatval($p['PVP']);               $types .= 'd'; }
                 if (isset($p['ESTADO'])         && $p['ESTADO']         !== '') { $sets[] = 'estado=?';           $params[] = strtoupper(trim($p['ESTADO']));    $types .= 's'; }
                 if (isset($p['CODIGO_BARRAS'])  && $p['CODIGO_BARRAS']  !== '') { $sets[] = 'codigo_barras=?';    $params[] = trim($p['CODIGO_BARRAS']);          $types .= 's'; }
                 if (isset($p['PREVENTA'])       && $p['PREVENTA']       !== '') { $sets[] = 'preventa_id=?';      $params[] = resolver_preventa_id($db, $p['PREVENTA']); $types .= 'i'; }
@@ -653,15 +647,14 @@ switch ($action) {
                 $desc   = trim($p['DESCRIPCION'] ?? '');
                 $cat    = trim($p['CATEGORIA']   ?? '');
                 $may    = floatval($p['PRECIO_MAYORISTA'] ?? 0);
-                $pvp    = isset($p['PVP']) && $p['PVP'] !== '' ? floatval($p['PVP']) : null;
                 $estado = strtoupper(trim($p['ESTADO'] ?? 'DISPONIBLE'));
                 $cb     = isset($p['CODIGO_BARRAS']) && $p['CODIGO_BARRAS'] !== '' ? trim($p['CODIGO_BARRAS']) : null;
                 $stock  = max(0, intval($p['STOCK_PREVENTA'] ?? 0));
                 $preventaId = resolver_preventa_id($db, $p['PREVENTA'] ?? '');
                 if (!$desc || !$cat) { $errors[] = ['codigo' => $codigo, 'motivo' => 'DESCRIPCION y CATEGORIA obligatorias para producto nuevo']; continue; }
                 $o = 0; $multiplo = 1;
-                $stmt = $db->prepare("INSERT INTO productos (codigo,descripcion,categoria,precio_mayorista,pvp,estado,orden,multiplo,codigo_barras,stock_preventa,stock_preventa_inicial,preventa_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
-                $stmt->bind_param('sssddsiisiii', $codigo, $desc, $cat, $may, $pvp, $estado, $o, $multiplo, $cb, $stock, $stock, $preventaId);
+                $stmt = $db->prepare("INSERT INTO productos (codigo,descripcion,categoria,precio_mayorista,estado,orden,multiplo,codigo_barras,stock_preventa,stock_preventa_inicial,preventa_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
+                $stmt->bind_param('sssdsiisiii', $codigo, $desc, $cat, $may, $estado, $o, $multiplo, $cb, $stock, $stock, $preventaId);
                 if ($stmt->execute()) $imported++;
                 else $errors[] = ['codigo' => $codigo, 'motivo' => $db->error];
             }
@@ -682,7 +675,7 @@ switch ($action) {
         if (!$codigos) { echo json_encode(['ok' => true, 'productos' => (object)[]]); break; }
         $ph = implode(',', array_fill(0, count($codigos), '?'));
         $types = str_repeat('s', count($codigos));
-        $stmt = $db->prepare("SELECT codigo, descripcion, categoria, precio_mayorista, pvp, estado, codigo_barras FROM productos WHERE codigo IN ($ph)");
+        $stmt = $db->prepare("SELECT codigo, descripcion, categoria, precio_mayorista, estado, codigo_barras FROM productos WHERE codigo IN ($ph)");
         $stmt->bind_param($types, ...$codigos);
         $stmt->execute();
         $res = $stmt->get_result();
@@ -717,14 +710,13 @@ switch ($action) {
                     $desc  = $prev['descripcion']     ?? '';
                     $cat   = $prev['categoria']       ?? '';
                     $pmay  = floatval($prev['precio_mayorista'] ?? 0);
-                    $pvp   = isset($prev['pvp']) && $prev['pvp'] !== null ? floatval($prev['pvp']) : null;
                     $est   = $prev['estado']          ?? 'DISPONIBLE';
                     $cb    = isset($prev['codigo_barras']) && $prev['codigo_barras'] !== null ? strval($prev['codigo_barras']) : null;
                     $cod   = $row['codigo'];
 
-                    $stmt = $db->prepare("UPDATE productos SET descripcion=?,categoria=?,precio_mayorista=?,pvp=?,estado=?,codigo_barras=? WHERE codigo=?");
+                    $stmt = $db->prepare("UPDATE productos SET descripcion=?,categoria=?,precio_mayorista=?,estado=?,codigo_barras=? WHERE codigo=?");
                     if (!$stmt) throw new Exception("prepare UPDATE falló para " . $cod . ": " . $db->error);
-                    $stmt->bind_param('ssddsss', $desc, $cat, $pmay, $pvp, $est, $cb, $cod);
+                    $stmt->bind_param('ssdsss', $desc, $cat, $pmay, $est, $cb, $cod);
                     if ($stmt->execute()) $restored++;
                     else $errors[] = ['codigo' => $cod, 'motivo' => $stmt->error];
                     $stmt->close();
@@ -871,6 +863,55 @@ switch ($action) {
             $stmt->execute();
         }
         echo json_encode(['ok' => true]);
+        break;
+
+    // Asigna (o desasigna, si preventa_id viene vacío) UN producto ya cargado
+    // a una preventa. No toca ningún otro campo del producto — a propósito
+    // separado de "editar" para no arriesgar pisar datos con un payload
+    // parcial. Usado desde el modal "Productos" de cada preventa.
+    case 'producto_asignar_preventa':
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $id = intval($_GET['id'] ?? 0);
+        if (!$id) { http_response_code(400); die(json_encode(['error' => 'id requerido'])); }
+        $preventaId = isset($data['preventa_id']) && $data['preventa_id'] !== '' ? intval($data['preventa_id']) : null;
+        $stmt = $db->prepare("UPDATE productos SET preventa_id=? WHERE id=?");
+        $stmt->bind_param('ii', $preventaId, $id);
+        if ($stmt->execute()) echo json_encode(['ok' => true]);
+        else { http_response_code(400); echo json_encode(['error' => $db->error]); }
+        break;
+
+    // Asigna en bloque una lista de códigos YA CARGADOS a una preventa — no
+    // busca nada en Manager, solo reasigna preventa_id de productos
+    // existentes. Si un código ya pertenece a otra preventa, se reasigna sin
+    // preguntar (decisión de Mauricio, 31/08/2026) — se devuelve de dónde
+    // venía cada uno para armar el log en el frontend. Los códigos que no
+    // existen en la tabla productos se listan aparte, sin crear nada (eso lo
+    // hace la herramienta separada "Importar por código" contra Manager).
+    case 'preventa_asignar_lote':
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $preventaId = intval($data['preventa_id'] ?? 0);
+        if (!$preventaId) { http_response_code(400); die(json_encode(['error' => 'preventa_id requerido'])); }
+        $codigos = array_values(array_unique(array_filter(array_map('trim', $data['codigos'] ?? []), 'strlen')));
+        if (!$codigos) { http_response_code(400); die(json_encode(['error' => 'Sin códigos'])); }
+
+        $asignados = []; $noEncontrados = [];
+        foreach ($codigos as $codigo) {
+            $chk = $db->prepare("SELECT p.id, pv.nombre as preventa_anterior
+                FROM productos p LEFT JOIN preventas pv ON pv.id = p.preventa_id
+                WHERE p.codigo = ?");
+            $chk->bind_param('s', $codigo);
+            $chk->execute();
+            $row = $chk->get_result()->fetch_assoc();
+            if (!$row) { $noEncontrados[] = $codigo; continue; }
+
+            $upd = $db->prepare("UPDATE productos SET preventa_id=? WHERE id=?");
+            $upd->bind_param('ii', $preventaId, $row['id']);
+            $upd->execute();
+            $asignados[] = ['codigo' => $codigo, 'preventa_anterior' => $row['preventa_anterior']];
+        }
+        echo json_encode(['ok' => true, 'asignados' => $asignados, 'no_encontrados' => $noEncontrados]);
         break;
 
     // Búsqueda de la foto de un producto en Manager2Max, por código, para

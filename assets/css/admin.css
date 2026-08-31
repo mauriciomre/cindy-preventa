@@ -660,6 +660,45 @@ tr:hover td.sticky-col {
     color: #ccc
 }
 
+/* Dropdown de sugerencias del buscador "agregar producto a preventa" —
+   ancla dentro de .field (ya tiene position:relative). */
+.prev-prod-suggest {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    background: #fff;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    margin-top: 4px;
+    max-height: 220px;
+    overflow-y: auto;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, .12)
+}
+.prev-prod-suggest-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    border-bottom: 1px solid #f0f0f0
+}
+.prev-prod-suggest-item:last-child {
+    border-bottom: none
+}
+.prev-prod-suggest-item:hover {
+    background: var(--pale)
+}
+.prev-prod-suggest-item .code {
+    font-family: monospace;
+    color: var(--muted);
+    margin-right: 6px
+}
+.prev-prod-suggest-empty {
+    padding: 10px 12px;
+    font-size: 12px;
+    color: var(--muted)
+}
+
 /* Toggle activa/inactiva de preventas — palanca, no checkbox, para que se
    lea claro que es la llave de visibilidad pública del catálogo. */
 .switch {

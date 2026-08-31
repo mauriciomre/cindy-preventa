@@ -383,7 +383,6 @@
                                             <th>Descripción</th>
                                             <th class="col-hide-3">Categoría</th>
                                             <th>Mayorista</th>
-                                            <th class="col-hide-2">PVP</th>
                                             <th>Estado</th>
                                             <th class="col-hide-1">Múltiplo</th>
                                             <th>Acciones</th>
@@ -518,7 +517,7 @@
                                 <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
                                     Cargá un archivo Excel para actualizar o agregar productos al catálogo.
                                     Columnas soportadas: <strong>CODIGO</strong> (obligatorio), CODIGO_BARRAS,
-                                    DESCRIPCION, CATEGORIA, PRECIO_MAYORISTA, PVP, ESTADO, PREVENTA (nombre de una
+                                    DESCRIPCION, CATEGORIA, PRECIO_MAYORISTA, ESTADO, PREVENTA (nombre de una
                                     preventa ya creada — si no matchea ninguna, el producto queda sin preventa).
                                 </p>
                                 <button class="btn" style="background:#198754;color:#fff" onclick="openImportModal()">
@@ -1051,15 +1050,9 @@
                                 </select>
                                 <div class="field-hint" id="preventaHint"></div>
                             </div>
-                            <div class="row2">
-                                <div class="field">
-                                    <label>Precio Mayorista ($) *</label
-                                    ><input id="fMay" type="number" />
-                                </div>
-                                <div class="field">
-                                    <label>PVP Sugerido ($) *</label
-                                    ><input id="fPvp" type="number" />
-                                </div>
+                            <div class="field">
+                                <label>Precio Mayorista ($) *</label
+                                ><input id="fMay" type="number" />
                             </div>
                             <div class="row2">
                                 <div class="field">
@@ -1383,6 +1376,60 @@
                         </div>
                     </div>
 
+                    <!-- MODAL PRODUCTOS DE UNA PREVENTA -->
+                    <div class="modal-bg" id="prevProductosModalBg">
+                        <div class="modal" style="max-width: 640px">
+                            <h2 id="prevProdModalTitle">Productos de la preventa</h2>
+                            <input type="hidden" id="prevProdPreventaId" />
+
+                            <div class="field">
+                                <label>Agregar producto</label>
+                                <input
+                                    id="prevProdBuscar"
+                                    placeholder="Buscar por código o descripción..."
+                                    autocomplete="off"
+                                    oninput="buscarProductoParaPreventa(this)"
+                                    onfocus="buscarProductoParaPreventa(this)"
+                                />
+                                <div id="prevProdBuscarResultados" class="prev-prod-suggest" style="display:none"></div>
+                            </div>
+
+                            <div class="field">
+                                <label>Asignar varios pegando una lista de códigos</label>
+                                <textarea
+                                    id="prevProdLoteSkus"
+                                    rows="3"
+                                    placeholder="Un código por línea (o separados por coma / espacio)"
+                                ></textarea>
+                                <button class="btn btn-primary" style="margin-top:6px" onclick="asignarLotePreventa(this)">
+                                    Asignar lista
+                                </button>
+                                <div id="prevProdLoteLog"></div>
+                            </div>
+
+                            <div class="table-wrap">
+                                <div class="table-scroll">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>Código</th>
+                                                <th>Descripción</th>
+                                                <th class="col-hide-1">Categoría</th>
+                                                <th>Stock preventa</th>
+                                                <th>Acciones</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="prevProdTbody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <div class="modal-foot">
+                                <button class="btn btn-primary" onclick="closePrevProductosModal()">Cerrar</button>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="modal-bg" id="catModalBg">
                         <div class="modal" style="max-width: 360px">
                             <h2>Editar categoría</h2>
@@ -1577,7 +1624,6 @@
                             <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" name="pCol" value="descripcion" checked> Descripción</label>
                             <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" name="pCol" value="estado" checked> Estado</label>
                             <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" name="pCol" value="precio_mayorista" checked> Precio mayorista</label>
-                            <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" name="pCol" value="pvp" checked> PVP</label>
                             <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" name="pCol" value="cantidad" checked> Cantidad</label>
                         </div>
                     </div>

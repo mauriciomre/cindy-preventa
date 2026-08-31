@@ -117,7 +117,6 @@ function start() {
                     DESCRIPCION: p.descripcion,
                     CATEGORIA: p.categoria,
                     PRECIO_MAYORISTA: p.precio_mayorista,
-                    PVP: p.pvp,
                     FOTO: p.foto,
                     ESTADO: p.estado,
                     ORDEN: p.orden,
@@ -580,13 +579,7 @@ function cardHTML(p) {
     html +=
         '<div class="prices"><div class="price">' +
         fmt(p.PRECIO_MAYORISTA) +
-        ' <span class="iva">+ IVA</span></div>';
-    if (p.PVP)
-        html +=
-            '<div class="pvp">PVP sugerido<br><strong>' +
-            fmt(p.PVP) +
-            ' <span class="iva">+ IVA</span></strong></div>';
-    html += "</div>";
+        ' <span class="iva">+ IVA</span></div></div>';
     if (!sold) {
         html += waitlist
             ? '<div class="stock-hint wait">Sin stock · sujeto a confirmar</div>'
@@ -656,7 +649,7 @@ function renderList(list, el, sortBar) {
     var useGroups = activeCat === "TODOS" && sortMode === "default";
     var html = sortBar + '<div class="list-wrap"><table class="list-table">';
     html +=
-        "<thead><tr><th>Img</th><th>Código</th><th>Descripción</th><th>Precio May.</th><th>PVP</th><th>Cantidad</th><th></th></tr></thead><tbody>";
+        "<thead><tr><th>Img</th><th>Código</th><th>Descripción</th><th>Precio May.</th><th>Cantidad</th><th></th></tr></thead><tbody>";
     if (useGroups) {
         var bycat = {},
             order = [];
@@ -818,10 +811,6 @@ function listRowHTML(p) {
         '<td style="font-weight:800;color:var(--blue)">' +
         fmt(p.PRECIO_MAYORISTA) +
         ' <span class="iva">+ IVA</span></td>';
-    html +=
-        '<td style="color:var(--muted)">' +
-        (p.PVP ? fmt(p.PVP) : "—") +
-        "</td>";
     if (sold) {
         html +=
             '<td colspan="2"><span style="color:#aaa;font-size:12px">No disponible</span></td>';
@@ -1587,13 +1576,12 @@ function printNota() {
 
     catsSorted.forEach(function (cat) {
         html += '<div class="cat-title">' + cat + '</div>' +
-            '<table><thead><tr><th style="width:60px">Código</th><th>Descripción</th><th class="precio" style="width:90px">P. Mayorista</th><th class="precio" style="width:80px">PVP</th><th class="cant">Cant.</th></tr></thead><tbody>';
+            '<table><thead><tr><th style="width:60px">Código</th><th>Descripción</th><th class="precio" style="width:90px">P. Mayorista</th><th class="cant">Cant.</th></tr></thead><tbody>';
         cats[cat].prods.forEach(function (p) {
             html += '<tr>' +
                 '<td><code style="font-size:9px">' + p.CODIGO + '</code></td>' +
                 '<td>' + p.DESCRIPCION + '</td>' +
                 '<td class="precio">' + fmt(p.PRECIO_MAYORISTA) + '</td>' +
-                '<td class="precio">' + (p.PVP ? fmt(p.PVP) : "—") + '</td>' +
                 '<td class="cant"></td>' +
                 '</tr>';
         });

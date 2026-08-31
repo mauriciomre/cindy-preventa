@@ -535,16 +535,6 @@ header {
     white-space: nowrap
 }
 
-.pvp {
-    font-size: 11px;
-    color: var(--muted);
-    text-align: right
-}
-
-.pvp strong {
-    color: #1a1a1a
-}
-
 .foot {
     display: flex;
     align-items: center;
@@ -1407,10 +1397,6 @@ header {
 
     .name {
         font-size: 12px
-    }
-
-    .pvp {
-        font-size: 10px
     }
 
     .foot {

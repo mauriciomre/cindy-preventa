@@ -23,7 +23,6 @@ var COLS = [
     { key: "cat", label: "Categoría", default: true },
     { key: "preventa", label: "Preventa", default: true },
     { key: "may", label: "Mayorista", default: true },
-    { key: "pvp", label: "PVP", default: true },
     { key: "estado", label: "Estado", default: true },
     { key: "stock", label: "Stock preventa", default: true },
     { key: "multiplo", label: "Múltiplo", default: true },
@@ -884,7 +883,9 @@ function renderPreventaTable() {
         html += '<td><label class="switch"><input type="checkbox" ' + (pv.activa == 1 ? "checked" : "") +
             ' onchange="togglePreventaActiva(' + pv.id + ',this.checked)"><span class="switch-slider"></span></label></td>';
         html += "<td>" + count + " producto" + (count !== 1 ? "s" : "") + "</td>";
-        html += '<td><div class="actions"><button class="btn btn-edit" onclick="openPrevModal(' + pv.id + ')">' + icon("pencil") + ' Editar</button>';
+        html += '<td><div class="actions">';
+        html += '<button class="btn" style="background:#e3f2fd;color:#0d47a1" onclick="openPrevProductosModal(' + pv.id + ')">' + icon("package") + ' Productos</button>';
+        html += '<button class="btn btn-edit" onclick="openPrevModal(' + pv.id + ')">' + icon("pencil") + ' Editar</button>';
         html += '<button class="btn btn-danger" onclick="eliminarPreventa(' + pv.id + ",'" + esc(pv.nombre) + "'," + count + ')">' + icon("trash-2") + '</button></div></td></tr>';
     });
     document.getElementById("prevTbody").innerHTML =
@@ -1049,6 +1050,159 @@ async function eliminarPreventa(id, nombre, count) {
     }
 }
 
+// ── Gestión de productos de UNA preventa (modal "Productos") ────────────────
+// A diferencia del alta de producto, acá no se toca nada de Manager — solo se
+// reasigna preventa_id de productos que ya existen en la tabla.
+var prevProdCurrentId = null;
+
+function openPrevProductosModal(preventaId) {
+    var pv = allPreventas.find((p) => parseInt(p.id) === parseInt(preventaId));
+    if (!pv) return;
+    prevProdCurrentId = parseInt(preventaId);
+    document.getElementById("prevProdPreventaId").value = prevProdCurrentId;
+    document.getElementById("prevProdModalTitle").textContent = "Productos de \"" + pv.nombre + "\"";
+    document.getElementById("prevProdBuscar").value = "";
+    document.getElementById("prevProdBuscarResultados").style.display = "none";
+    document.getElementById("prevProdLoteSkus").value = "";
+    document.getElementById("prevProdLoteLog").innerHTML = "";
+    renderPrevProdTbody();
+    document.getElementById("prevProductosModalBg").classList.add("open");
+}
+function closePrevProductosModal() {
+    document.getElementById("prevProductosModalBg").classList.remove("open");
+    prevProdCurrentId = null;
+}
+
+function renderPrevProdTbody() {
+    var asignados = allProducts.filter((p) => String(p.preventa_id) === String(prevProdCurrentId));
+    var html = asignados
+        .map(function (p) {
+            return (
+                "<tr><td><code>" + esc(p.codigo) + "</code></td><td>" + esc(p.descripcion) + "</td>" +
+                '<td class="col-hide-1">' + esc(p.categoria) + "</td>" +
+                "<td>" + (p.stock_preventa || 0) + "</td>" +
+                '<td><button class="btn btn-danger" onclick="desasignarProductoDePreventa(' + p.id + ')">' +
+                icon("x") + " Quitar</button></td></tr>"
+            );
+        })
+        .join("");
+    document.getElementById("prevProdTbody").innerHTML =
+        html || '<tr><td colspan="5" style="text-align:center;color:#aaa;padding:16px">Todavía no hay productos asignados</td></tr>';
+}
+
+function buscarProductoParaPreventa(input) {
+    var q = input.value.trim().toLowerCase();
+    var wrap = document.getElementById("prevProdBuscarResultados");
+    if (!q) { wrap.style.display = "none"; wrap.innerHTML = ""; return; }
+    var matches = allProducts
+        .filter((p) => String(p.preventa_id) !== String(prevProdCurrentId))
+        .filter((p) => p.codigo.toLowerCase().includes(q) || (p.descripcion || "").toLowerCase().includes(q))
+        .slice(0, 8);
+    wrap.innerHTML = matches.length
+        ? matches
+              .map(function (p) {
+                  var etiquetaPreventa = p.preventa_id
+                      ? ' <span style="color:var(--muted)">— ya en otra preventa</span>'
+                      : "";
+                  return (
+                      '<div class="prev-prod-suggest-item" onclick="asignarProductoAPreventa(' + p.id + ')">' +
+                      '<span class="code">' + esc(p.codigo) + "</span>" + esc(p.descripcion) + etiquetaPreventa +
+                      "</div>"
+                  );
+              })
+              .join("")
+        : '<div class="prev-prod-suggest-empty">Sin resultados</div>';
+    wrap.style.display = "block";
+}
+
+async function asignarProductoAPreventa(productId) {
+    var res = await fetch(API + "?action=producto_asignar_preventa&id=" + productId, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ _user: authUser, _pass: authPass, preventa_id: prevProdCurrentId }),
+    });
+    var json = await res.json();
+    if (!json.ok) { toast("Error: " + (json.error || "desconocido"), "#c62828"); return; }
+    var p = allProducts.find((x) => x.id === productId);
+    if (p) p.preventa_id = prevProdCurrentId;
+    document.getElementById("prevProdBuscar").value = "";
+    document.getElementById("prevProdBuscarResultados").style.display = "none";
+    renderPrevProdTbody();
+    renderPreventaTable();
+    toast("Producto agregado a la preventa");
+}
+
+async function desasignarProductoDePreventa(productId) {
+    var res = await fetch(API + "?action=producto_asignar_preventa&id=" + productId, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ _user: authUser, _pass: authPass, preventa_id: "" }),
+    });
+    var json = await res.json();
+    if (!json.ok) { toast("Error: " + (json.error || "desconocido"), "#c62828"); return; }
+    var p = allProducts.find((x) => x.id === productId);
+    if (p) p.preventa_id = null;
+    renderPrevProdTbody();
+    renderPreventaTable();
+    toast("Producto quitado de la preventa");
+}
+
+async function asignarLotePreventa(btn) {
+    var raw = document.getElementById("prevProdLoteSkus").value.trim();
+    if (!raw) { toast("Pegá al menos un código", "#c62828"); return; }
+    var codigos = raw.split(/[\s,]+/).map((c) => c.trim()).filter(Boolean);
+    if (btn) { btn.disabled = true; btn.textContent = "Asignando..."; }
+    try {
+        var res = await fetch(API + "?action=preventa_asignar_lote", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ _user: authUser, _pass: authPass, preventa_id: prevProdCurrentId, codigos: codigos }),
+        });
+        var json = await res.json();
+        if (!json.ok) { toast("Error: " + (json.error || "desconocido"), "#c62828"); return; }
+
+        var asignados = json.asignados || [];
+        var noEncontrados = json.no_encontrados || [];
+        var reasignados = asignados.filter(function (a) { return a.preventa_anterior; });
+
+        var log = "";
+        if (asignados.length) {
+            log += '<div style="color:#2e7d32;font-size:12px;margin-top:8px">' + icon("circle-check-big") + " " +
+                asignados.length + " producto(s) asignado(s)" +
+                (reasignados.length ? " (" + reasignados.length + " reasignado(s) desde otra preventa)" : "") +
+                "</div>";
+        }
+        if (reasignados.length) {
+            log += '<div style="font-size:11px;color:var(--muted);margin-top:2px">' +
+                reasignados.map((a) => esc(a.codigo) + " (antes: " + esc(a.preventa_anterior) + ")").join(", ") +
+                "</div>";
+        }
+        if (noEncontrados.length) {
+            log += '<div style="color:#c62828;font-size:12px;margin-top:6px">' + icon("triangle-alert") + " " +
+                noEncontrados.length + " código(s) no encontrado(s) en el catálogo — hay que cargarlos primero:</div>" +
+                '<div style="font-size:11px;color:var(--muted)">' + noEncontrados.map(esc).join(", ") + "</div>";
+        }
+        document.getElementById("prevProdLoteLog").innerHTML = log;
+        document.getElementById("prevProdLoteSkus").value = noEncontrados.join("\n");
+
+        await loadProducts();
+        renderPrevProdTbody();
+        renderPreventaTable();
+        toast(asignados.length + " producto(s) asignado(s)" + (noEncontrados.length ? ", " + noEncontrados.length + " sin encontrar" : ""));
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "Asignar lista"; }
+    }
+}
+
+// Cerrar el dropdown de sugerencias al tocar fuera del buscador
+document.addEventListener("click", function (e) {
+    var wrap = document.getElementById("prevProdBuscarResultados");
+    var input = document.getElementById("prevProdBuscar");
+    if (wrap && input && e.target !== input && !wrap.contains(e.target)) {
+        wrap.style.display = "none";
+    }
+});
+
 // ── PRODUCTOS ─────────────────────────────────────────────────────────────────
 async function loadProducts() {
     var res = await fetch(API + "?action=productos&_user=" + encodeURIComponent(authUser) + "&_pass=" + encodeURIComponent(authPass));
@@ -1121,7 +1275,6 @@ function renderTableHeader() {
     if (col("cat")) h += '<th class="col-hide-3">Categoría</th>';
     if (col("preventa")) h += '<th class="col-hide-3">Preventa</th>';
     if (col("may")) h += "<th>Mayorista</th>";
-    if (col("pvp")) h += '<th class="col-hide-2">PVP</th>';
     if (col("estado")) h += "<th>Estado</th>";
     if (col("stock")) h += "<th>Stock preventa</th>";
     if (col("multiplo")) h += '<th class="col-hide-1">Múltiplo</th>';
@@ -1222,13 +1375,6 @@ function renderTableFromList(list) {
                     '" data-field="precio_mayorista" data-id="' +
                     p.id +
                     '" style="width:90px"></td>';
-            if (col("pvp"))
-                html +=
-                    '<td class="editing col-hide-2"><input class="inline-input" type="number" value="' +
-                    fmtInput(p.pvp) +
-                    '" data-field="pvp" data-id="' +
-                    p.id +
-                    '" style="width:90px"></td>';
             if (col("estado"))
                 html +=
                     '<td class="editing"><select class="inline-select" data-field="estado" data-id="' +
@@ -1289,7 +1435,6 @@ function renderTableFromList(list) {
                     '<td style="font-weight:800;color:var(--blue)">' +
                     fmt(p.precio_mayorista) +
                     "</td>";
-            if (col("pvp")) html += '<td class="col-hide-2">' + fmt(p.pvp) + "</td>";
             if (col("estado"))
                 html +=
                     '<td><span class="badge-' +
@@ -1537,11 +1682,6 @@ function openModal(p) {
     document.getElementById("fMay").value = p
         ? Math.round(p.precio_mayorista)
         : "";
-    document.getElementById("fPvp").value = p
-        ? p.pvp
-            ? Math.round(p.pvp)
-            : ""
-        : "";
     document.getElementById("fEstado").value = p ? p.estado : "DISPONIBLE";
     document.getElementById("fMultiplo").value = p ? p.multiplo || 1 : 1;
     document.getElementById("fStockPreventa").value = p
@@ -1691,7 +1831,6 @@ async function buscarEnManager() {
         var p = json.producto;
         document.getElementById("fDesc").value = p.descripcion || "";
         if (p.precio_mayorista !== null) document.getElementById("fMay").value = Math.round(p.precio_mayorista);
-        if (p.pvp !== null) document.getElementById("fPvp").value = Math.round(p.pvp);
 
         // Categoría: seleccionar si ya existe en el catálogo, o crearla si es nueva
         // (el Rubro real de Manager tiene más variedad que las categorías ya cargadas)
@@ -1763,7 +1902,6 @@ async function saveProduct() {
     var descripcion = document.getElementById("fDesc").value.trim();
     var categoria = document.getElementById("fCategoria").value;
     var may = document.getElementById("fMay").value;
-    var pvp = document.getElementById("fPvp").value;
     var multiplo = Math.max(
         1,
         parseInt(document.getElementById("fMultiplo").value) || 1,
@@ -1774,7 +1912,7 @@ async function saveProduct() {
         0,
         parseInt(document.getElementById("fStockPreventa").value) || 0,
     );
-    if (!codigo || !descripcion || !categoria || !may || !pvp) {
+    if (!codigo || !descripcion || !categoria || !may) {
         toast("Todos los campos son obligatorios", "#c62828");
         return;
     }
@@ -1810,7 +1948,6 @@ async function saveProduct() {
         descripcion,
         categoria,
         precio_mayorista: parseFloat(may) || 0,
-        pvp: parseFloat(pvp) || null,
         foto: fotoUrl,
         estado: document.getElementById("fEstado").value,
         orden: orden,
@@ -2706,7 +2843,6 @@ var SYSTEM_FIELDS = [
     { key: "DESCRIPCION",      label: "Descripción",      required: false },
     { key: "CATEGORIA",        label: "Categoría",        required: false },
     { key: "PRECIO_MAYORISTA", label: "Precio mayorista", required: false },
-    { key: "PVP",              label: "PVP",              required: false },
     { key: "ESTADO",           label: "Estado",           required: false },
     { key: "PREVENTA",         label: "Preventa",         required: false },
 ];
@@ -2717,7 +2853,6 @@ var FIELD_ALIASES = {
     "DESCRIPCION":      ["DESCRIPCION", "DESC", "NOMBRE", "PRODUCTO", "NAME", "DESCRIPTION", "DETALLE"],
     "CATEGORIA":        ["CATEGORIA", "CAT", "CATEGORY", "RUBRO", "LINEA", "FAMILIA"],
     "PRECIO_MAYORISTA": ["PRECIO_MAYORISTA", "PRECIO", "PRECIO_MAY", "MAYORISTA", "PRICE", "COSTO", "PRECIO_COSTO"],
-    "PVP":              ["PVP", "PRECIO_VENTA", "PRECIO_PUBLICO", "RETAIL", "PRECIO_SUGERIDO"],
     "ESTADO":           ["ESTADO", "STATUS", "STATE", "DISPONIBILIDAD", "ACTIVO"],
     "PREVENTA":         ["PREVENTA", "CAMPAÑA", "CAMPANIA", "PROMO"],
 };
@@ -2902,7 +3037,6 @@ function getRowStatus(row, existingData) {
         DESCRIPCION:      "descripcion",
         CATEGORIA:        "categoria",
         PRECIO_MAYORISTA: "precio_mayorista",
-        PVP:              "pvp",
         ESTADO:           "estado",
         CODIGO_BARRAS:    "codigo_barras",
     };
@@ -2911,7 +3045,7 @@ function getRowStatus(row, existingData) {
         if (row[k] === undefined || row[k] === "") return;
         var newV = String(row[k]).trim();
         var oldV = String(existing[fieldMap[k]] || "").trim();
-        if (k === "PRECIO_MAYORISTA" || k === "PVP") {
+        if (k === "PRECIO_MAYORISTA") {
             if (Math.round(parseFloat(newV) * 100) !== Math.round(parseFloat(oldV) * 100)) changed = true;
         } else if (k === "ESTADO") {
             if (newV.toUpperCase() !== oldV.toUpperCase()) changed = true;
@@ -2949,7 +3083,7 @@ function renderImportPreview(rows, existingData) {
     enriched.forEach(function(r) { counts[r._status.status]++; });
 
     // Detectar qué campos vinieron en el archivo
-    var ORDERED = ["CODIGO","CODIGO_BARRAS","DESCRIPCION","CATEGORIA","PRECIO_MAYORISTA","PVP","ESTADO","PREVENTA"];
+    var ORDERED = ["CODIGO","CODIGO_BARRAS","DESCRIPCION","CATEGORIA","PRECIO_MAYORISTA","ESTADO","PREVENTA"];
     var activeFields = ORDERED.filter(function(f) {
         return rows.some(function(r) { return r[f] !== undefined && r[f] !== ""; });
     });
@@ -2970,7 +3104,7 @@ function buildImportPreviewHTML(enriched, counts, activeFields) {
 
     var fieldMap = {
         DESCRIPCION: "descripcion", CATEGORIA: "categoria",
-        PRECIO_MAYORISTA: "precio_mayorista", PVP: "pvp",
+        PRECIO_MAYORISTA: "precio_mayorista",
         ESTADO: "estado", CODIGO_BARRAS: "codigo_barras",
     };
 
@@ -3035,7 +3169,7 @@ function buildImportPreviewHTML(enriched, counts, activeFields) {
 
             // Before/after en actualizaciones
             if (st.status === "ACTUALIZA" && val && dbKey && oldVal && oldVal !== val) {
-                var numFields = ["PRECIO_MAYORISTA", "PVP"];
+                var numFields = ["PRECIO_MAYORISTA"];
                 var reallyChanged = numFields.indexOf(f) >= 0
                     ? Math.round(parseFloat(val) * 100) !== Math.round(parseFloat(oldVal) * 100)
                     : val.toUpperCase() !== oldVal.toUpperCase();
@@ -3238,13 +3372,13 @@ async function undoLastImport(import_id) {
 // ── Exportar plantilla vacía ──────────────────────────────────────────────────
 function exportTemplate() {
     if (typeof XLSX === 'undefined') { alert('Cargando SheetJS, intentá de nuevo.'); return; }
-    var headers = ['CODIGO', 'CODIGO_BARRAS', 'DESCRIPCION', 'CATEGORIA', 'PRECIO_MAYORISTA', 'PVP', 'ESTADO', 'PREVENTA'];
+    var headers = ['CODIGO', 'CODIGO_BARRAS', 'DESCRIPCION', 'CATEGORIA', 'PRECIO_MAYORISTA', 'ESTADO', 'PREVENTA'];
     var wb = XLSX.utils.book_new();
     var ws = XLSX.utils.aoa_to_sheet([headers]);
     // Ancho de columna aproximado
     ws['!cols'] = [
         {wch: 14}, {wch: 16}, {wch: 40}, {wch: 22},
-        {wch: 18}, {wch: 12}, {wch: 12}, {wch: 22}
+        {wch: 18}, {wch: 12}, {wch: 22}
     ];
     XLSX.utils.book_append_sheet(wb, ws, 'Productos');
     XLSX.writeFile(wb, 'plantilla_importacion_travelblue.xlsx');
@@ -3257,7 +3391,7 @@ async function exportCatalog() {
         var res  = await fetch(API + '?action=productos&_user=' + encodeURIComponent(authUser) + '&_pass=' + encodeURIComponent(authPass));
         var json = await res.json();
         if (!Array.isArray(json) || !json.length) { alert('No hay productos para exportar.'); return; }
-        var headers = ['CODIGO', 'CODIGO_BARRAS', 'DESCRIPCION', 'CATEGORIA', 'PRECIO_MAYORISTA', 'PVP', 'ESTADO', 'PREVENTA'];
+        var headers = ['CODIGO', 'CODIGO_BARRAS', 'DESCRIPCION', 'CATEGORIA', 'PRECIO_MAYORISTA', 'ESTADO', 'PREVENTA'];
         var rows = json.map(function(p) {
             return [
                 p.codigo        || '',
@@ -3265,7 +3399,6 @@ async function exportCatalog() {
                 p.descripcion   || '',
                 p.categoria     || '',
                 p.precio_mayorista != null ? Number(p.precio_mayorista) : '',
-                p.pvp           != null    ? Number(p.pvp)              : '',
                 p.estado        || '',
                 p.preventa_nombre || ''
             ];
@@ -3393,7 +3526,6 @@ function executePrint() {
         codigo:           { label: 'Código',       style: 'width:64px' },
         descripcion:      { label: 'Descripción',  style: '' },
         precio_mayorista: { label: 'P. Mayorista', style: 'width:90px;text-align:right' },
-        pvp:              { label: 'PVP',           style: 'width:80px;text-align:right' },
         cantidad:         { label: 'Cant.',         style: 'width:50px;text-align:center' },
         estado:           { label: 'Estado',        style: 'width:70px;text-align:center' }
     };
@@ -3407,7 +3539,6 @@ function executePrint() {
             if (c === 'codigo') return '<td>' + (p.codigo || '') + '</td>';
             if (c === 'descripcion') return '<td>' + (p.descripcion || '') + '</td>';
             if (c === 'precio_mayorista') return '<td class="precio">' + fmtP(p.precio_mayorista) + '</td>';
-            if (c === 'pvp') return '<td class="precio">' + fmtP(p.pvp) + '</td>';
             if (c === 'cantidad') return '<td class="cant"></td>';
             if (c === 'estado') return '<td style="text-align:center;font-size:9px">' + (p.estado || '') + '</td>';
             return '<td></td>';
