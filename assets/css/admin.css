@@ -890,18 +890,25 @@ td.editing {
 }
 
 .field input,
-.field select {
+.field select,
+.field textarea {
     width: 100%;
     padding: 10px 13px;
     border: 1.5px solid var(--border);
     border-radius: 8px;
     font-size: 14px;
+    font-family: inherit;
     outline: none;
     transition: border-color .2s
 }
 
+.field textarea {
+    resize: vertical
+}
+
 .field input:focus,
-.field select:focus {
+.field select:focus,
+.field textarea:focus {
     border-color: var(--blue)
 }
 
