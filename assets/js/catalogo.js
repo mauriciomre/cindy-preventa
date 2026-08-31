@@ -451,6 +451,147 @@ function getStockCap(code) {
     return s > 0 ? s : Infinity;
 }
 
+// ── Variantes de color (solo del lado de la app, no vienen de Manager) ──────
+// El stock sigue siendo del artículo principal (STOCK_PREVENTA), no por
+// color — acá solo se reparte cuánto de esa cantidad total va de cada color,
+// para que el depósito sepa qué preparar. cart[code].colores es
+// {nombreColor: cantidad}, con las entradas en 0 omitidas.
+function getColorQty(code, colorNombre) {
+    var c = cart[code];
+    return c && c.colores ? c.colores[colorNombre] || 0 : 0;
+}
+
+function colorQtyRowsHTML(p) {
+    var multiplo = p.MULTIPLO || 1;
+    var html = '<div class="color-qty-rows">';
+    p.COLORES.forEach(function (c, idx) {
+        var q = getColorQty(p.CODIGO, c.nombre);
+        html +=
+            '<div class="color-qty-row">' +
+            '<span class="color-dot" style="background:' + c.hex + '"></span>' +
+            '<span class="color-qty-name">' + esc(c.nombre) + '</span>' +
+            '<div class="qty qty-sm">' +
+            '<button class="qb" onclick="chgColorQty(\'' + p.CODIGO + "'," + idx + ',-1)">−</button>' +
+            '<input class="qn" type="number" id="cq_' + sid(p.CODIGO) + '_' + idx +
+            '" value="' + q + '" min="0" step="' + multiplo +
+            '" onchange="manualColorQty(\'' + p.CODIGO + "'," + idx + ',this.value)" ' +
+            'onblur="manualColorQty(\'' + p.CODIGO + "'," + idx + ',this.value)">' +
+            '<button class="qb" onclick="chgColorQty(\'' + p.CODIGO + "'," + idx + ',1)">+</button>' +
+            "</div></div>";
+    });
+    html += "</div>";
+    return html;
+}
+
+function esc(s) {
+    return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/</g, "&lt;");
+}
+
+// Suma las cantidades de todos los inputs de color de un producto (0 si
+// todavía no se tocó ninguno) — no toca el carrito, solo lee el DOM.
+function sumColorInputs(code) {
+    var p = products.find(function (x) { return x.CODIGO === code; });
+    if (!p || !p.COLORES) return { total: 0, colores: {} };
+    var total = 0, colores = {};
+    p.COLORES.forEach(function (c, idx) {
+        var el = document.getElementById("cq_" + sid(code) + "_" + idx);
+        var q = el ? parseInt(el.value) || 0 : 0;
+        if (q > 0) { colores[c.nombre] = q; total += q; }
+    });
+    return { total: total, colores: colores };
+}
+
+function chgColorQty(code, idx, delta) {
+    var p = products.find(function (x) { return x.CODIGO === code; });
+    if (!p) return;
+    var multiplo = p.MULTIPLO || 1;
+    var el = document.getElementById("cq_" + sid(code) + "_" + idx);
+    if (!el) return;
+    var next = Math.max(0, (parseInt(el.value) || 0) + delta * multiplo);
+    el.value = next;
+    syncColorCartIfPresent(code);
+}
+
+function manualColorQty(code, idx, val) {
+    var p = products.find(function (x) { return x.CODIGO === code; });
+    if (!p) return;
+    var multiplo = p.MULTIPLO || 1;
+    var num = Math.max(0, parseInt(val) || 0);
+    var snapped = num === 0 ? 0 : Math.max(multiplo, Math.round(num / multiplo) * multiplo);
+    var el = document.getElementById("cq_" + sid(code) + "_" + idx);
+    if (el) el.value = snapped;
+    syncColorCartIfPresent(code);
+}
+
+// Si el producto ya está en el carrito, cada edición de un color actualiza
+// la cantidad total en vivo (mismo comportamiento que la cantidad simple).
+function syncColorCartIfPresent(code) {
+    if (!cart[code]) return;
+    var r = sumColorInputs(code);
+    var cap = getStockCap(code);
+    if (cap !== Infinity && r.total > cap) {
+        toastCarrito("El total (" + r.total + ") supera el stock disponible (" + cap + ")", "#c62828");
+        // Revertir todos los inputs de color de este producto al valor que
+        // ya tenía en el carrito (no sabemos cuál de los inputs se tocó).
+        var p = products.find(function (x) { return x.CODIGO === code; });
+        if (p && p.COLORES) {
+            p.COLORES.forEach(function (c, idx) {
+                var el = document.getElementById("cq_" + sid(code) + "_" + idx);
+                if (el) el.value = cart[code].colores[c.nombre] || 0;
+            });
+        }
+        return;
+    }
+    cart[code].qty = r.total;
+    cart[code].colores = r.colores;
+    updateCart();
+}
+
+function addOrUpdateColores(code) {
+    var p = products.find(function (x) { return x.CODIGO === code; });
+    if (!p) return;
+    var r = sumColorInputs(code);
+    if (r.total === 0) {
+        toastCarrito("Elegí al menos un color y una cantidad", "#c62828");
+        return;
+    }
+    var cap = getStockCap(code);
+    if (cap !== Infinity && r.total > cap) {
+        toastCarrito("El total (" + r.total + ") supera el stock disponible (" + cap + ")", "#c62828");
+        return;
+    }
+    cart[code] = { p: p, qty: r.total, colores: r.colores };
+    var id = sid(code);
+    var card = document.getElementById(id);
+    if (card) {
+        card.classList.add("picked");
+        var btn = document.getElementById("ab_" + id);
+        if (btn) {
+            btn.innerHTML =
+                icon("check") + ' En pedido<br><span style="font-size:9px;opacity:.85">Quitar?</span>';
+            btn.style.fontSize = "10px";
+            btn.style.lineHeight = "1.2";
+            btn.style.padding = "5px 6px";
+            btn.classList.add("on");
+            btn.onclick = function () { toggleRemove(code); };
+        }
+    }
+    var row = document.getElementById("lr_" + id);
+    if (row) {
+        row.classList.add("picked-row");
+        var lbtn = document.getElementById("ab_" + id);
+        if (lbtn) {
+            lbtn.innerHTML = icon("check") + " En pedido";
+            lbtn.classList.add("on");
+        }
+    }
+    saveCart();
+    updateCart();
+}
+
 // Ajusta cantidad al múltiplo más cercano y la limita al stock de preventa
 // cargado (si hay stock cargado); sin stock cargado, no hay tope de cantidad.
 function snapToMultiplo(qty, multiplo, code) {
@@ -571,8 +712,10 @@ function cardHTML(p) {
         html += '<div class="badge-preventa">' + p.PREVENTA_NOMBRE + "</div>";
     html += '<div class="name">' + p.DESCRIPCION + "</div>";
     if (p.MARCA) html += '<div class="brand">' + p.MARCA + "</div>";
-    // Círculos de colores
-    if (p.COLORES && p.COLORES.length > 0) {
+    var hasColores = p.COLORES && p.COLORES.length > 0;
+    // Sin stock/vendido: solo círculos decorativos (no hay nada para elegir).
+    // Con stock: los colores se eligen con cantidad más abajo, en el "foot".
+    if (hasColores && sold) {
         html += '<div class="color-dots"><span class="color-lbl">Color</span>';
         p.COLORES.forEach(function (c) {
             html +=
@@ -604,31 +747,36 @@ function cardHTML(p) {
     if (sold) {
         html += '<div class="na">No disponible por ahora</div>';
     } else {
-        html += '<div class="foot"><div class="qty">';
-        html +=
-            '<button class="qb" onclick="chgQty(\'' +
-            p.CODIGO +
-            "',-1)\">−</button>";
-        html +=
-            '<input class="qn" type="number" id="qn_' +
-            id +
-            '" value="' +
-            qty +
-            '" min="' +
-            multiplo +
-            '"' +
-            (cap !== Infinity ? ' max="' + cap + '"' : "") +
-            ' step="' +
-            multiplo +
-            '" onchange="manualQty(\'' +
-            p.CODIGO +
-            "',this.value)\" onblur=\"manualQty('" +
-            p.CODIGO +
-            "',this.value)\">";
-        html +=
-            '<button class="qb" onclick="chgQty(\'' +
-            p.CODIGO +
-            "',1)\">+</button></div>";
+        html += '<div class="foot">';
+        if (hasColores) {
+            html += colorQtyRowsHTML(p);
+        } else {
+            html += '<div class="qty">';
+            html +=
+                '<button class="qb" onclick="chgQty(\'' +
+                p.CODIGO +
+                "',-1)\">−</button>";
+            html +=
+                '<input class="qn" type="number" id="qn_' +
+                id +
+                '" value="' +
+                qty +
+                '" min="' +
+                multiplo +
+                '"' +
+                (cap !== Infinity ? ' max="' + cap + '"' : "") +
+                ' step="' +
+                multiplo +
+                '" onchange="manualQty(\'' +
+                p.CODIGO +
+                "',this.value)\" onblur=\"manualQty('" +
+                p.CODIGO +
+                "',this.value)\">";
+            html +=
+                '<button class="qb" onclick="chgQty(\'' +
+                p.CODIGO +
+                "',1)\">+</button></div>";
+        }
         html +=
             '<button class="add' +
             (inCart ? " on" : "") +
@@ -637,7 +785,9 @@ function cardHTML(p) {
             '" onclick="' +
             (inCart
                 ? "toggleRemove('" + p.CODIGO + "')"
-                : "addOrUpdate('" + p.CODIGO + "')") +
+                : hasColores
+                  ? "addOrUpdateColores('" + p.CODIGO + "')"
+                  : "addOrUpdate('" + p.CODIGO + "')") +
             '"' +
             (inCart
                 ? ' style="font-size:10px;line-height:1.2;padding:5px 6px"'
@@ -647,7 +797,7 @@ function cardHTML(p) {
                 ? icon("check") + ' En pedido<br><span style="font-size:9px;opacity:.85">Quitar?</span>'
                 : "+ Agregar") +
             "</button></div>";
-        if (multiplo > 1)
+        if (!hasColores && multiplo > 1)
             html +=
                 '<div class="multiplo-hint">Múltiplo de ' + multiplo + "</div>";
     }
@@ -742,8 +892,23 @@ function listCardHTML(p) {
                 "</div>"
               : "";
     }
+    var hasColores = p.COLORES && p.COLORES.length > 0;
     if (sold) {
         html += '<div style="color:#aaa;font-size:11px">No disponible</div>';
+    } else if (hasColores) {
+        html += '<div class="lc-foot lc-foot-colores">';
+        html += colorQtyRowsHTML(p);
+        html +=
+            '<button class="list-add' +
+            (inCart ? " on" : "") +
+            '" id="ab_' +
+            id +
+            '" onclick="' +
+            (inCart ? "toggleRemove('" + p.CODIGO + "')" : "addOrUpdateColores('" + p.CODIGO + "')") +
+            '">' +
+            (inCart ? icon("check") + " En pedido" : "+ Agregar") +
+            "</button>";
+        html += "</div>";
     } else {
         html += '<div class="lc-foot">';
         html +=
@@ -824,9 +989,36 @@ function listRowHTML(p) {
         '<td style="font-weight:800;color:var(--blue)">' +
         fmt(p.PRECIO_MAYORISTA) +
         ' <span class="iva">+ IVA</span></td>';
+    var hasColores = p.COLORES && p.COLORES.length > 0;
     if (sold) {
         html +=
             '<td colspan="2"><span style="color:#aaa;font-size:12px">No disponible</span></td>';
+    } else if (hasColores) {
+        html +=
+            '<td>' +
+            (waitlist
+                ? '<div class="stock-hint wait">Sujeto a confirmar</div>'
+                : p.PREVENTA_MOSTRAR_STOCK
+                  ? '<div class="stock-hint' +
+                    (p.STOCK_PREVENTA <= 2 ? " low" : "") +
+                    '">' +
+                    (p.STOCK_PREVENTA === 1
+                        ? "Queda 1"
+                        : "Quedan " + p.STOCK_PREVENTA) +
+                    "</div>"
+                  : "") +
+            colorQtyRowsHTML(p) +
+            "</td>";
+        html +=
+            '<td><button class="list-add' +
+            (inCart ? " on" : "") +
+            '" id="ab_' +
+            id +
+            '" onclick="' +
+            (inCart ? "toggleRemove('" + p.CODIGO + "')" : "addOrUpdateColores('" + p.CODIGO + "')") +
+            '">' +
+            (inCart ? icon("check") + " En pedido" : "+ Agregar") +
+            "</button></td>";
     } else {
         html +=
             '<td>' +
@@ -911,8 +1103,11 @@ function toggleRemove(code) {
         btn.style.padding = "";
         btn.style.background = "";
         btn.style.borderColor = "";
+        var p = products.find(function (x) { return x.CODIGO === code; });
+        var hasColores = p && p.COLORES && p.COLORES.length > 0;
         btn.onclick = function () {
-            addOrUpdate(code);
+            if (hasColores) addOrUpdateColores(code);
+            else addOrUpdate(code);
         };
     }, 1500);
 }
@@ -992,6 +1187,13 @@ function rmCart(code) {
     var id = sid(code);
     var qEl = document.getElementById("qn_" + id);
     if (qEl) qEl.value = multiplo;
+    var p = products.find(function (x) { return x.CODIGO === code; });
+    if (p && p.COLORES) {
+        p.COLORES.forEach(function (c, idx) {
+            var cEl = document.getElementById("cq_" + id + "_" + idx);
+            if (cEl) cEl.value = 0;
+        });
+    }
     var card = document.getElementById(id);
     if (card) {
         card.classList.remove("picked");
@@ -1399,6 +1601,7 @@ async function sendWA() {
             cantidad: item.qty,
             precio_unitario: precio,
             subtotal: sub,
+            colores: item.colores || null,
         });
     });
     // Guardar pedido en BD — la respuesta trae el total real y qué ítems
@@ -1458,6 +1661,13 @@ async function sendWA() {
         gruposWA[nombreGrupo].forEach(function (item) {
             var esperaTag = item.en_lista_espera == 1 ? " ⏳ *A CONFIRMAR STOCK*" : "";
             if (item.en_lista_espera == 1) hayListaEspera = true;
+            var coloresTxt = "";
+            if (item.colores_detalle) {
+                try {
+                    var cobj = JSON.parse(item.colores_detalle);
+                    coloresTxt = "\n  " + Object.keys(cobj).map(function (k) { return k + ": " + cobj[k]; }).join(" · ");
+                } catch (e) {}
+            }
             msg +=
                 "• *" +
                 item.descripcion +
@@ -1469,6 +1679,7 @@ async function sendWA() {
                 fmt(item.subtotal) +
                 " + IVA" +
                 esperaTag +
+                coloresTxt +
                 "\n\n";
         });
     });

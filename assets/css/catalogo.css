@@ -1206,6 +1206,57 @@ header {
     flex-shrink: 0
 }
 
+/* CANTIDAD POR COLOR (variantes creadas en la app, no en Manager — el
+   stock sigue siendo del artículo principal, esto solo reparte el pedido) */
+.color-qty-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 100%
+}
+
+.color-qty-row {
+    display: flex;
+    align-items: center;
+    gap: 6px
+}
+
+.color-qty-row .color-dot {
+    width: 12px;
+    height: 12px
+}
+
+.color-qty-name {
+    flex: 1;
+    font-size: 12px;
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap
+}
+
+.qty-sm {
+    padding: 2px 4px;
+    gap: 2px
+}
+
+.qty-sm .qb {
+    width: 22px;
+    height: 22px;
+    font-size: 14px
+}
+
+.qty-sm .qn {
+    width: 32px;
+    font-size: 13px
+}
+
+.lc-foot-colores {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px
+}
+
 /* SKELETON LOADING */
 @keyframes shimmer {
     0% {

@@ -408,6 +408,14 @@ function setupDB($db) {
         $db->query("ALTER TABLE pedido_items ADD COLUMN preventa_nombre VARCHAR(150) DEFAULT NULL");
     }
 
+    // Snapshot de la cantidad elegida por color (JSON {"Negro":2,"Blanco":1}).
+    // El stock sigue siendo del artículo principal, no por color — esto es
+    // solo para saber qué preparar. NULL si el producto no maneja colores.
+    $colCheck = $db->query("SHOW COLUMNS FROM pedido_items LIKE 'colores_detalle'");
+    if ($colCheck && $colCheck->num_rows === 0) {
+        $db->query("ALTER TABLE pedido_items ADD COLUMN colores_detalle TEXT DEFAULT NULL");
+    }
+
     $db->query("CREATE TABLE IF NOT EXISTS pedido_estados (
         id INT AUTO_INCREMENT PRIMARY KEY,
         pedido_id INT NOT NULL,
@@ -1374,6 +1382,13 @@ switch ($action) {
                 $cantidad = max(1, intval($item['cantidad'] ?? 1));
                 $precioUnit = floatval($item['precio_unitario'] ?? 0);
                 $descripcion = $item['descripcion'] ?? '';
+                // Detalle por color (opcional): se guarda tal cual lo mandó el
+                // cliente, solo para picking — el stock/lista de espera de
+                // arriba sigue calculándose sobre $cantidad total, no por color.
+                $coloresDetalle = null;
+                if (!empty($item['colores']) && is_array($item['colores'])) {
+                    $coloresDetalle = json_encode($item['colores'], JSON_UNESCAPED_UNICODE);
+                }
 
                 $enListaEspera = 0;
                 $lock = $db->prepare("SELECT p.stock_preventa, pv.nombre as preventa_nombre
@@ -1412,6 +1427,7 @@ switch ($action) {
                     'subtotal' => $subtotal,
                     'en_lista_espera' => $enListaEspera,
                     'preventa_nombre' => $preventaNombre,
+                    'colores_detalle' => $coloresDetalle,
                 ];
             }
 
@@ -1421,8 +1437,8 @@ switch ($action) {
             $pedido_id = $db->insert_id;
 
             foreach ($itemsProcesados as $item) {
-                $is = $db->prepare("INSERT INTO pedido_items (pedido_id,codigo,descripcion,cantidad,precio_unitario,subtotal,en_lista_espera,preventa_nombre) VALUES (?,?,?,?,?,?,?,?)");
-                $is->bind_param('issiddis', $pedido_id, $item['codigo'], $item['descripcion'], $item['cantidad'], $item['precio_unitario'], $item['subtotal'], $item['en_lista_espera'], $item['preventa_nombre']);
+                $is = $db->prepare("INSERT INTO pedido_items (pedido_id,codigo,descripcion,cantidad,precio_unitario,subtotal,en_lista_espera,preventa_nombre,colores_detalle) VALUES (?,?,?,?,?,?,?,?,?)");
+                $is->bind_param('issiddiss', $pedido_id, $item['codigo'], $item['descripcion'], $item['cantidad'], $item['precio_unitario'], $item['subtotal'], $item['en_lista_espera'], $item['preventa_nombre'], $item['colores_detalle']);
                 $is->execute();
             }
 
