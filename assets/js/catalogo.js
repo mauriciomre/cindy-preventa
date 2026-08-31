@@ -3,6 +3,7 @@ var WA_NUM = "5493534140385";
 var products = [],
     cart = {},
     activeCat = "TODOS",
+    activePreventa = "TODAS",
     query = "",
     viewMode = "grid",
     sortMode = "default";
@@ -125,6 +126,10 @@ function start() {
                     STOCK_PREVENTA_INICIAL: parseInt(p.stock_preventa_inicial) || 0,
                     CODIGO_BARRAS: p.codigo_barras || null,
                     CAT_ORDEN: p.cat_orden || 0,
+                    PREVENTA_ID: p.preventa_id || null,
+                    PREVENTA_NOMBRE: p.preventa_nombre || null,
+                    PREVENTA_IMAGEN: p.preventa_imagen || null,
+                    PREVENTA_ORDEN: p.preventa_orden != null ? Number(p.preventa_orden) : 0,
                     UPDATED_AT: p.updated_at
                         ? new Date(p.updated_at).getTime()
                         : Date.now(),
@@ -156,11 +161,21 @@ function start() {
         });
 }
 
+// Productos ya acotados a la preventa activa (o a todas) — la categoría es
+// un filtro secundario que corre sobre este subconjunto, no sobre el
+// catálogo completo.
+function productsInPreventa() {
+    if (activePreventa === "TODAS") return products;
+    return products.filter(function (p) {
+        return String(p.PREVENTA_ID) === String(activePreventa);
+    });
+}
+
 function getCats() {
-    // Orden de categorías según cat_orden
+    // Orden de categorías según cat_orden, calculado sobre la preventa activa
     var seen = {},
         cats = [];
-    products.forEach(function (p) {
+    productsInPreventa().forEach(function (p) {
         if (p.CATEGORIA && !seen[p.CATEGORIA]) {
             seen[p.CATEGORIA] = 1;
             cats.push({ nombre: p.CATEGORIA, orden: p.CAT_ORDEN });
@@ -176,7 +191,57 @@ function getCats() {
     );
 }
 
+// Lista de preventas activas con productos visibles, en el orden en que
+// deben aparecer los carteles (mismo "orden" que se define en el admin).
+function getPreventas() {
+    var seen = {}, list = [];
+    products.forEach(function (p) {
+        if (p.PREVENTA_ID && !seen[p.PREVENTA_ID]) {
+            seen[p.PREVENTA_ID] = 1;
+            list.push({
+                id: p.PREVENTA_ID,
+                nombre: p.PREVENTA_NOMBRE,
+                imagen: p.PREVENTA_IMAGEN,
+                orden: p.PREVENTA_ORDEN,
+            });
+        }
+    });
+    list.sort(function (a, b) { return a.orden - b.orden || a.nombre.localeCompare(b.nombre); });
+    return list;
+}
+
+function setPreventa(id) {
+    clearHighlight();
+    activePreventa = id;
+    activeCat = "TODOS";
+    renderPreventaSelector();
+    renderTabs();
+    renderProds();
+}
+
+function renderPreventaSelector() {
+    var wrap = document.getElementById("preventaSelector");
+    if (!wrap) return;
+    var preventas = getPreventas();
+    if (!preventas.length) { wrap.innerHTML = ""; wrap.style.display = "none"; return; }
+    wrap.style.display = "";
+    var html = "";
+    preventas.forEach(function (pv) {
+        var bg = pv.imagen ? 'style="background-image:url(\'' + pv.imagen + '\')"' : "";
+        html +=
+            '<button class="prev-card' + (String(activePreventa) === String(pv.id) ? " on" : "") + (pv.imagen ? " has-img" : "") + '" ' + bg +
+            ' onclick="setPreventa(\'' + pv.id + '\')">' +
+            '<span class="prev-card-name">' + pv.nombre + "</span>" +
+            "</button>";
+    });
+    html +=
+        '<button class="prev-card prev-card-all' + (activePreventa === "TODAS" ? " on" : "") + '" onclick="setPreventa(\'TODAS\')">' +
+        '<span class="prev-card-name">Todas las preventas</span></button>';
+    wrap.innerHTML = html;
+}
+
 function render() {
+    renderPreventaSelector();
     renderTabs();
     renderProds();
 }
@@ -310,7 +375,7 @@ function doSearchEnter(e) {
 }
 
 function getVisible() {
-    var list = products.filter(function (p) {
+    var list = productsInPreventa().filter(function (p) {
         var catOk = activeCat === "TODOS" || p.CATEGORIA === activeCat;
         var srchOk =
             !query ||
@@ -496,6 +561,8 @@ function cardHTML(p) {
               ? '<span class="badge badge-wait">LISTA DE ESPERA</span>'
               : "") +
         "</div>";
+    if (activePreventa === "TODAS" && p.PREVENTA_NOMBRE)
+        html += '<div class="badge-preventa">' + p.PREVENTA_NOMBRE + "</div>";
     html += '<div class="name">' + p.DESCRIPCION + "</div>";
     // Círculos de colores
     if (p.COLORES && p.COLORES.length > 0) {
@@ -650,6 +717,9 @@ function listCardHTML(p) {
             : waitlist
               ? ' <span class="badge badge-wait">LISTA DE ESPERA</span>'
               : "") +
+        (activePreventa === "TODAS" && p.PREVENTA_NOMBRE
+            ? '<div class="badge-preventa" style="margin-top:4px">' + p.PREVENTA_NOMBRE + "</div>"
+            : "") +
         "</div></div>";
     html += "</div>";
     html +=
@@ -1370,21 +1440,33 @@ async function sendWA() {
     if (clienteData.notas) msg += "📝 *Notas:* " + clienteData.notas + "\n";
     msg += "📅 *Fecha:* " + fecha + "\n━━━━━━━━━━━━━━━━━━━━━━\n\n";
     var hayListaEspera = false;
+    // Agrupar por preventa (snapshot tomado por el backend al crear el
+    // pedido) para que quede claro de qué campaña es cada ítem, sobre todo
+    // cuando el pedido mezcla artículos de más de una preventa.
+    var gruposWA = {}, ordenWA = [];
     itemsFinal.forEach(function (item) {
-        var esperaTag = item.en_lista_espera == 1 ? " ⏳ *A CONFIRMAR STOCK*" : "";
-        if (item.en_lista_espera == 1) hayListaEspera = true;
-        msg +=
-            "• *" +
-            item.descripcion +
-            "*\n  Cód: " +
-            item.codigo +
-            "  |  Cant: " +
-            item.cantidad +
-            "  |  " +
-            fmt(item.subtotal) +
-            " + IVA" +
-            esperaTag +
-            "\n\n";
+        var g = item.preventa_nombre || "Catálogo general";
+        if (!gruposWA[g]) { gruposWA[g] = []; ordenWA.push(g); }
+        gruposWA[g].push(item);
+    });
+    ordenWA.forEach(function (nombreGrupo) {
+        msg += "🏷️ *" + nombreGrupo + "*\n";
+        gruposWA[nombreGrupo].forEach(function (item) {
+            var esperaTag = item.en_lista_espera == 1 ? " ⏳ *A CONFIRMAR STOCK*" : "";
+            if (item.en_lista_espera == 1) hayListaEspera = true;
+            msg +=
+                "• *" +
+                item.descripcion +
+                "*\n  Cód: " +
+                item.codigo +
+                "  |  Cant: " +
+                item.cantidad +
+                "  |  " +
+                fmt(item.subtotal) +
+                " + IVA" +
+                esperaTag +
+                "\n\n";
+        });
     });
     msg +=
         "━━━━━━━━━━━━━━━━━━━━━━\n*TOTAL: " +

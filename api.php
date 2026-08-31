@@ -7,18 +7,26 @@ header('Access-Control-Allow-Headers: Content-Type');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit; }
 
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/helpers.php';
 
 define('ADMIN_USER', 'admin');
 define('ADMIN_PASS', 'preventa2026');
 
-function checkAuth($data) {
+// Igual que checkAuth, pero sin cortar la ejecución si las credenciales no
+// vienen o son inválidas — para endpoints públicos que se comportan distinto
+// según si quien pregunta es el admin o un cliente (ver acción "productos").
+function isAdminAuth($u, $p) {
     global $db;
-    $u = $data['_user'] ?? '';
-    $p = $data['_pass'] ?? '';
     $r = $db->query("SELECT valor FROM config WHERE clave='admin_pass' LIMIT 1");
     $row = $r ? $r->fetch_assoc() : null;
     $validPass = $row ? $row['valor'] : ADMIN_PASS;
-    if ($u !== ADMIN_USER || !hash_equals($validPass, $p)) {
+    return $u === ADMIN_USER && $p !== '' && hash_equals($validPass, (string)$p);
+}
+
+function checkAuth($data) {
+    $u = $data['_user'] ?? '';
+    $p = $data['_pass'] ?? '';
+    if (!isAdminAuth($u, $p)) {
         http_response_code(401);
         die(json_encode(['error' => 'No autorizado']));
     }
@@ -189,6 +197,28 @@ function setupDB($db) {
         $db->query("ALTER TABLE productos ADD COLUMN stock_preventa_inicial INT NOT NULL DEFAULT 0");
     }
 
+    // Preventas: campañas puntuales que agrupan productos (ej. "PREVENTA DÍA
+    // DEL NIÑO"). Sin fechas de vigencia a propósito — el alta/baja es manual
+    // (columna "activa"), decisión explícita de Mauricio. Un producto
+    // pertenece a UNA sola preventa (no es muchos-a-muchos) y solo se muestra
+    // en el catálogo público si tiene preventa asignada Y esa preventa está
+    // activa — ver el filtro en la acción "productos" más abajo.
+    $db->query("CREATE TABLE IF NOT EXISTS preventas (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        nombre VARCHAR(150) NOT NULL UNIQUE,
+        imagen VARCHAR(500) DEFAULT NULL,
+        activa TINYINT NOT NULL DEFAULT 0,
+        orden INT DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $colCheck = $db->query("SHOW COLUMNS FROM productos LIKE 'preventa_id'");
+    if ($colCheck && $colCheck->num_rows === 0) {
+        $db->query("ALTER TABLE productos ADD COLUMN preventa_id INT DEFAULT NULL");
+        $db->query("ALTER TABLE productos ADD INDEX idx_preventa_id (preventa_id)");
+    }
+
     $db->query("CREATE TABLE IF NOT EXISTS import_snapshots (
         id INT AUTO_INCREMENT PRIMARY KEY,
         import_id VARCHAR(50) NOT NULL,
@@ -276,12 +306,34 @@ function setupDB($db) {
         $db->query("ALTER TABLE pedido_items ADD COLUMN en_lista_espera TINYINT(1) NOT NULL DEFAULT 0");
     }
 
+    // Snapshot del nombre de la preventa al momento del pedido — no se
+    // resuelve por JOIN al imprimir, para que un pedido viejo siga agrupado
+    // igual aunque después se reasigne o borre la preventa del producto.
+    $colCheck = $db->query("SHOW COLUMNS FROM pedido_items LIKE 'preventa_nombre'");
+    if ($colCheck && $colCheck->num_rows === 0) {
+        $db->query("ALTER TABLE pedido_items ADD COLUMN preventa_nombre VARCHAR(150) DEFAULT NULL");
+    }
+
     $db->query("CREATE TABLE IF NOT EXISTS pedido_estados (
         id INT AUTO_INCREMENT PRIMARY KEY,
         pedido_id INT NOT NULL,
         estado VARCHAR(50) NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
+// Resuelve el nombre de preventa (texto libre de la planilla) contra una
+// preventa YA EXISTENTE — a propósito no crea preventas nuevas desde el
+// Excel, porque activarlas es una decisión manual de Mauricio. Si no matchea
+// ninguna, devuelve null y el producto queda sin preventa (oculto).
+function resolver_preventa_id($db, $nombre) {
+    $nombre = trim($nombre ?? '');
+    if ($nombre === '') return null;
+    $stmt = $db->prepare("SELECT id FROM preventas WHERE LOWER(nombre) = LOWER(?)");
+    $stmt->bind_param('s', $nombre);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    return $row ? intval($row['id']) : null;
 }
 
 function normalizarTel($tel) {
@@ -299,14 +351,27 @@ setupDB($db);
 switch ($action) {
 
     case 'productos':
-        $cat     = $_GET['categoria'] ?? '';
-        $q       = $_GET['q'] ?? '';
-        $barcode = $_GET['barcode'] ?? '';
-        $sql = "SELECT p.*, COALESCE(c.orden, 0) as cat_orden FROM productos p LEFT JOIN categorias c ON p.categoria = c.nombre WHERE 1=1";
+        $cat      = $_GET['categoria'] ?? '';
+        $q        = $_GET['q'] ?? '';
+        $barcode  = $_GET['barcode'] ?? '';
+        $preventa = $_GET['preventa'] ?? ''; // id de preventa, o 'sin' para sin preventa asignada
+        $isAdmin  = isAdminAuth($_GET['_user'] ?? '', $_GET['_pass'] ?? '');
+        $sql = "SELECT p.*, COALESCE(c.orden, 0) as cat_orden, pv.nombre as preventa_nombre, pv.activa as preventa_activa, pv.imagen as preventa_imagen, pv.orden as preventa_orden
+                FROM productos p
+                LEFT JOIN categorias c ON p.categoria = c.nombre
+                LEFT JOIN preventas pv ON p.preventa_id = pv.id
+                WHERE 1=1";
         $params = []; $types = '';
+        // Visibilidad pública: un producto solo se muestra si tiene preventa
+        // asignada y esa preventa está activa. El admin (autenticado) ve todo,
+        // incluidos productos sin preventa o con preventa inactiva, para poder
+        // gestionarlos.
+        if (!$isAdmin) { $sql .= " AND pv.activa = 1"; }
         if ($cat)     { $sql .= " AND p.categoria = ?"; $params[] = $cat; $types .= 's'; }
         if ($barcode) { $sql .= " AND p.codigo_barras = ?"; $params[] = $barcode; $types .= 's'; }
         elseif ($q)   { $sql .= " AND (p.descripcion LIKE ? OR p.codigo LIKE ? OR p.codigo_barras LIKE ?)"; $like = "%$q%"; $params[] = $like; $params[] = $like; $params[] = $like; $types .= 'sss'; }
+        if ($preventa === 'sin') { $sql .= " AND p.preventa_id IS NULL"; }
+        elseif ($preventa !== '') { $sql .= " AND p.preventa_id = ?"; $params[] = intval($preventa); $types .= 'i'; }
         $sql .= " ORDER BY COALESCE(c.orden, 0), p.orden, p.codigo";
         $stmt = $db->prepare($sql);
         if ($params) $stmt->bind_param($types, ...$params);
@@ -388,8 +453,9 @@ switch ($action) {
         $multiplo = max(1, intval($data['multiplo'] ?? 1));
         $codigoBarras = isset($data['codigo_barras']) && $data['codigo_barras'] !== '' ? trim($data['codigo_barras']) : null;
         $stockInicial = max(0, intval($data['stock_preventa'] ?? 0));
-        $stmt = $db->prepare("INSERT INTO productos (codigo,descripcion,categoria,precio_mayorista,pvp,foto,estado,orden,multiplo,codigo_barras,stock_preventa,stock_preventa_inicial) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
-        $stmt->bind_param('sssddssiisii', $data['codigo'], $data['descripcion'], $data['categoria'], $data['precio_mayorista'], $pvp, $data['foto'], $data['estado'], $orden, $multiplo, $codigoBarras, $stockInicial, $stockInicial);
+        $preventaId = isset($data['preventa_id']) && $data['preventa_id'] !== '' ? intval($data['preventa_id']) : null;
+        $stmt = $db->prepare("INSERT INTO productos (codigo,descripcion,categoria,precio_mayorista,pvp,foto,estado,orden,multiplo,codigo_barras,stock_preventa,stock_preventa_inicial,preventa_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
+        $stmt->bind_param('sssddssiisiii', $data['codigo'], $data['descripcion'], $data['categoria'], $data['precio_mayorista'], $pvp, $data['foto'], $data['estado'], $orden, $multiplo, $codigoBarras, $stockInicial, $stockInicial, $preventaId);
         if ($stmt->execute()) {
             $newId = $db->insert_id;
             $colores = $data['colores'] ?? [];
@@ -416,8 +482,9 @@ switch ($action) {
         // (para sumar stock de verdad, ver el endpoint "stock_agregar", que
         // además lleva el acumulado en stock_preventa_inicial).
         $stock = max(0, intval($data['stock_preventa'] ?? 0));
-        $stmt = $db->prepare("UPDATE productos SET codigo=?,descripcion=?,categoria=?,precio_mayorista=?,pvp=?,foto=?,estado=?,orden=?,multiplo=?,codigo_barras=?,stock_preventa=?,updated_at=NOW() WHERE id=?");
-        $stmt->bind_param('sssddssiisii', $data['codigo'], $data['descripcion'], $data['categoria'], $data['precio_mayorista'], $pvp, $data['foto'], $data['estado'], $orden, $multiplo, $codigoBarras, $stock, $id);
+        $preventaId = isset($data['preventa_id']) && $data['preventa_id'] !== '' ? intval($data['preventa_id']) : null;
+        $stmt = $db->prepare("UPDATE productos SET codigo=?,descripcion=?,categoria=?,precio_mayorista=?,pvp=?,foto=?,estado=?,orden=?,multiplo=?,codigo_barras=?,stock_preventa=?,preventa_id=?,updated_at=NOW() WHERE id=?");
+        $stmt->bind_param('sssddssiisiii', $data['codigo'], $data['descripcion'], $data['categoria'], $data['precio_mayorista'], $pvp, $data['foto'], $data['estado'], $orden, $multiplo, $codigoBarras, $stock, $preventaId, $id);
         if ($stmt->execute()) {
             if (isset($data['colores'])) {
                 $delStmt = $db->prepare("DELETE FROM producto_colores WHERE producto_id=?");
@@ -571,6 +638,7 @@ switch ($action) {
                 if (isset($p['PVP'])            && $p['PVP']            !== '') { $sets[] = 'pvp=?';              $params[] = floatval($p['PVP']);               $types .= 'd'; }
                 if (isset($p['ESTADO'])         && $p['ESTADO']         !== '') { $sets[] = 'estado=?';           $params[] = strtoupper(trim($p['ESTADO']));    $types .= 's'; }
                 if (isset($p['CODIGO_BARRAS'])  && $p['CODIGO_BARRAS']  !== '') { $sets[] = 'codigo_barras=?';    $params[] = trim($p['CODIGO_BARRAS']);          $types .= 's'; }
+                if (isset($p['PREVENTA'])       && $p['PREVENTA']       !== '') { $sets[] = 'preventa_id=?';      $params[] = resolver_preventa_id($db, $p['PREVENTA']); $types .= 'i'; }
                 if (empty($sets)) { $updated++; continue; }
                 $params[] = $codigo; $types .= 's';
                 $stmt = $db->prepare("UPDATE productos SET " . implode(',', $sets) . " WHERE codigo=?");
@@ -589,10 +657,11 @@ switch ($action) {
                 $estado = strtoupper(trim($p['ESTADO'] ?? 'DISPONIBLE'));
                 $cb     = isset($p['CODIGO_BARRAS']) && $p['CODIGO_BARRAS'] !== '' ? trim($p['CODIGO_BARRAS']) : null;
                 $stock  = max(0, intval($p['STOCK_PREVENTA'] ?? 0));
+                $preventaId = resolver_preventa_id($db, $p['PREVENTA'] ?? '');
                 if (!$desc || !$cat) { $errors[] = ['codigo' => $codigo, 'motivo' => 'DESCRIPCION y CATEGORIA obligatorias para producto nuevo']; continue; }
                 $o = 0; $multiplo = 1;
-                $stmt = $db->prepare("INSERT INTO productos (codigo,descripcion,categoria,precio_mayorista,pvp,estado,orden,multiplo,codigo_barras,stock_preventa,stock_preventa_inicial) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
-                $stmt->bind_param('sssddsiisii', $codigo, $desc, $cat, $may, $pvp, $estado, $o, $multiplo, $cb, $stock, $stock);
+                $stmt = $db->prepare("INSERT INTO productos (codigo,descripcion,categoria,precio_mayorista,pvp,estado,orden,multiplo,codigo_barras,stock_preventa,stock_preventa_inicial,preventa_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
+                $stmt->bind_param('sssddsiisiii', $codigo, $desc, $cat, $may, $pvp, $estado, $o, $multiplo, $cb, $stock, $stock, $preventaId);
                 if ($stmt->execute()) $imported++;
                 else $errors[] = ['codigo' => $codigo, 'motivo' => $db->error];
             }
@@ -728,6 +797,131 @@ switch ($action) {
         $stmt = $db->prepare("DELETE FROM categorias WHERE id=?");
         $stmt->bind_param('i', $id); $stmt->execute();
         echo json_encode(['ok' => true]);
+        break;
+
+    // ── PREVENTAS ─────────────────────────────────────────────────────────────
+    case 'preventas':
+        $r = $db->query("SELECT p.*, COUNT(pr.id) as n_productos
+            FROM preventas p LEFT JOIN productos pr ON pr.preventa_id = p.id
+            GROUP BY p.id ORDER BY p.orden, p.nombre");
+        echo json_encode($r->fetch_all(MYSQLI_ASSOC));
+        break;
+
+    case 'preventa_crear':
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $nombre = trim($data['nombre'] ?? '');
+        $imagen = isset($data['imagen']) && $data['imagen'] !== '' ? trim($data['imagen']) : null;
+        $activa = !empty($data['activa']) ? 1 : 0;
+        $orden = intval($data['orden'] ?? 0);
+        if (!$nombre) { http_response_code(400); die(json_encode(['error' => 'Nombre requerido'])); }
+        $stmt = $db->prepare("INSERT INTO preventas (nombre, imagen, activa, orden) VALUES (?, ?, ?, ?)");
+        $stmt->bind_param('ssii', $nombre, $imagen, $activa, $orden);
+        if ($stmt->execute()) echo json_encode(['ok' => true, 'id' => $db->insert_id]);
+        else { http_response_code(400); echo json_encode(['error' => 'Ya existe esa preventa']); }
+        break;
+
+    case 'preventa_editar':
+        $id = intval($_GET['id'] ?? 0);
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $nombre = trim($data['nombre'] ?? '');
+        $activa = !empty($data['activa']) ? 1 : 0;
+        if (isset($data['imagen'])) {
+            $imagen = $data['imagen'] !== '' ? trim($data['imagen']) : null;
+            $stmt = $db->prepare("UPDATE preventas SET nombre=?, imagen=?, activa=? WHERE id=?");
+            $stmt->bind_param('ssii', $nombre, $imagen, $activa, $id);
+        } else {
+            $stmt = $db->prepare("UPDATE preventas SET nombre=?, activa=? WHERE id=?");
+            $stmt->bind_param('sii', $nombre, $activa, $id);
+        }
+        if ($stmt->execute()) echo json_encode(['ok' => true]);
+        else { http_response_code(400); echo json_encode(['error' => $db->error]); }
+        break;
+
+    case 'preventa_eliminar':
+        // Decisión de negocio: no se bloquea el borrado por tener productos
+        // asignados — quedan sin preventa (preventa_id=NULL) y por lo tanto
+        // dejan de mostrarse en el catálogo público hasta que se les asigne
+        // otra preventa activa.
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $id = intval($_GET['id'] ?? 0);
+        $stmtImg = $db->prepare("SELECT imagen FROM preventas WHERE id=?");
+        $stmtImg->bind_param('i', $id); $stmtImg->execute();
+        $prev = $stmtImg->get_result()->fetch_assoc();
+        $upd = $db->prepare("UPDATE productos SET preventa_id=NULL WHERE preventa_id=?");
+        $upd->bind_param('i', $id); $upd->execute();
+        $stmt = $db->prepare("DELETE FROM preventas WHERE id=?");
+        $stmt->bind_param('i', $id); $stmt->execute();
+        if ($prev && !empty($prev['imagen']) && strpos($prev['imagen'], 'http') === false) {
+            $imgPath = __DIR__ . '/' . $prev['imagen'];
+            if (file_exists($imgPath)) unlink($imgPath);
+        }
+        echo json_encode(['ok' => true]);
+        break;
+
+    case 'reordenar_preventas':
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        foreach ($data['orden'] ?? [] as $item) {
+            $id = intval($item['id']); $o = intval($item['orden']);
+            $stmt = $db->prepare("UPDATE preventas SET orden=? WHERE id=?");
+            $stmt->bind_param('ii', $o, $id);
+            $stmt->execute();
+        }
+        echo json_encode(['ok' => true]);
+        break;
+
+    // Búsqueda de la foto de un producto en Manager2Max, por código, para
+    // completar automáticamente productos importados por Excel sin foto.
+    // Solo-lectura contra Manager (GetDTArticulosImagenes/GetImage, ver la
+    // regla del vault) — uno por uno, no en lote, por el límite de tiempo de
+    // ejecución de PHP en hosting compartido (ver manager2max.md).
+    case 'manager_imagen_producto':
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $codigo = trim($data['codigo'] ?? '');
+        if (!$codigo) { http_response_code(400); die(json_encode(['error' => 'código requerido'])); }
+        try {
+            $token = manager_login();
+            $imagenes = manager_call($token, '/Api/ECommerce/GetDTArticulosImagenes', [
+                'DTRequest' => ['draw' => 1, 'order' => [], 'start' => 0, 'length' => 20],
+                'DefinicionTablaFiltros' => false,
+                'CalculaTotales' => false,
+                'ListFilters' => manager_dict_filtros(['CodigoArticulo' => manager_filtro_texto($codigo)]),
+            ]);
+            $principal = null;
+            foreach ($imagenes as $img) {
+                if (trim($img['CodigoArticulo'] ?? '') === $codigo && intval($img['Orden'] ?? 0) === 1) { $principal = $img; break; }
+            }
+            if (!$principal) { echo json_encode(['ok' => true, 'encontrada' => false]); break; }
+
+            $imgResp = manager_call($token, '/Api/Image/GetImage', ['ImageFullPath' => $principal['PasoImagen']]);
+            $base64 = $imgResp['ImageContent'] ?? null;
+            if (!$base64) { echo json_encode(['ok' => true, 'encontrada' => false]); break; }
+
+            $bytes = base64_decode($base64);
+            $src = imagecreatefromstring($bytes);
+            if (!$src) { echo json_encode(['ok' => true, 'encontrada' => false, 'error' => 'Imagen de Manager ilegible']); break; }
+
+            $dst = redimensionar_a_cuadro($src, 800, 800);
+            if (!is_dir(__DIR__ . '/imgs')) mkdir(__DIR__ . '/imgs', 0755, true);
+            $filename = str_replace('/', '_', $codigo) . '.jpeg';
+            imagejpeg($dst, __DIR__ . '/imgs/' . $filename, 85);
+            imagedestroy($src);
+            imagedestroy($dst);
+
+            $foto = 'imgs/' . $filename;
+            $stmt = $db->prepare("UPDATE productos SET foto=? WHERE codigo=?");
+            $stmt->bind_param('ss', $foto, $codigo);
+            $stmt->execute();
+
+            echo json_encode(['ok' => true, 'encontrada' => true, 'foto' => $foto]);
+        } catch (Exception $e) {
+            http_response_code(500);
+            echo json_encode(['error' => $e->getMessage()]);
+        }
         break;
 
     // ── COLORES ───────────────────────────────────────────────────────────────
@@ -955,10 +1149,13 @@ switch ($action) {
                 $descripcion = $item['descripcion'] ?? '';
 
                 $enListaEspera = 0;
-                $lock = $db->prepare("SELECT stock_preventa FROM productos WHERE codigo=? FOR UPDATE");
+                $lock = $db->prepare("SELECT p.stock_preventa, pv.nombre as preventa_nombre
+                    FROM productos p LEFT JOIN preventas pv ON pv.id = p.preventa_id
+                    WHERE p.codigo=? FOR UPDATE");
                 $lock->bind_param('s', $codigo);
                 $lock->execute();
                 $prodRow = $lock->get_result()->fetch_assoc();
+                $preventaNombre = $prodRow['preventa_nombre'] ?? null;
 
                 if ($prodRow) {
                     $stockActual = intval($prodRow['stock_preventa']);
@@ -987,6 +1184,7 @@ switch ($action) {
                     'precio_unitario' => $precioUnit,
                     'subtotal' => $subtotal,
                     'en_lista_espera' => $enListaEspera,
+                    'preventa_nombre' => $preventaNombre,
                 ];
             }
 
@@ -996,8 +1194,8 @@ switch ($action) {
             $pedido_id = $db->insert_id;
 
             foreach ($itemsProcesados as $item) {
-                $is = $db->prepare("INSERT INTO pedido_items (pedido_id,codigo,descripcion,cantidad,precio_unitario,subtotal,en_lista_espera) VALUES (?,?,?,?,?,?,?)");
-                $is->bind_param('issiddi', $pedido_id, $item['codigo'], $item['descripcion'], $item['cantidad'], $item['precio_unitario'], $item['subtotal'], $item['en_lista_espera']);
+                $is = $db->prepare("INSERT INTO pedido_items (pedido_id,codigo,descripcion,cantidad,precio_unitario,subtotal,en_lista_espera,preventa_nombre) VALUES (?,?,?,?,?,?,?,?)");
+                $is->bind_param('issiddis', $pedido_id, $item['codigo'], $item['descripcion'], $item['cantidad'], $item['precio_unitario'], $item['subtotal'], $item['en_lista_espera'], $item['preventa_nombre']);
                 $is->execute();
             }
 

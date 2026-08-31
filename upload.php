@@ -13,6 +13,7 @@ define('IMG_H', 800);
 $user = $_POST['_user'] ?? '';
 $pass = $_POST['_pass'] ?? '';
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/helpers.php';
 $db = getDB();
 $r = $db->query("SELECT valor FROM config WHERE clave='admin_pass' LIMIT 1");
 $row = $r ? $r->fetch_assoc() : null;
@@ -22,8 +23,13 @@ if ($user !== ADMIN_USER || $pass !== $validPass) {
     die(json_encode(['error' => 'No autorizado']));
 }
 
+// tipo=preventa: portada de una preventa, se guarda aparte en imgs/preventas/
+// (mismo resize a cuadro blanco, solo cambia la carpeta y el nombre de archivo).
+$esPreventa = ($_POST['tipo'] ?? '') === 'preventa';
+$dir = $esPreventa ? IMG_DIR . 'preventas/' : IMG_DIR;
+
 // Crear carpeta si no existe
-if (!is_dir(IMG_DIR)) mkdir(IMG_DIR, 0755, true);
+if (!is_dir($dir)) mkdir($dir, 0755, true);
 
 if (!isset($_FILES['imagen']) || $_FILES['imagen']['error'] !== UPLOAD_ERR_OK) {
     http_response_code(400);
@@ -58,27 +64,11 @@ switch ($mime) {
     default: http_response_code(400); die(json_encode(['error' => 'Formato no soportado']));
 }
 
-$ow = imagesx($src);
-$oh = imagesy($src);
-
-// Calcular dimensiones manteniendo proporción con fondo blanco
-$ratio = min(IMG_W / $ow, IMG_H / $oh);
-$nw = intval($ow * $ratio);
-$nh = intval($oh * $ratio);
-$ox = intval((IMG_W - $nw) / 2);
-$oy = intval((IMG_H - $nh) / 2);
-
-// Canvas blanco 800x800
-$dst = imagecreatetruecolor(IMG_W, IMG_H);
-$white = imagecolorallocate($dst, 255, 255, 255);
-imagefill($dst, 0, 0, $white);
-
-// Copiar imagen redimensionada centrada
-imagecopyresampled($dst, $src, $ox, $oy, 0, 0, $nw, $nh, $ow, $oh);
+$dst = redimensionar_a_cuadro($src, IMG_W, IMG_H);
 
 // Guardar como JPEG
 $filename = $codigo . '.jpeg';
-$filepath = IMG_DIR . $filename;
+$filepath = $dir . $filename;
 imagejpeg($dst, $filepath, 85);
 
 imagedestroy($src);
@@ -87,6 +77,6 @@ imagedestroy($dst);
 echo json_encode([
     'ok' => true,
     'filename' => $filename,
-    'url' => 'imgs/' . $filename
+    'url' => ($esPreventa ? 'imgs/preventas/' : 'imgs/') . $filename
 ]);
 ?>

@@ -4,10 +4,12 @@ var authUser = "",
     authPass = "";
 var allProducts = [],
     allCats = [],
-    allColores = [];
+    allColores = [],
+    allPreventas = [];
 var pendingFile = null,
     codigoOk = true,
     checkTimeout = null;
+var pendingPrevFile = null;
 var editMode = false,
     dragSrc = null;
 var sortedProducts = null;
@@ -19,6 +21,7 @@ var COLS = [
     { key: "codigo", label: "Código", default: true },
     { key: "desc", label: "Descripción", default: true },
     { key: "cat", label: "Categoría", default: true },
+    { key: "preventa", label: "Preventa", default: true },
     { key: "may", label: "Mayorista", default: true },
     { key: "pvp", label: "PVP", default: true },
     { key: "estado", label: "Estado", default: true },
@@ -96,6 +99,7 @@ async function doLogin() {
             localStorage.setItem("tb_admin_user", u);
             localStorage.setItem("tb_admin_pass", p);
             btn.textContent = "Cargando datos...";
+            await loadPreventas();
             await loadCats();
             await loadColores();
             await loadProducts();
@@ -137,6 +141,7 @@ async function tryAutoLogin() {
         if (res.ok) {
             authUser = u;
             authPass = p;
+            await loadPreventas();
             await loadCats();
             await loadColores();
             await loadProducts();
@@ -294,6 +299,7 @@ function showSection(s, btn) {
     document
         .querySelectorAll('.fav-btn[data-section="' + s + '"]')
         .forEach((el) => el.classList.add("on"));
+    if (s === "preventas") renderPreventaTable();
     if (s === "categorias") renderCatTable();
     if (s === "colores") renderColoresTable();
     if (s === "pedidos") loadPedidos();
@@ -802,9 +808,250 @@ async function eliminarCategoria(id, nombre, count) {
     }
 }
 
+// ── PREVENTAS ─────────────────────────────────────────────────────────────────
+async function loadPreventas() {
+    var res = await fetch(API + "?action=preventas&_user=" + encodeURIComponent(authUser) + "&_pass=" + encodeURIComponent(authPass));
+    allPreventas = await res.json();
+    renderPreventaSelector();
+    renderPreventaFilter();
+    renderPreventaTable();
+}
+function renderPreventaSelector() {
+    var sel = document.getElementById("fPreventa");
+    if (!sel) return;
+    var cur = sel.value;
+    sel.innerHTML = '<option value="">— Sin preventa (oculto del catálogo) —</option>';
+    allPreventas.forEach(function (pv) {
+        var o = document.createElement("option");
+        o.value = pv.id;
+        o.textContent = pv.nombre + (pv.activa ? "" : " (inactiva)");
+        sel.appendChild(o);
+    });
+    if (cur) sel.value = cur;
+    updatePreventaHint();
+}
+function updatePreventaHint() {
+    var sel = document.getElementById("fPreventa");
+    var hint = document.getElementById("preventaHint");
+    if (!sel || !hint) return;
+    if (!sel.value) {
+        hint.innerHTML = icon("triangle-alert", {size: 14}) + " Sin preventa, este producto no se muestra en el catálogo.";
+        hint.style.color = "#c62828";
+        return;
+    }
+    var pv = allPreventas.find((p) => String(p.id) === sel.value);
+    if (pv && !pv.activa) {
+        hint.innerHTML = icon("triangle-alert", {size: 14}) + " Esa preventa está inactiva — el producto no se va a mostrar hasta que la activés.";
+        hint.style.color = "#c62828";
+    } else {
+        hint.textContent = "";
+    }
+}
+function renderPreventaFilter() {
+    var sel = document.getElementById("filtPreventa");
+    if (!sel) return;
+    var cur = sel.value;
+    sel.innerHTML = '<option value="">Todas las preventas</option><option value="sin">Sin preventa (oculto)</option>';
+    allPreventas.forEach(function (pv) {
+        var o = document.createElement("option");
+        o.value = pv.id;
+        o.textContent = pv.nombre + (pv.activa ? "" : " (inactiva)");
+        sel.appendChild(o);
+    });
+    if (cur) sel.value = cur;
+}
+function preventaBadge(p) {
+    if (!p.preventa_id) return '<span style="color:var(--muted);font-size:12px">— Sin preventa —</span>';
+    var activa = String(p.preventa_activa) === "1";
+    var color = activa ? "#2e7d32" : "#c62828";
+    var bg = activa ? "#e8f5e9" : "#ffebee";
+    return '<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;color:' + color + ';background:' + bg + '">' +
+        esc(p.preventa_nombre || "?") + (activa ? "" : " · inactiva") + "</span>";
+}
+
+var prevDragSrc = null;
+function renderPreventaTable() {
+    var html = "";
+    allPreventas.forEach(function (pv) {
+        var count = allProducts.filter((p) => String(p.preventa_id) === String(pv.id)).length;
+        var imgUrl = pv.imagen ? "../" + pv.imagen : null;
+        html += '<tr draggable="true" data-prev-id="' + pv.id + '">';
+        html += '<td><span class="drag-handle">' + icon("grip-vertical", {size: 16}) + '</span></td>';
+        html += '<td>' + (imgUrl
+            ? '<img class="thumb" src="' + imgUrl + '?v=' + Date.now() + '" onerror="this.style.display=\'none\'">'
+            : '<div class="thumb-ph">' + icon("megaphone") + '</div>') + '</td>';
+        html += "<td><strong>" + esc(pv.nombre) + "</strong></td>";
+        html += '<td><label class="switch"><input type="checkbox" ' + (pv.activa == 1 ? "checked" : "") +
+            ' onchange="togglePreventaActiva(' + pv.id + ',this.checked)"><span class="switch-slider"></span></label></td>';
+        html += "<td>" + count + " producto" + (count !== 1 ? "s" : "") + "</td>";
+        html += '<td><div class="actions"><button class="btn btn-edit" onclick="openPrevModal(' + pv.id + ')">' + icon("pencil") + ' Editar</button>';
+        html += '<button class="btn btn-danger" onclick="eliminarPreventa(' + pv.id + ",'" + esc(pv.nombre) + "'," + count + ')">' + icon("trash-2") + '</button></div></td></tr>';
+    });
+    document.getElementById("prevTbody").innerHTML =
+        html || '<tr><td colspan="6" style="text-align:center;color:#aaa;padding:20px">No hay preventas todavía</td></tr>';
+    initPrevDragDrop();
+}
+
+function initPrevDragDrop() {
+    var rows = document.querySelectorAll('#prevTbody tr[draggable="true"]');
+    rows.forEach(function (row) {
+        row.addEventListener("dragstart", function (e) {
+            prevDragSrc = row;
+            row.classList.add("dragging");
+            e.dataTransfer.effectAllowed = "move";
+        });
+        row.addEventListener("dragend", function () {
+            row.classList.remove("dragging");
+            document.querySelectorAll("#prevTbody tr").forEach((r) => r.classList.remove("drag-over"));
+        });
+        row.addEventListener("dragover", function (e) {
+            e.preventDefault();
+            document.querySelectorAll("#prevTbody tr").forEach((r) => r.classList.remove("drag-over"));
+            if (row !== prevDragSrc) row.classList.add("drag-over");
+        });
+        row.addEventListener("drop", function (e) {
+            e.preventDefault();
+            if (prevDragSrc && prevDragSrc !== row) {
+                var tbody = document.getElementById("prevTbody");
+                var rows = Array.from(tbody.querySelectorAll("tr"));
+                var si = rows.indexOf(prevDragSrc), di = rows.indexOf(row);
+                if (si < di) tbody.insertBefore(prevDragSrc, row.nextSibling);
+                else tbody.insertBefore(prevDragSrc, row);
+                savePrevOrder();
+            }
+            row.classList.remove("drag-over");
+        });
+    });
+}
+
+async function savePrevOrder() {
+    var rows = document.querySelectorAll("#prevTbody tr[data-prev-id]");
+    var order = [];
+    rows.forEach(function (r, i) { order.push({ id: parseInt(r.dataset.prevId), orden: i }); });
+    var res = await fetch(API + "?action=reordenar_preventas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ _user: authUser, _pass: authPass, orden: order }),
+    });
+    var json = await res.json();
+    if (json.ok) toast("Orden de preventas guardado");
+}
+
+async function crearPreventa() {
+    var nombre = document.getElementById("newPrevNombre").value.trim();
+    if (!nombre) { toast("Ingresá un nombre", "#c62828"); return; }
+    var res = await fetch(API + "?action=preventa_crear", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ _user: authUser, _pass: authPass, nombre, orden: allPreventas.length, activa: false }),
+    });
+    var json = await res.json();
+    if (json.ok) {
+        document.getElementById("newPrevNombre").value = "";
+        toast("Preventa creada — recordá activarla cuando quieras que se vea en el catálogo");
+        await loadPreventas();
+    } else toast("Error: " + (json.error || "ya existe"), "#c62828");
+}
+
+function openPrevModal(id) {
+    var pv = allPreventas.find((p) => parseInt(p.id) === parseInt(id));
+    if (!pv) return;
+    pendingPrevFile = null;
+    document.getElementById("prevEditId").value = pv.id;
+    document.getElementById("prevEditNombre").value = pv.nombre;
+    document.getElementById("prevEditActiva").checked = pv.activa == 1;
+    document.getElementById("prevEditImagen").value = "";
+    var cur = document.getElementById("prevImgCurrent");
+    if (pv.imagen) { cur.src = "../" + pv.imagen + "?v=" + Date.now(); cur.style.display = "block"; }
+    else cur.style.display = "none";
+    document.getElementById("prevModalBg").classList.add("open");
+}
+function closePrevModal() {
+    document.getElementById("prevModalBg").classList.remove("open");
+}
+function previewPrevImg(input) {
+    if (!input.files || !input.files[0]) return;
+    pendingPrevFile = input.files[0];
+    var reader = new FileReader();
+    reader.onload = function (e) {
+        var cur = document.getElementById("prevImgCurrent");
+        cur.src = e.target.result;
+        cur.style.display = "block";
+    };
+    reader.readAsDataURL(pendingPrevFile);
+}
+async function uploadPrevImage(id) {
+    if (!pendingPrevFile) return null;
+    var fd = new FormData();
+    fd.append("imagen", pendingPrevFile);
+    fd.append("codigo", "preventa_" + id);
+    fd.append("tipo", "preventa");
+    fd.append("_user", authUser);
+    fd.append("_pass", authPass);
+    var res = await fetch(UPLOAD, { method: "POST", body: fd });
+    var json = await res.json();
+    if (json.ok) return json.url;
+    toast("Error al subir imagen: " + json.error, "#c62828");
+    return null;
+}
+async function guardarPreventa() {
+    var id = document.getElementById("prevEditId").value;
+    var nombre = document.getElementById("prevEditNombre").value.trim();
+    var activa = document.getElementById("prevEditActiva").checked;
+    if (!nombre) { toast("Ingresá un nombre", "#c62828"); return; }
+    var data = { _user: authUser, _pass: authPass, nombre, activa };
+    if (pendingPrevFile) {
+        var url = await uploadPrevImage(id);
+        if (url) data.imagen = url;
+    }
+    var res = await fetch(API + "?action=preventa_editar&id=" + id, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+    });
+    var json = await res.json();
+    if (json.ok) {
+        toast("Preventa actualizada");
+        closePrevModal();
+        await loadPreventas();
+        await loadProducts();
+    } else toast("Error: " + (json.error || "desconocido"), "#c62828");
+}
+async function togglePreventaActiva(id, activa) {
+    var pv = allPreventas.find((p) => parseInt(p.id) === parseInt(id));
+    if (!pv) return;
+    var res = await fetch(API + "?action=preventa_editar&id=" + id, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ _user: authUser, _pass: authPass, nombre: pv.nombre, activa }),
+    });
+    var json = await res.json();
+    if (json.ok) {
+        toast(activa ? "Preventa activada — sus productos ya se ven en el catálogo" : "Preventa desactivada — sus productos se ocultaron del catálogo");
+        await loadPreventas();
+        await loadProducts();
+    } else { toast("Error: " + (json.error || "desconocido"), "#c62828"); renderPreventaTable(); }
+}
+async function eliminarPreventa(id, nombre, count) {
+    var msg = '¿Eliminar la preventa "' + nombre + '"?';
+    if (count > 0) msg += " Sus " + count + " producto(s) van a dejar de mostrarse en el catálogo hasta que se les asigne otra preventa.";
+    if (!confirm(msg)) return;
+    var res = await fetch(API + "?action=preventa_eliminar&id=" + id, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ _user: authUser, _pass: authPass }),
+    });
+    var json = await res.json();
+    if (json.ok) {
+        toast("Preventa eliminada");
+        await loadPreventas();
+        await loadProducts();
+    }
+}
+
 // ── PRODUCTOS ─────────────────────────────────────────────────────────────────
 async function loadProducts() {
-    var res = await fetch(API + "?action=productos");
+    var res = await fetch(API + "?action=productos&_user=" + encodeURIComponent(authUser) + "&_pass=" + encodeURIComponent(authPass));
     allProducts = await res.json();
     renderStats();
     renderTable(getFiltered());
@@ -823,6 +1070,7 @@ function getFiltered() {
     var q = document.getElementById("srch").value.toLowerCase();
     var cat = document.getElementById("filtCat").value;
     var est = document.getElementById("filtEst").value;
+    var prev = document.getElementById("filtPreventa").value;
     var base = sortedProducts || allProducts;
     return base.filter(
         (p) =>
@@ -831,7 +1079,8 @@ function getFiltered() {
                 p.codigo.toLowerCase().includes(q) ||
                 (p.codigo_barras && p.codigo_barras.toLowerCase().includes(q))) &&
             (!cat || p.categoria === cat) &&
-            (!est || p.estado === est),
+            (!est || p.estado === est) &&
+            (!prev || (prev === "sin" ? !p.preventa_id : String(p.preventa_id) === prev)),
     );
 }
 function filterTable() {
@@ -870,6 +1119,7 @@ function renderTableHeader() {
     if (col("codigo")) h += '<th class="sticky-col">Código</th>';
     if (col("desc")) h += "<th>Descripción</th>";
     if (col("cat")) h += '<th class="col-hide-3">Categoría</th>';
+    if (col("preventa")) h += '<th class="col-hide-3">Preventa</th>';
     if (col("may")) h += "<th>Mayorista</th>";
     if (col("pvp")) h += '<th class="col-hide-2">PVP</th>';
     if (col("estado")) h += "<th>Estado</th>";
@@ -944,6 +1194,27 @@ function renderTableFromList(list) {
                         )
                         .join("") +
                     "</select></td>";
+            if (col("preventa"))
+                html +=
+                    '<td class="editing col-hide-3"><select class="inline-select" data-field="preventa_id" data-id="' +
+                    p.id +
+                    '"><option value=""' +
+                    (!p.preventa_id ? " selected" : "") +
+                    ">— Sin preventa —</option>" +
+                    allPreventas
+                        .map(
+                            (pv) =>
+                                '<option value="' +
+                                pv.id +
+                                '"' +
+                                (String(pv.id) === String(p.preventa_id) ? " selected" : "") +
+                                ">" +
+                                pv.nombre +
+                                (pv.activa ? "" : " (inactiva)") +
+                                "</option>",
+                        )
+                        .join("") +
+                    "</select></td>";
             if (col("may"))
                 html +=
                     '<td class="editing"><input class="inline-input" type="number" value="' +
@@ -1012,6 +1283,7 @@ function renderTableFromList(list) {
             if (col("codigo")) html += '<td class="sticky-col"><code>' + p.codigo + "</code></td>";
             if (col("desc")) html += "<td>" + p.descripcion + "</td>";
             if (col("cat")) html += '<td class="col-hide-3">' + p.categoria + "</td>";
+            if (col("preventa")) html += '<td class="col-hide-3">' + preventaBadge(p) + "</td>";
             if (col("may"))
                 html +=
                     '<td style="font-weight:800;color:var(--blue)">' +
@@ -1255,8 +1527,11 @@ function openModal(p) {
         ? "field-hint ok"
         : "field-hint";
     renderCatSelector();
+    renderPreventaSelector();
     setTimeout(function () {
         document.getElementById("fCategoria").value = p ? p.categoria : "";
+        document.getElementById("fPreventa").value = p ? (p.preventa_id || "") : "";
+        updatePreventaHint();
     }, 0);
     document.getElementById("fDesc").value = p ? p.descripcion : "";
     document.getElementById("fMay").value = p
@@ -1494,6 +1769,7 @@ async function saveProduct() {
         parseInt(document.getElementById("fMultiplo").value) || 1,
     );
     var codigoBarras = document.getElementById("fCodigoBarras").value.trim() || null;
+    var preventaId = document.getElementById("fPreventa").value || "";
     var stockPreventa = Math.max(
         0,
         parseInt(document.getElementById("fStockPreventa").value) || 0,
@@ -1540,6 +1816,7 @@ async function saveProduct() {
         orden: orden,
         multiplo,
         codigo_barras: codigoBarras,
+        preventa_id: preventaId,
         stock_preventa: stockPreventa,
         colores,
     };
@@ -2064,31 +2341,44 @@ function imprimirPedido() {
     if (p.provincia) html += p.provincia + "<br>";
     if (p.transporte) html += "<strong>Transporte:</strong> " + p.transporte;
     html += "</div></div>";
-    html += "<table><thead><tr>";
-    html +=
-        '<th>Código</th><th>Descripción</th><th style="text-align:center">Cant.</th>';
-    html += '<th style="text-align:left">Precio / Subtotal</th>';
-    html += '<th style="text-align:center;width:70px">Preparado</th>';
-    html += "</tr></thead><tbody>";
+
+    // Agrupar los ítems por preventa (snapshot tomado al crear el pedido —
+    // no cambia aunque después se reasigne o borre la preventa del producto).
+    var grupos = {}, orden = [];
     p.items.forEach(function (item) {
-        html += "<tr>";
-        html += '<td style="white-space:nowrap">' + item.codigo + "</td>";
-        html += '<td class="desc">' + item.descripcion + "</td>";
-        html +=
-            '<td style="text-align:center;font-weight:bold">' +
-            item.cantidad +
-            "</td>";
-        html +=
-            '<td class="price-cell"><span class="price-unit">' +
-            fmt(item.precio_unitario) +
-            '</span><br><span class="price-sub">' +
-            fmt(item.subtotal) +
-            "</span></td>";
-        html +=
-            '<td style="text-align:center"><span class="deposit-box"></span></td>';
-        html += "</tr>";
+        var g = item.preventa_nombre || "Sin preventa";
+        if (!grupos[g]) { grupos[g] = []; orden.push(g); }
+        grupos[g].push(item);
     });
-    html += "</tbody></table>";
+
+    orden.forEach(function (nombreGrupo) {
+        html += '<h3 style="font-size:13px;color:#e84e1b;margin:16px 0 6px 0;text-transform:uppercase">' + esc(nombreGrupo) + '</h3>';
+        html += "<table><thead><tr>";
+        html +=
+            '<th>Código</th><th>Descripción</th><th style="text-align:center">Cant.</th>';
+        html += '<th style="text-align:left">Precio / Subtotal</th>';
+        html += '<th style="text-align:center;width:70px">Preparado</th>';
+        html += "</tr></thead><tbody>";
+        grupos[nombreGrupo].forEach(function (item) {
+            html += "<tr>";
+            html += '<td style="white-space:nowrap">' + item.codigo + "</td>";
+            html += '<td class="desc">' + item.descripcion + "</td>";
+            html +=
+                '<td style="text-align:center;font-weight:bold">' +
+                item.cantidad +
+                "</td>";
+            html +=
+                '<td class="price-cell"><span class="price-unit">' +
+                fmt(item.precio_unitario) +
+                '</span><br><span class="price-sub">' +
+                fmt(item.subtotal) +
+                "</span></td>";
+            html +=
+                '<td style="text-align:center"><span class="deposit-box"></span></td>';
+            html += "</tr>";
+        });
+        html += "</tbody></table>";
+    });
     html +=
         '<div class="total">TOTAL: ' +
         fmt(p.total) +
@@ -2418,6 +2708,7 @@ var SYSTEM_FIELDS = [
     { key: "PRECIO_MAYORISTA", label: "Precio mayorista", required: false },
     { key: "PVP",              label: "PVP",              required: false },
     { key: "ESTADO",           label: "Estado",           required: false },
+    { key: "PREVENTA",         label: "Preventa",         required: false },
 ];
 
 var FIELD_ALIASES = {
@@ -2428,6 +2719,7 @@ var FIELD_ALIASES = {
     "PRECIO_MAYORISTA": ["PRECIO_MAYORISTA", "PRECIO", "PRECIO_MAY", "MAYORISTA", "PRICE", "COSTO", "PRECIO_COSTO"],
     "PVP":              ["PVP", "PRECIO_VENTA", "PRECIO_PUBLICO", "RETAIL", "PRECIO_SUGERIDO"],
     "ESTADO":           ["ESTADO", "STATUS", "STATE", "DISPONIBILIDAD", "ACTIVO"],
+    "PREVENTA":         ["PREVENTA", "CAMPAÑA", "CAMPANIA", "PROMO"],
 };
 
 function normalizeHeader(h) {
@@ -2627,6 +2919,11 @@ function getRowStatus(row, existingData) {
             if (newV !== oldV) changed = true;
         }
     });
+    // PREVENTA no viene en "existingData" (check_codigos no la trae), así que
+    // no se puede comparar contra el valor actual acá — cualquier valor no
+    // vacío se trata como cambio, para no arriesgarse a que la fila quede
+    // "SIN_CAMBIOS" y la asignación de preventa se omita en silencio al importar.
+    if (row["PREVENTA"] !== undefined && row["PREVENTA"] !== "") changed = true;
 
     return { status: changed ? "ACTUALIZA" : "SIN_CAMBIOS", errors: [], existing: existing };
 }
@@ -2652,7 +2949,7 @@ function renderImportPreview(rows, existingData) {
     enriched.forEach(function(r) { counts[r._status.status]++; });
 
     // Detectar qué campos vinieron en el archivo
-    var ORDERED = ["CODIGO","CODIGO_BARRAS","DESCRIPCION","CATEGORIA","PRECIO_MAYORISTA","PVP","ESTADO"];
+    var ORDERED = ["CODIGO","CODIGO_BARRAS","DESCRIPCION","CATEGORIA","PRECIO_MAYORISTA","PVP","ESTADO","PREVENTA"];
     var activeFields = ORDERED.filter(function(f) {
         return rows.some(function(r) { return r[f] !== undefined && r[f] !== ""; });
     });
@@ -2826,9 +3123,22 @@ async function confirmImport() {
                     + json.errors.map(function(e){ return e.codigo + " (" + e.motivo + ")"; }).join(", ");
             }
             toast(msg, json.errors && json.errors.length ? "#e65100" : undefined);
-            closeImportModal();
-            loadProducts();
+            await loadProducts();
             if (json.import_id) showUndoBanner(json.import_id, json.imported, json.updated);
+
+            // Fotos faltantes: el wizard de Excel no carga imágenes (eso lo
+            // hace "Importar imágenes" por nombre de archivo, o la búsqueda
+            // manual en el alta) — para no tener que subirlas una por una,
+            // se ofrece completarlas automáticamente desde Manager por código.
+            var codigosSinFoto = rows
+                .map(function(r) { return r.CODIGO; })
+                .filter(function(codigo) {
+                    var p = allProducts.find(function(x) { return x.codigo === codigo; });
+                    return p && !p.foto;
+                });
+            if (codigosSinFoto.length) await buscarFotosManagerLote(codigosSinFoto);
+
+            closeImportModal();
         } else {
             toast("Error: " + (json.error || "desconocido"), "#c62828");
         }
@@ -2837,6 +3147,47 @@ async function confirmImport() {
     }
     btn.disabled = false;
     btn.textContent = "Confirmar importación";
+}
+
+// Busca en Manager2Max, una por una (no en lote — ver nota en api.php sobre
+// el límite de tiempo de ejecución de PHP en hosting compartido), la foto
+// principal de cada código sin imagen y la guarda si la encuentra. Solo se
+// llama sobre productos que ya quedaron SIN foto después del import.
+async function buscarFotosManagerLote(codigos) {
+    if (!confirm(
+        codigos.length + " producto(s) importado(s) no tienen foto todavía. " +
+        "¿Buscarlas automáticamente en Manager por código? Puede tardar unos " +
+        "segundos por producto."
+    )) return;
+    var wrap = document.getElementById("importPreviewWrap");
+    var encontradas = 0, sinImagen = 0, errores = 0;
+    for (var i = 0; i < codigos.length; i++) {
+        var codigo = codigos[i];
+        if (wrap) {
+            wrap.innerHTML =
+                '<p style="text-align:center;padding:24px;color:#666">' +
+                '<span style="display:inline-block;animation:spin .6s linear infinite">' + icon("loader-circle") + '</span> ' +
+                'Buscando foto ' + (i + 1) + ' de ' + codigos.length + ' en Manager (' + esc(codigo) + ')…</p>';
+        }
+        try {
+            var res = await fetch(API + "?action=manager_imagen_producto", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ _user: authUser, _pass: authPass, codigo: codigo }),
+            });
+            var json = await res.json();
+            if (json.ok && json.encontrada) encontradas++;
+            else if (json.ok) sinImagen++;
+            else errores++;
+        } catch (e) {
+            errores++;
+        }
+    }
+    var msg = encontradas + " foto(s) encontradas en Manager";
+    if (sinImagen) msg += ", " + sinImagen + " sin imagen en Manager (ambiente de prueba)";
+    if (errores) msg += ", " + errores + " error(es)";
+    toast(msg, errores ? "#e65100" : undefined);
+    await loadProducts();
 }
 
 // ── DESHACER IMPORTACIÓN ──────────────────────────────────────────────────────
@@ -2887,13 +3238,13 @@ async function undoLastImport(import_id) {
 // ── Exportar plantilla vacía ──────────────────────────────────────────────────
 function exportTemplate() {
     if (typeof XLSX === 'undefined') { alert('Cargando SheetJS, intentá de nuevo.'); return; }
-    var headers = ['CODIGO', 'CODIGO_BARRAS', 'DESCRIPCION', 'CATEGORIA', 'PRECIO_MAYORISTA', 'PVP', 'ESTADO'];
+    var headers = ['CODIGO', 'CODIGO_BARRAS', 'DESCRIPCION', 'CATEGORIA', 'PRECIO_MAYORISTA', 'PVP', 'ESTADO', 'PREVENTA'];
     var wb = XLSX.utils.book_new();
     var ws = XLSX.utils.aoa_to_sheet([headers]);
     // Ancho de columna aproximado
     ws['!cols'] = [
         {wch: 14}, {wch: 16}, {wch: 40}, {wch: 22},
-        {wch: 18}, {wch: 12}, {wch: 12}
+        {wch: 18}, {wch: 12}, {wch: 12}, {wch: 22}
     ];
     XLSX.utils.book_append_sheet(wb, ws, 'Productos');
     XLSX.writeFile(wb, 'plantilla_importacion_travelblue.xlsx');
@@ -2903,10 +3254,10 @@ function exportTemplate() {
 async function exportCatalog() {
     if (typeof XLSX === 'undefined') { alert('Cargando SheetJS, intentá de nuevo.'); return; }
     try {
-        var res  = await fetch(API + '?action=productos');
+        var res  = await fetch(API + '?action=productos&_user=' + encodeURIComponent(authUser) + '&_pass=' + encodeURIComponent(authPass));
         var json = await res.json();
         if (!Array.isArray(json) || !json.length) { alert('No hay productos para exportar.'); return; }
-        var headers = ['CODIGO', 'CODIGO_BARRAS', 'DESCRIPCION', 'CATEGORIA', 'PRECIO_MAYORISTA', 'PVP', 'ESTADO'];
+        var headers = ['CODIGO', 'CODIGO_BARRAS', 'DESCRIPCION', 'CATEGORIA', 'PRECIO_MAYORISTA', 'PVP', 'ESTADO', 'PREVENTA'];
         var rows = json.map(function(p) {
             return [
                 p.codigo        || '',
@@ -2915,7 +3266,8 @@ async function exportCatalog() {
                 p.categoria     || '',
                 p.precio_mayorista != null ? Number(p.precio_mayorista) : '',
                 p.pvp           != null    ? Number(p.pvp)              : '',
-                p.estado        || ''
+                p.estado        || '',
+                p.preventa_nombre || ''
             ];
         });
         var wb = XLSX.utils.book_new();
@@ -2935,7 +3287,7 @@ async function exportCatalog() {
 // ── Imprimir nota de pedido (admin — carga desde API) ────────────────────────
 async function printNotaAdmin() {
     try {
-        var res  = await fetch(API + '?action=productos');
+        var res  = await fetch(API + '?action=productos&_user=' + encodeURIComponent(authUser) + '&_pass=' + encodeURIComponent(authPass));
         var json = await res.json();
         if (!Array.isArray(json) || !json.length) { alert('No hay productos para imprimir.'); return; }
         // Guardamos todos (disponibles + agotados); el modal decide qué mostrar

@@ -269,6 +269,92 @@ header {
     background: var(--pale)
 }
 
+/* SELECTOR DE PREVENTAS — carteles llamativos arriba de las categorías; hacen
+   de filtro (como los tabs) y de vidriera de qué campañas están activas. */
+.prev-selector {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding: 14px 16px;
+    background: #fff;
+    border-bottom: 2px solid var(--border);
+    scrollbar-width: none
+}
+
+.prev-selector::-webkit-scrollbar {
+    display: none
+}
+
+.prev-card {
+    flex: 0 0 auto;
+    min-width: 160px;
+    height: 76px;
+    border-radius: 10px;
+    border: 2px solid transparent;
+    background: linear-gradient(135deg, var(--blue), var(--blue2));
+    background-size: cover;
+    background-position: center;
+    cursor: pointer;
+    display: flex;
+    align-items: flex-end;
+    padding: 10px 12px;
+    position: relative;
+    overflow: hidden;
+    transition: transform .1s, border-color .15s
+}
+
+.prev-card.has-img::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(0, 0, 0, .55), rgba(0, 0, 0, 0) 60%)
+}
+
+.prev-card:hover {
+    transform: translateY(-1px)
+}
+
+.prev-card.on {
+    border-color: var(--ink)
+}
+
+.prev-card-name {
+    position: relative;
+    color: #fff;
+    font-weight: 800;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: .3px;
+    text-align: left;
+    line-height: 1.2
+}
+
+.prev-card-all {
+    background: #fff;
+    border-color: var(--border)
+}
+
+.prev-card-all .prev-card-name {
+    color: var(--ink)
+}
+
+.prev-card-all.on {
+    border-color: var(--blue)
+}
+
+.badge-preventa {
+    display: inline-block;
+    background: var(--ink);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .3px;
+    padding: 2px 7px;
+    border-radius: 8px;
+    width: fit-content
+}
+
 /* TABS */
 .tabs {
     background: #fff;
