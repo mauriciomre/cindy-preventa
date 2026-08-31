@@ -127,6 +127,7 @@ function start() {
                     CAT_ORDEN: p.cat_orden || 0,
                     PREVENTA_ID: p.preventa_id || null,
                     PREVENTA_NOMBRE: p.preventa_nombre || null,
+                    PREVENTA_DETALLE: p.preventa_detalle || null,
                     PREVENTA_IMAGEN: p.preventa_imagen || null,
                     PREVENTA_ORDEN: p.preventa_orden != null ? Number(p.preventa_orden) : 0,
                     UPDATED_AT: p.updated_at
@@ -200,6 +201,7 @@ function getPreventas() {
             list.push({
                 id: p.PREVENTA_ID,
                 nombre: p.PREVENTA_NOMBRE,
+                detalle: p.PREVENTA_DETALLE,
                 imagen: p.PREVENTA_IMAGEN,
                 orden: p.PREVENTA_ORDEN,
             });
@@ -230,8 +232,9 @@ function renderPreventaSelector() {
         html +=
             '<button class="prev-card' + (String(activePreventa) === String(pv.id) ? " on" : "") + (pv.imagen ? " has-img" : "") + '" ' + bg +
             ' onclick="setPreventa(\'' + pv.id + '\')">' +
-            '<span class="prev-card-name">' + pv.nombre + "</span>" +
-            "</button>";
+            '<span class="prev-card-text"><span class="prev-card-name">' + pv.nombre + "</span>" +
+            (pv.detalle ? '<span class="prev-card-detalle">' + pv.detalle + "</span>" : "") +
+            "</span></button>";
     });
     html +=
         '<button class="prev-card prev-card-all' + (activePreventa === "TODAS" ? " on" : "") + '" onclick="setPreventa(\'TODAS\')">' +

@@ -879,7 +879,9 @@ function renderPreventaTable() {
         html += '<td>' + (imgUrl
             ? '<img class="thumb" src="' + imgUrl + '?v=' + Date.now() + '" onerror="this.style.display=\'none\'">'
             : '<div class="thumb-ph">' + icon("megaphone") + '</div>') + '</td>';
-        html += "<td><strong>" + esc(pv.nombre) + "</strong></td>";
+        html += "<td><strong>" + esc(pv.nombre) + "</strong>" +
+            (pv.detalle ? '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + esc(pv.detalle) + "</div>" : "") +
+            "</td>";
         html += '<td><label class="switch"><input type="checkbox" ' + (pv.activa == 1 ? "checked" : "") +
             ' onchange="togglePreventaActiva(' + pv.id + ',this.checked)"><span class="switch-slider"></span></label></td>';
         html += "<td>" + count + " producto" + (count !== 1 ? "s" : "") + "</td>";
@@ -960,6 +962,7 @@ function openPrevModal(id) {
     pendingPrevFile = null;
     document.getElementById("prevEditId").value = pv.id;
     document.getElementById("prevEditNombre").value = pv.nombre;
+    document.getElementById("prevEditDetalle").value = pv.detalle || "";
     document.getElementById("prevEditActiva").checked = pv.activa == 1;
     document.getElementById("prevEditImagen").value = "";
     var cur = document.getElementById("prevImgCurrent");
@@ -998,9 +1001,10 @@ async function uploadPrevImage(id) {
 async function guardarPreventa() {
     var id = document.getElementById("prevEditId").value;
     var nombre = document.getElementById("prevEditNombre").value.trim();
+    var detalle = document.getElementById("prevEditDetalle").value.trim();
     var activa = document.getElementById("prevEditActiva").checked;
     if (!nombre) { toast("Ingresá un nombre", "#c62828"); return; }
-    var data = { _user: authUser, _pass: authPass, nombre, activa };
+    var data = { _user: authUser, _pass: authPass, nombre, detalle, activa };
     if (pendingPrevFile) {
         var url = await uploadPrevImage(id);
         if (url) data.imagen = url;
@@ -1024,7 +1028,7 @@ async function togglePreventaActiva(id, activa) {
     var res = await fetch(API + "?action=preventa_editar&id=" + id, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ _user: authUser, _pass: authPass, nombre: pv.nombre, activa }),
+        body: JSON.stringify({ _user: authUser, _pass: authPass, nombre: pv.nombre, detalle: pv.detalle || "", activa }),
     });
     var json = await res.json();
     if (json.ok) {

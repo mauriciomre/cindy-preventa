@@ -205,12 +205,18 @@ function setupDB($db) {
     $db->query("CREATE TABLE IF NOT EXISTS preventas (
         id INT AUTO_INCREMENT PRIMARY KEY,
         nombre VARCHAR(150) NOT NULL UNIQUE,
+        detalle VARCHAR(300) DEFAULT NULL,
         imagen VARCHAR(500) DEFAULT NULL,
         activa TINYINT NOT NULL DEFAULT 0,
         orden INT DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $colCheck = $db->query("SHOW COLUMNS FROM preventas LIKE 'detalle'");
+    if ($colCheck && $colCheck->num_rows === 0) {
+        $db->query("ALTER TABLE preventas ADD COLUMN detalle VARCHAR(300) DEFAULT NULL");
+    }
 
     $colCheck = $db->query("SHOW COLUMNS FROM productos LIKE 'preventa_id'");
     if ($colCheck && $colCheck->num_rows === 0) {
@@ -355,7 +361,7 @@ switch ($action) {
         $barcode  = $_GET['barcode'] ?? '';
         $preventa = $_GET['preventa'] ?? ''; // id de preventa, o 'sin' para sin preventa asignada
         $isAdmin  = isAdminAuth($_GET['_user'] ?? '', $_GET['_pass'] ?? '');
-        $sql = "SELECT p.*, COALESCE(c.orden, 0) as cat_orden, pv.nombre as preventa_nombre, pv.activa as preventa_activa, pv.imagen as preventa_imagen, pv.orden as preventa_orden
+        $sql = "SELECT p.*, COALESCE(c.orden, 0) as cat_orden, pv.nombre as preventa_nombre, pv.detalle as preventa_detalle, pv.activa as preventa_activa, pv.imagen as preventa_imagen, pv.orden as preventa_orden
                 FROM productos p
                 LEFT JOIN categorias c ON p.categoria = c.nombre
                 LEFT JOIN preventas pv ON p.preventa_id = pv.id
@@ -803,12 +809,13 @@ switch ($action) {
         $data = json_decode(file_get_contents('php://input'), true);
         checkAuth($data);
         $nombre = trim($data['nombre'] ?? '');
+        $detalle = isset($data['detalle']) && $data['detalle'] !== '' ? trim($data['detalle']) : null;
         $imagen = isset($data['imagen']) && $data['imagen'] !== '' ? trim($data['imagen']) : null;
         $activa = !empty($data['activa']) ? 1 : 0;
         $orden = intval($data['orden'] ?? 0);
         if (!$nombre) { http_response_code(400); die(json_encode(['error' => 'Nombre requerido'])); }
-        $stmt = $db->prepare("INSERT INTO preventas (nombre, imagen, activa, orden) VALUES (?, ?, ?, ?)");
-        $stmt->bind_param('ssii', $nombre, $imagen, $activa, $orden);
+        $stmt = $db->prepare("INSERT INTO preventas (nombre, detalle, imagen, activa, orden) VALUES (?, ?, ?, ?, ?)");
+        $stmt->bind_param('sssii', $nombre, $detalle, $imagen, $activa, $orden);
         if ($stmt->execute()) echo json_encode(['ok' => true, 'id' => $db->insert_id]);
         else { http_response_code(400); echo json_encode(['error' => 'Ya existe esa preventa']); }
         break;
@@ -818,14 +825,15 @@ switch ($action) {
         $data = json_decode(file_get_contents('php://input'), true);
         checkAuth($data);
         $nombre = trim($data['nombre'] ?? '');
+        $detalle = isset($data['detalle']) && $data['detalle'] !== '' ? trim($data['detalle']) : null;
         $activa = !empty($data['activa']) ? 1 : 0;
         if (isset($data['imagen'])) {
             $imagen = $data['imagen'] !== '' ? trim($data['imagen']) : null;
-            $stmt = $db->prepare("UPDATE preventas SET nombre=?, imagen=?, activa=? WHERE id=?");
-            $stmt->bind_param('ssii', $nombre, $imagen, $activa, $id);
+            $stmt = $db->prepare("UPDATE preventas SET nombre=?, detalle=?, imagen=?, activa=? WHERE id=?");
+            $stmt->bind_param('sssii', $nombre, $detalle, $imagen, $activa, $id);
         } else {
-            $stmt = $db->prepare("UPDATE preventas SET nombre=?, activa=? WHERE id=?");
-            $stmt->bind_param('sii', $nombre, $activa, $id);
+            $stmt = $db->prepare("UPDATE preventas SET nombre=?, detalle=?, activa=? WHERE id=?");
+            $stmt->bind_param('ssii', $nombre, $detalle, $activa, $id);
         }
         if ($stmt->execute()) echo json_encode(['ok' => true]);
         else { http_response_code(400); echo json_encode(['error' => $db->error]); }
