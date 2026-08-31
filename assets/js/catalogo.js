@@ -747,7 +747,7 @@ function cardHTML(p) {
     if (sold) {
         html += '<div class="na">No disponible por ahora</div>';
     } else {
-        html += '<div class="foot">';
+        html += '<div class="foot' + (hasColores ? " foot-colores" : "") + '">';
         if (hasColores) {
             html += colorQtyRowsHTML(p);
         } else {

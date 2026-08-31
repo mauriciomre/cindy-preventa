@@ -573,6 +573,14 @@ header {
     margin-top: 2px
 }
 
+/* Con colores, la fila de steppers ya ocupa el ancho completo — el botón
+   "+ Agregar" al lado quedaba empujado fuera de la card (le pisaban el
+   ancho). Pasa a ir debajo, también a todo el ancho. */
+.foot-colores {
+    flex-direction: column;
+    align-items: stretch
+}
+
 .qty {
     display: flex;
     align-items: center;
