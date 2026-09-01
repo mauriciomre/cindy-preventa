@@ -12,6 +12,13 @@ var pendingFile = null,
 var pendingPrevFile = null;
 var pendingPrevUrl = null;
 var pendingPrevColor = null;
+// true = el admin eligió explícitamente un color estando la imagen
+// cargada — al guardar hay que vaciar preventas.imagen para que el color
+// se vea (si no, la imagen seguía ganando siempre, ver guardarPreventa()).
+var pendingPrevImagenCleared = false;
+// La imagen que ya estaba guardada al abrir el modal — para poder
+// devolverla al preview si se toca "Quitar color" antes de guardar.
+var prevOriginalImagen = null;
 var editMode = false,
     dragSrc = null;
 var sortedProducts = null;
@@ -964,6 +971,8 @@ function openPrevModal(id) {
     if (!pv) return;
     pendingPrevFile = null;
     pendingPrevUrl = null;
+    pendingPrevImagenCleared = false;
+    prevOriginalImagen = pv.imagen || null;
     document.getElementById("prevImgUrl").value = "";
     document.getElementById("prevEditId").value = pv.id;
     document.getElementById("prevEditNombre").value = pv.nombre;
@@ -971,20 +980,25 @@ function openPrevModal(id) {
     document.getElementById("prevEditActiva").checked = pv.activa == 1;
     document.getElementById("prevEditMostrarStock").checked = pv.mostrar_stock == 1;
     document.getElementById("prevEditImagen").value = "";
+    mostrarPrevImagenPreview(prevOriginalImagen);
+    pendingPrevColor = pv.color_portada || null;
+    document.getElementById("prevColorPortada").value = pv.color_portada || "#e84e1b";
+    document.getElementById("btnQuitarColorPrev").style.display = pv.color_portada ? "" : "none";
+    document.getElementById("prevModalBg").classList.add("open");
+}
+// Compartido por openPrevModal (imagen ya guardada) y quitarColorPrevPortada
+// (volver a mostrarla si se deshace la elección de color).
+function mostrarPrevImagenPreview(imagen) {
     var cur = document.getElementById("prevImgCurrent");
     var lbl = document.getElementById("prevImgLabelText");
-    if (pv.imagen) {
-        cur.src = "../" + pv.imagen + "?v=" + Date.now();
+    if (imagen) {
+        cur.src = "../" + imagen + "?v=" + Date.now();
         cur.style.display = "block";
         lbl.innerHTML = icon("camera") + " Cambiar imagen<br><small>JPG, PNG o WebP</small>";
     } else {
         cur.style.display = "none";
         lbl.innerHTML = icon("camera") + " Hacé clic o arrastrá una imagen<br><small>JPG, PNG o WebP</small>";
     }
-    pendingPrevColor = pv.color_portada || null;
-    document.getElementById("prevColorPortada").value = pv.color_portada || "#e84e1b";
-    document.getElementById("btnQuitarColorPrev").style.display = pv.color_portada ? "" : "none";
-    document.getElementById("prevModalBg").classList.add("open");
 }
 function closePrevModal() {
     document.getElementById("prevModalBg").classList.remove("open");
@@ -993,6 +1007,7 @@ function previewPrevImg(input) {
     if (!input.files || !input.files[0]) return;
     pendingPrevFile = input.files[0];
     pendingPrevUrl = null;
+    pendingPrevImagenCleared = false;
     document.getElementById("prevImgUrl").value = "";
     var reader = new FileReader();
     reader.onload = function (e) {
@@ -1012,6 +1027,7 @@ function usarUrlPrevImg() {
     if (!/^https?:\/\//i.test(url)) { toast("La URL debe empezar con http:// o https://", "#c62828"); return; }
     pendingPrevUrl = url;
     pendingPrevFile = null;
+    pendingPrevImagenCleared = false;
     document.getElementById("prevEditImagen").value = "";
     var cur = document.getElementById("prevImgCurrent");
     cur.src = url;
@@ -1021,11 +1037,26 @@ function usarUrlPrevImg() {
 function usarColorPrevPortada() {
     pendingPrevColor = document.getElementById("prevColorPortada").value;
     document.getElementById("btnQuitarColorPrev").style.display = "";
+    // Elegir un color es una decisión activa — tiene que ganarle a
+    // cualquier imagen ya cargada (antes la imagen ganaba siempre y elegir
+    // un color con una imagen puesta no hacía nada visible).
+    pendingPrevFile = null;
+    pendingPrevUrl = null;
+    pendingPrevImagenCleared = true;
+    document.getElementById("prevEditImagen").value = "";
+    document.getElementById("prevImgUrl").value = "";
+    mostrarPrevImagenPreview(null);
 }
 function quitarColorPrevPortada() {
     pendingPrevColor = null;
     document.getElementById("prevColorPortada").value = "#e84e1b";
     document.getElementById("btnQuitarColorPrev").style.display = "none";
+    // Si no se eligió una imagen nueva en el medio, volver a mostrar la
+    // que ya estaba guardada (todavía no se tocó la base).
+    if (!pendingPrevFile && !pendingPrevUrl) {
+        pendingPrevImagenCleared = false;
+        mostrarPrevImagenPreview(prevOriginalImagen);
+    }
 }
 async function uploadPrevImage(id) {
     if (!pendingPrevFile && !pendingPrevUrl) return null;
@@ -1054,6 +1085,8 @@ async function guardarPreventa() {
         var url = await uploadPrevImage(id);
         if (url) data.imagen = url;
         else return;
+    } else if (pendingPrevImagenCleared) {
+        data.imagen = "";
     }
     var res = await fetch(API + "?action=preventa_editar&id=" + id, {
         method: "POST",

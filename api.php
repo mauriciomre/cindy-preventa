@@ -1005,13 +1005,11 @@ switch ($action) {
             // (ver upload.php) — si esto reemplaza una portada anterior,
             // borrar el archivo viejo para no acumular huérfanos en el server.
             $viejo = null;
-            if ($imagen !== null) {
-                $prevImg = $db->prepare("SELECT imagen FROM preventas WHERE id=?");
-                $prevImg->bind_param('i', $id);
-                $prevImg->execute();
-                $row = $prevImg->get_result()->fetch_assoc();
-                if ($row && $row['imagen'] && $row['imagen'] !== $imagen) $viejo = $row['imagen'];
-            }
+            $prevImg = $db->prepare("SELECT imagen FROM preventas WHERE id=?");
+            $prevImg->bind_param('i', $id);
+            $prevImg->execute();
+            $row = $prevImg->get_result()->fetch_assoc();
+            if ($row && $row['imagen'] && $row['imagen'] !== $imagen) $viejo = $row['imagen'];
             $stmt = $db->prepare("UPDATE preventas SET nombre=?, detalle=?, imagen=?, color_portada=?, activa=?, mostrar_stock=? WHERE id=?");
             $stmt->bind_param('ssssiii', $nombre, $detalle, $imagen, $colorPortada, $activa, $mostrarStock, $id);
         } else {
@@ -1019,7 +1017,7 @@ switch ($action) {
             $stmt->bind_param('sssiii', $nombre, $detalle, $colorPortada, $activa, $mostrarStock, $id);
         }
         if ($stmt->execute()) {
-            if (!empty($viejo)) {
+            if (!empty($viejo) && strpos($viejo, 'http') !== 0) {
                 $viejoPath = __DIR__ . '/' . $viejo;
                 if (is_file($viejoPath)) @unlink($viejoPath);
             }
