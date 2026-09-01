@@ -783,7 +783,7 @@ switch ($action) {
             $codigo = trim($p['CODIGO'] ?? '');
             if (!$codigo) { $errors[] = ['codigo' => '(vacío)', 'motivo' => 'CODIGO obligatorio']; continue; }
 
-            $chk = $db->prepare("SELECT codigo,descripcion,categoria,marca,precio_mayorista,estado,codigo_barras FROM productos WHERE codigo=?");
+            $chk = $db->prepare("SELECT codigo,descripcion,categoria,marca,precio_mayorista,multiplo,estado,codigo_barras FROM productos WHERE codigo=?");
             $chk->bind_param('s', $codigo); $chk->execute();
             $existing = $chk->get_result()->fetch_assoc();
 
@@ -802,6 +802,7 @@ switch ($action) {
                 if (isset($p['CATEGORIA'])      && $p['CATEGORIA']      !== '') { $sets[] = 'categoria=?';        $params[] = trim($p['CATEGORIA']);             $types .= 's'; }
                 if (isset($p['MARCA'])          && $p['MARCA']          !== '') { $sets[] = 'marca=?';            $params[] = trim($p['MARCA']);                 $types .= 's'; }
                 if (isset($p['PRECIO_MAYORISTA']) && $p['PRECIO_MAYORISTA'] !== '') { $sets[] = 'precio_mayorista=?'; $params[] = floatval($p['PRECIO_MAYORISTA']); $types .= 'd'; }
+                if (isset($p['MULTIPLO'])       && $p['MULTIPLO']       !== '') { $sets[] = 'multiplo=?';         $params[] = max(1, intval($p['MULTIPLO']));    $types .= 'i'; }
                 if (isset($p['ESTADO'])         && $p['ESTADO']         !== '') { $sets[] = 'estado=?';           $params[] = strtoupper(trim($p['ESTADO']));    $types .= 's'; }
                 if (isset($p['CODIGO_BARRAS'])  && $p['CODIGO_BARRAS']  !== '') { $sets[] = 'codigo_barras=?';    $params[] = trim($p['CODIGO_BARRAS']);          $types .= 's'; }
                 if (isset($p['PREVENTA'])       && $p['PREVENTA']       !== '') { $sets[] = 'preventa_id=?';      $params[] = resolver_preventa_id($db, $p['PREVENTA']); $types .= 'i'; }
@@ -825,7 +826,8 @@ switch ($action) {
                 $stock  = max(0, intval($p['STOCK_PREVENTA'] ?? 0));
                 $preventaId = resolver_preventa_id($db, $p['PREVENTA'] ?? '');
                 if (!$desc || !$cat) { $errors[] = ['codigo' => $codigo, 'motivo' => 'DESCRIPCION y CATEGORIA obligatorias para producto nuevo']; continue; }
-                $o = 0; $multiplo = 1;
+                $o = 0;
+                $multiplo = isset($p['MULTIPLO']) && $p['MULTIPLO'] !== '' ? max(1, intval($p['MULTIPLO'])) : 1;
                 $stmt = $db->prepare("INSERT INTO productos (codigo,descripcion,categoria,marca,precio_mayorista,estado,orden,multiplo,codigo_barras,stock_preventa,stock_preventa_inicial,preventa_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
                 $stmt->bind_param('ssssdsiisiii', $codigo, $desc, $cat, $marca, $may, $estado, $o, $multiplo, $cb, $stock, $stock, $preventaId);
                 if ($stmt->execute()) $imported++;
@@ -848,7 +850,7 @@ switch ($action) {
         if (!$codigos) { echo json_encode(['ok' => true, 'productos' => (object)[]]); break; }
         $ph = implode(',', array_fill(0, count($codigos), '?'));
         $types = str_repeat('s', count($codigos));
-        $stmt = $db->prepare("SELECT codigo, descripcion, categoria, marca, precio_mayorista, estado, codigo_barras FROM productos WHERE codigo IN ($ph)");
+        $stmt = $db->prepare("SELECT codigo, descripcion, categoria, marca, precio_mayorista, multiplo, estado, codigo_barras FROM productos WHERE codigo IN ($ph)");
         $stmt->bind_param($types, ...$codigos);
         $stmt->execute();
         $res = $stmt->get_result();

@@ -2956,6 +2956,8 @@ var SYSTEM_FIELDS = [
     { key: "CATEGORIA",        label: "Categoría",        required: false },
     { key: "MARCA",            label: "Marca",            required: false },
     { key: "PRECIO_MAYORISTA", label: "Precio mayorista", required: false },
+    { key: "STOCK_PREVENTA",   label: "Stock inicial (solo productos nuevos)", required: false },
+    { key: "MULTIPLO",         label: "Múltiplo de venta", required: false },
     { key: "ESTADO",           label: "Estado",           required: false },
     { key: "PREVENTA",         label: "Preventa",         required: false },
 ];
@@ -2967,6 +2969,8 @@ var FIELD_ALIASES = {
     "CATEGORIA":        ["CATEGORIA", "CAT", "CATEGORY", "RUBRO", "LINEA", "FAMILIA"],
     "MARCA":            ["MARCA", "BRAND", "FABRICANTE"],
     "PRECIO_MAYORISTA": ["PRECIO_MAYORISTA", "PRECIO", "PRECIO_MAY", "MAYORISTA", "PRICE", "COSTO", "PRECIO_COSTO"],
+    "STOCK_PREVENTA":   ["STOCK_PREVENTA", "STOCK", "STOCK_INICIAL", "CANTIDAD", "QTY"],
+    "MULTIPLO":         ["MULTIPLO", "MULTIPLE", "PACK", "UNIDADES_POR_PACK"],
     "ESTADO":           ["ESTADO", "STATUS", "STATE", "DISPONIBILIDAD", "ACTIVO"],
     "PREVENTA":         ["PREVENTA", "CAMPAÑA", "CAMPANIA", "PROMO"],
 };
@@ -3142,16 +3146,25 @@ function getRowStatus(row, existingData) {
     }
     if (row["PRECIO_MAYORISTA"] && isNaN(parseFloat(row["PRECIO_MAYORISTA"])))
         errors.push("PRECIO_MAYORISTA no es un número");
+    if (row["STOCK_PREVENTA"] && isNaN(parseInt(row["STOCK_PREVENTA"], 10)))
+        errors.push("STOCK_PREVENTA no es un número");
+    if (row["MULTIPLO"] && isNaN(parseInt(row["MULTIPLO"], 10)))
+        errors.push("MULTIPLO no es un número");
 
     if (errors.length) return { status: "ERROR", errors: errors, existing: existing };
     if (!existing)     return { status: "NUEVO",       errors: [], existing: null };
 
     // ¿Hay cambios reales?
+    // STOCK_PREVENTA a propósito NO entra acá — solo se usa como carga
+    // inicial de productos NUEVOS (ver importar_masivo en api.php); en un
+    // producto ya existente reimportar la planilla nunca debe pisar stock
+    // ya vendido, así que no cuenta como "cambio" ni se compara.
     var fieldMap = {
         DESCRIPCION:      "descripcion",
         CATEGORIA:        "categoria",
         MARCA:            "marca",
         PRECIO_MAYORISTA: "precio_mayorista",
+        MULTIPLO:         "multiplo",
         ESTADO:           "estado",
         CODIGO_BARRAS:    "codigo_barras",
     };
@@ -3198,7 +3211,7 @@ function renderImportPreview(rows, existingData) {
     enriched.forEach(function(r) { counts[r._status.status]++; });
 
     // Detectar qué campos vinieron en el archivo
-    var ORDERED = ["CODIGO","CODIGO_BARRAS","DESCRIPCION","CATEGORIA","MARCA","PRECIO_MAYORISTA","ESTADO","PREVENTA"];
+    var ORDERED = ["CODIGO","CODIGO_BARRAS","DESCRIPCION","CATEGORIA","MARCA","PRECIO_MAYORISTA","STOCK_PREVENTA","MULTIPLO","ESTADO","PREVENTA"];
     var activeFields = ORDERED.filter(function(f) {
         return rows.some(function(r) { return r[f] !== undefined && r[f] !== ""; });
     });
@@ -3219,7 +3232,7 @@ function buildImportPreviewHTML(enriched, counts, activeFields) {
 
     var fieldMap = {
         DESCRIPCION: "descripcion", CATEGORIA: "categoria", MARCA: "marca",
-        PRECIO_MAYORISTA: "precio_mayorista",
+        PRECIO_MAYORISTA: "precio_mayorista", MULTIPLO: "multiplo",
         ESTADO: "estado", CODIGO_BARRAS: "codigo_barras",
     };
 
@@ -3293,7 +3306,7 @@ function buildImportPreviewHTML(enriched, counts, activeFields) {
 
             // Before/after en actualizaciones
             if (st.status === "ACTUALIZA" && val && dbKey && oldVal && oldVal !== val) {
-                var numFields = ["PRECIO_MAYORISTA"];
+                var numFields = ["PRECIO_MAYORISTA", "MULTIPLO"];
                 var reallyChanged = numFields.indexOf(f) >= 0
                     ? Math.round(parseFloat(val) * 100) !== Math.round(parseFloat(oldVal) * 100)
                     : val.toUpperCase() !== oldVal.toUpperCase();
@@ -3745,13 +3758,13 @@ async function undoLastImport(import_id) {
 // ── Exportar plantilla vacía ──────────────────────────────────────────────────
 function exportTemplate() {
     if (typeof XLSX === 'undefined') { alert('Cargando SheetJS, intentá de nuevo.'); return; }
-    var headers = ['CODIGO', 'CODIGO_BARRAS', 'DESCRIPCION', 'CATEGORIA', 'MARCA', 'PRECIO_MAYORISTA', 'ESTADO', 'PREVENTA'];
+    var headers = ['CODIGO', 'CODIGO_BARRAS', 'DESCRIPCION', 'CATEGORIA', 'MARCA', 'PRECIO_MAYORISTA', 'STOCK_PREVENTA', 'MULTIPLO', 'ESTADO', 'PREVENTA'];
     var wb = XLSX.utils.book_new();
     var ws = XLSX.utils.aoa_to_sheet([headers]);
     // Ancho de columna aproximado
     ws['!cols'] = [
         {wch: 14}, {wch: 16}, {wch: 40}, {wch: 22},
-        {wch: 18}, {wch: 18}, {wch: 12}, {wch: 22}
+        {wch: 18}, {wch: 18}, {wch: 14}, {wch: 10}, {wch: 12}, {wch: 22}
     ];
     XLSX.utils.book_append_sheet(wb, ws, 'Productos');
     XLSX.writeFile(wb, 'plantilla_importacion_travelblue.xlsx');
@@ -3764,7 +3777,7 @@ async function exportCatalog() {
         var res  = await fetch(API + '?action=productos&_user=' + encodeURIComponent(authUser) + '&_pass=' + encodeURIComponent(authPass));
         var json = await res.json();
         if (!Array.isArray(json) || !json.length) { alert('No hay productos para exportar.'); return; }
-        var headers = ['CODIGO', 'CODIGO_BARRAS', 'DESCRIPCION', 'CATEGORIA', 'MARCA', 'PRECIO_MAYORISTA', 'ESTADO', 'PREVENTA'];
+        var headers = ['CODIGO', 'CODIGO_BARRAS', 'DESCRIPCION', 'CATEGORIA', 'MARCA', 'PRECIO_MAYORISTA', 'STOCK_PREVENTA', 'MULTIPLO', 'ESTADO', 'PREVENTA'];
         var rows = json.map(function(p) {
             return [
                 p.codigo        || '',
@@ -3773,6 +3786,8 @@ async function exportCatalog() {
                 p.categoria     || '',
                 p.marca         || '',
                 p.precio_mayorista != null ? Number(p.precio_mayorista) : '',
+                p.stock_preventa != null ? Number(p.stock_preventa) : '',
+                p.multiplo      || 1,
                 p.estado        || '',
                 p.preventa_nombre || ''
             ];
@@ -3781,7 +3796,7 @@ async function exportCatalog() {
         var ws = XLSX.utils.aoa_to_sheet([headers].concat(rows));
         ws['!cols'] = [
             {wch: 14}, {wch: 16}, {wch: 40}, {wch: 22},
-            {wch: 18}, {wch: 12}, {wch: 12}
+            {wch: 18}, {wch: 12}, {wch: 14}, {wch: 10}, {wch: 12}, {wch: 22}
         ];
         XLSX.utils.book_append_sheet(wb, ws, 'Productos');
         var fecha = new Date().toISOString().slice(0, 10);
