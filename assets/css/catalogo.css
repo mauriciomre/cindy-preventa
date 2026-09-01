@@ -295,6 +295,7 @@ header {
     background: linear-gradient(135deg, var(--blue), var(--blue2));
     background-size: cover;
     background-position: center;
+    background-repeat: no-repeat;
     cursor: pointer;
     display: flex;
     align-items: flex-end;
@@ -319,7 +320,8 @@ header {
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
-    overflow: hidden
+    overflow: hidden;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, .85), 0 0 8px rgba(0, 0, 0, .5)
 }
 
 .prev-card-all .prev-card-detalle {
@@ -349,7 +351,8 @@ header {
     text-transform: uppercase;
     letter-spacing: .3px;
     text-align: left;
-    line-height: 1.2
+    line-height: 1.2;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, .85), 0 0 8px rgba(0, 0, 0, .5)
 }
 
 .prev-card-all {
@@ -358,7 +361,8 @@ header {
 }
 
 .prev-card-all .prev-card-name {
-    color: var(--ink)
+    color: var(--ink);
+    text-shadow: none
 }
 
 .prev-card-all.on {
