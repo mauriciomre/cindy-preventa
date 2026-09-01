@@ -908,7 +908,17 @@ header {
     object-fit: contain;
     border-radius: 10px;
     background: var(--pale);
-    box-shadow: 0 20px 60px rgba(0, 0, 0, .4)
+    box-shadow: 0 20px 60px rgba(0, 0, 0, .4);
+    transform-origin: 50% 50%;
+    cursor: zoom-in;
+    /* El gesto de pellizco/paneo lo maneja JS (pointer events) — sin esto,
+       el navegador compite tratando de hacer scroll/zoom nativo de la
+       página con los mismos dedos. */
+    touch-action: none
+}
+
+.lightbox-img.zoomed {
+    cursor: grab
 }
 
 .lightbox-close {
