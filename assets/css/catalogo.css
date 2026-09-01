@@ -439,6 +439,16 @@ header {
     gap: 12px
 }
 
+/* Desktop: 5 por fila siempre, no "las que entren" — a pedido de Mauricio.
+   Con .body a max-width:960px, auto-fill+200px daba 4 anchas con espacio
+   de sobra; acá se fuerza el número de columnas y cada una se acomoda al
+   ancho disponible. */
+@media (min-width: 860px) {
+    .grid {
+        grid-template-columns: repeat(5, 1fr)
+    }
+}
+
 .card {
     background: #fff;
     border-radius: 12px;

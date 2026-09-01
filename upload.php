@@ -109,7 +109,10 @@ if ($imagenUrl !== '') {
     }
 }
 
-$dst = redimensionar_a_cuadro($src, IMG_W, IMG_H);
+// Portadas de preventa siempre se recortan con cover en el catálogo (nunca
+// se ven completas) — no hace falta ni conviene rellenarlas en un cuadro
+// blanco como a una foto de producto (ver helpers.php).
+$dst = $esPreventa ? redimensionar_preventa_cover($src) : redimensionar_a_cuadro($src, IMG_W, IMG_H);
 
 // Guardar como JPEG
 $filename = $codigo . '.jpeg';
