@@ -443,7 +443,8 @@ header {
     display: flex;
     flex-direction: column;
     border: 1.5px solid transparent;
-    transition: box-shadow .15s, transform .1s
+    transition: box-shadow .15s, transform .1s;
+    position: relative
 }
 
 .card:hover {
@@ -482,8 +483,7 @@ header {
     display: flex;
     flex-direction: column;
     gap: 7px;
-    flex: 1;
-    position: relative
+    flex: 1
 }
 
 .c-top {
@@ -564,12 +564,15 @@ header {
 }
 
 /* ── Elegir colores: panel dentro de la card (desktop) ──────────────────────
-   En vez de abrir un modal aparte, el panel "sube" tapando el código/nombre/
-   marca/precio de la misma card (queda oculto por el overflow:hidden de
-   .card cuando está en reposo, translateY(100%)) — el tamaño de la card
-   nunca cambia, no empuja al resto de la grilla. En mobile (≤640px) se usa
-   en cambio el modal global .cm-bg/.cm-sheet (ver más abajo) porque la card
-   ocupa toda la fila y no hay margen visual para un panel superpuesto. */
+   En vez de abrir un modal aparte, el panel "sube" tapando TODA la card
+   (imagen incluida, no solo .card-body) — queda oculto por el
+   overflow:hidden de .card cuando está en reposo (translateY(100%)). Cubre
+   la card entera (no solo .card-body) a propósito: da lugar de sobra para
+   varias filas de color sin scroll, en vez de quedar limitado al alto corto
+   de .card-body. El tamaño de la card nunca cambia, no empuja al resto de
+   la grilla. En mobile (≤640px) se usa en cambio el modal global
+   .cm-bg/.cm-sheet (ver más abajo) porque la card ocupa toda la fila y no
+   hay margen visual para un panel superpuesto. */
 .color-panel {
     position: absolute;
     inset: 0;

@@ -608,10 +608,11 @@ function confirmColorPicker(code, closeFn) {
 }
 
 // ── Panel "Elegir colores" dentro de la card (desktop) ──────────────────────
-// Aparece dentro de .card-body, tapando código/nombre/marca/precio al abrir
-// (translateY), sin cambiar el alto de la card — ver .color-panel en
-// catalogo.css. En mobile no se genera (ver isMobileColorPicker en
-// cardHTML), ahí se usa el modal global (openColorModal más abajo).
+// Va como hermano de .card-body (no adentro) para poder tapar la card
+// entera al abrir, imagen incluida — da lugar de sobra para varias filas
+// de color sin scroll. Sin cambiar el alto de la card — ver .color-panel
+// en catalogo.css. En mobile no se genera (ver isMobileGrid en cardHTML),
+// ahí se usa el modal global (openColorModal más abajo).
 function colorPanelHTML(p) {
     var id = sid(p.CODIGO);
     return (
@@ -896,10 +897,15 @@ function cardHTML(p) {
             "</button>";
     }
 
+    // El panel de colores (desktop) va como hermano de .card-body, no
+    // adentro — así al abrirse puede taparlo todo (incluida la imagen) y
+    // tiene lugar de sobra para varias filas sin scroll, en vez de quedar
+    // limitado al alto corto de .card-body. Ver cardPanelHtml más abajo.
+    var cardPanelHtml = hasColores && !sold && !isMobileGrid ? colorPanelHTML(p) : "";
+
     if (hasColores && !sold) {
         html += infoHtml;
         html += '<div class="foot">' + addBtnHtml + "</div>";
-        if (!isMobileGrid) html += colorPanelHTML(p);
     } else {
         html += infoHtml;
         if (sold) {
@@ -937,7 +943,7 @@ function cardHTML(p) {
                     '<div class="multiplo-hint">Múltiplo de ' + multiplo + "</div>";
         }
     }
-    html += "</div></div>";
+    html += "</div>" + cardPanelHtml + "</div>";
     return html;
 }
 
