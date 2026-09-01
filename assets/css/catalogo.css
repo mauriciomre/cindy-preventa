@@ -794,10 +794,42 @@ header {
     padding: 12px 16px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
     overflow-y: auto;
     flex: 1;
     min-height: 0
+}
+
+/* Mismo componente que en la card/tabla (colorQtyRowsHTML), pero acá hay
+   mucho más lugar (modal a pantalla completa en mobile) — dedos en vez de
+   mouse, así que todo un poco más grande: círculo de color, texto y sobre
+   todo los botones +/- de tocar. */
+.cm-rows .color-qty-row {
+    padding: 8px 8px 8px 12px
+}
+
+.cm-rows .color-qty-row .color-dot {
+    width: 16px;
+    height: 16px
+}
+
+.cm-rows .color-qty-name {
+    font-size: 15px
+}
+
+.cm-rows .qty-sm {
+    gap: 8px
+}
+
+.cm-rows .qty-sm .qb {
+    width: 34px;
+    height: 34px;
+    font-size: 19px
+}
+
+.cm-rows .qty-sm .qn {
+    width: 34px;
+    font-size: 17px
 }
 
 .cm-foot {
