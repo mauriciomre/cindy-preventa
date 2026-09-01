@@ -149,6 +149,64 @@ function manager_buscar_por_codigo($token, $codigo) {
     return null;
 }
 
+// Nuestro código interno = <dígito de rubro><código de proveedor> (ej.
+// "1BP170"), y el dígito varía por artículo — no se puede reconstruir a
+// mano. Manager sí guarda el código de proveedor tal cual en el campo
+// CodigoProv, pero ese campo solo es filtrable en
+// GetDTArticulosPrecioExistencia (no en GetDTArticulos) — confirmado en
+// vivo 01/09/2026, GetDTArticulos tira "El nombre de columna 'CodigoProv'
+// no es válido". Por eso el flujo es en 2 pasos: primero se resuelve la
+// lista de códigos internos candidatos (genérico + variantes de color, si
+// ya están cargadas) vía precio/existencia, después se completa cada uno
+// con GetDTArticulos (descripción/rubro/marca).
+// Devuelve un array de artículos: ['codigo','descripcion','categoria','marca','precio_mayorista','codigo_barras'].
+function manager_buscar_por_codigo_proveedor($token, $codigoProv) {
+    $precios = manager_call($token, '/Api/articulo/GetDTArticulosPrecioExistencia', [
+        'DTRequest' => ['draw' => 1, 'order' => [], 'start' => 0, 'length' => 30],
+        'DefinicionTablaFiltros' => false,
+        'CalculaTotales' => false,
+        'ListFilters' => manager_dict_filtros([
+            'CodigoProv' => manager_filtro_texto($codigoProv),
+            'IDListaPrecio' => manager_filtro_numero(MANAGER_LISTA_MAYORISTA),
+            'IDDeposito' => manager_filtro_numero(0),
+            'IDCliente' => manager_filtro_numero(0),
+            'IDProveedor' => manager_filtro_numero(0),
+            'IDMonedaComprobante' => manager_filtro_numero(1),
+            'FactorCotizacionMonCompMonLP' => manager_filtro_numero(1.0),
+        ]),
+    ]);
+    $resultados = [];
+    foreach ($precios as $p) {
+        if (trim($p['CodigoProv'] ?? '') !== $codigoProv) continue;
+        $codigo = trim($p['CodigoArticulo'] ?? '');
+        if ($codigo === '' || isset($resultados[$codigo])) continue;
+        $articulo = manager_buscar_por_codigo($token, $codigo);
+        if (!$articulo) continue;
+        $resultados[$codigo] = [
+            'codigo' => $codigo,
+            'descripcion' => trim($articulo['Descripcion'] ?? ''),
+            'categoria' => trim($articulo['Rubro'] ?? ''),
+            'marca' => trim($articulo['Marca'] ?? ''),
+            'precio_mayorista' => round(floatval($p['PrecioFinalLP'] ?? 0), 2),
+            'codigo_barras' => trim($articulo['CodigoAuxiliar'] ?? ''),
+            // El "genérico" es el que no tiene el sufijo "-XXX" de color —
+            // sirve de referencia (categoría/marca) cuando la variante
+            // puntual todavía no está cargada.
+            'es_generico' => strpos($codigo, '-') === false,
+        ];
+    }
+    return array_values($resultados);
+}
+
+// Compara el texto de una variante ("BEIGE") contra la descripción de un
+// artículo de Manager ("BOLSO DE LONA SICILIA CHIMOLA BEIGE") — sin
+// acentos ni mayúsculas/minúsculas, para tolerar diferencias de tipeo.
+function manager_texto_normalizado($s) {
+    $s = mb_strtoupper(trim($s ?? ''), 'UTF-8');
+    $s = strtr($s, ['Á'=>'A','É'=>'E','Í'=>'I','Ó'=>'O','Ú'=>'U','Ñ'=>'N','Ü'=>'U']);
+    return $s;
+}
+
 // Devuelve el Base64 crudo (sin decodificar) de la foto principal (Orden=1)
 // de un artículo en Manager, o null si no existe. Solo-lectura
 // (GetDTArticulosImagenes/GetImage) — compartida entre "manager_imagen_producto"
@@ -1063,31 +1121,105 @@ switch ($action) {
         $data = json_decode(file_get_contents('php://input'), true);
         checkAuth($data);
         $codigo = trim($data['codigo'] ?? '');
+        // Variante/descripción/precio: opcionales, vienen de pegar varias
+        // columnas de una planilla de proveedor (ver "Importar por código").
+        // Sirven para el caso preventa: el código pegado es el del
+        // proveedor, no el interno, y puede que ni siquiera exista todavía
+        // en Manager (lo más común) — ahí se usan como fallback.
+        $variante = trim($data['variante'] ?? '');
+        $descFallback = trim($data['descripcion_fallback'] ?? '');
+        $precioFallback = isset($data['precio_fallback']) && $data['precio_fallback'] !== '' ? floatval($data['precio_fallback']) : null;
         if (!$codigo) { http_response_code(400); die(json_encode(['error' => 'código requerido'])); }
         try {
             $token = manager_login();
-            $articulo = manager_buscar_por_codigo($token, $codigo);
-            if (!$articulo) { echo json_encode(['ok' => true, 'codigo' => $codigo, 'encontrado' => false]); break; }
 
-            $categoria = trim($articulo['Rubro'] ?? '');
-            $codigoBarras = trim($articulo['CodigoAuxiliar'] ?? '');
-            $marca = trim($articulo['Marca'] ?? '');
-            $imagenBase64 = manager_buscar_imagen_base64($token, $codigo);
+            // Paso 1: ¿el código pegado ES YA el código interno real?
+            // (cubre el uso de siempre: códigos propios, no de proveedor)
+            $articulo = manager_buscar_por_codigo($token, $codigo);
+            $codigoFinal = $codigo;
+            $origen = 'directo';
+            $imagenBase64 = null;
+
+            if ($articulo) {
+                $categoria = trim($articulo['Rubro'] ?? '');
+                $marca = trim($articulo['Marca'] ?? '');
+                $codigoBarras = trim($articulo['CodigoAuxiliar'] ?? '');
+                $precio = manager_precio_por_codigo($token, $codigo, MANAGER_LISTA_MAYORISTA);
+                $descripcion = trim($articulo['Descripcion'] ?? '');
+                $imagenBase64 = manager_buscar_imagen_base64($token, $codigo);
+            } else {
+                // Paso 2: no es un código interno conocido — probar como
+                // código de proveedor (busca el genérico + variantes de
+                // color que ya estén cargadas, si las hay).
+                $candidatos = manager_buscar_por_codigo_proveedor($token, $codigo);
+                $generico = null;
+                $match = null;
+                foreach ($candidatos as $c) {
+                    if ($c['es_generico']) $generico = $c;
+                    if ($variante !== '' && !$match && strpos(manager_texto_normalizado($c['descripcion']), manager_texto_normalizado($variante)) !== false) {
+                        $match = $c;
+                    }
+                }
+                if (!$match && $variante === '' && $generico) $match = $generico;
+
+                if ($match) {
+                    // Variante ya cargada en Manager (o sin variante pedida,
+                    // se usó el genérico) — datos 100% reales.
+                    $codigoFinal = $match['codigo'];
+                    $categoria = $match['categoria'];
+                    $marca = $match['marca'];
+                    $codigoBarras = $match['codigo_barras'];
+                    $precio = $match['precio_mayorista'];
+                    $descripcion = $match['descripcion'];
+                    $origen = 'manager_variante';
+                    $imagenBase64 = manager_buscar_imagen_base64($token, $codigoFinal);
+                } elseif ($generico) {
+                    // El artículo base existe pero esta variante de color
+                    // puntual todavía no — se arma un código provisorio
+                    // (mismo criterio de sufijo que usa Manager) para no
+                    // pisar otro color del mismo artículo.
+                    $sufijo = $variante !== '' ? '-' . mb_strtoupper(mb_substr(preg_replace('/[^A-Za-zÁÉÍÓÚÑ]/u', '', $variante), 0, 3), 'UTF-8') : '';
+                    $codigoFinal = $codigo . $sufijo;
+                    $categoria = $generico['categoria'];
+                    $marca = $generico['marca'];
+                    $codigoBarras = null;
+                    $precio = $generico['precio_mayorista'];
+                    $descBase = $descFallback !== '' ? $descFallback : $generico['descripcion'];
+                    $descripcion = trim($descBase . ($variante !== '' ? ' ' . mb_strtoupper($variante, 'UTF-8') : ''));
+                    $origen = 'manager_generico_sin_variante';
+                } elseif ($descFallback !== '') {
+                    // Nada en Manager todavía (lo más común en preventa) —
+                    // se usan los datos que vinieron pegados de la planilla.
+                    $sufijo = $variante !== '' ? '-' . mb_strtoupper(mb_substr(preg_replace('/[^A-Za-zÁÉÍÓÚÑ]/u', '', $variante), 0, 3), 'UTF-8') : '';
+                    $codigoFinal = $codigo . $sufijo;
+                    $categoria = '';
+                    $marca = null;
+                    $codigoBarras = null;
+                    $precio = $precioFallback;
+                    $descripcion = $descFallback . ($variante !== '' ? ' ' . mb_strtoupper($variante, 'UTF-8') : '');
+                    $origen = 'planilla';
+                } else {
+                    echo json_encode(['ok' => true, 'codigo' => $codigo, 'encontrado' => false]);
+                    break;
+                }
+            }
 
             $chk = $db->prepare("SELECT codigo FROM productos WHERE codigo=?");
-            $chk->bind_param('s', $codigo);
+            $chk->bind_param('s', $codigoFinal);
             $chk->execute();
             $existe = (bool) $chk->get_result()->fetch_assoc();
 
             echo json_encode([
                 'ok' => true,
-                'codigo' => $codigo,
+                'codigo' => $codigoFinal,
+                'codigo_original' => $codigo,
+                'origen' => $origen,
                 'encontrado' => true,
                 'existe' => $existe,
-                'descripcion' => trim($articulo['Descripcion'] ?? ''),
+                'descripcion' => $descripcion,
                 'categoria' => $categoria !== '' ? mb_strtoupper($categoria, 'UTF-8') : '',
                 'marca' => $marca !== '' ? $marca : null,
-                'precio_mayorista' => manager_precio_por_codigo($token, $codigo, MANAGER_LISTA_MAYORISTA),
+                'precio_mayorista' => $precio,
                 'codigo_barras' => $codigoBarras !== '' ? $codigoBarras : null,
                 'imagen_base64' => $imagenBase64,
             ]);
@@ -1149,7 +1281,11 @@ switch ($action) {
                 if ($stmt->execute()) $actualizados++;
                 else $errores[] = ['codigo' => $codigo, 'motivo' => $db->error];
             } else {
-                $estado = 'DISPONIBLE'; $orden = 0; $multiplo = 1; $stock = 0;
+                // Stock inicial opcional (ej. Chimola: cantidad por color ya
+                // sabida de antemano, viene de la planilla del proveedor).
+                // La mayoría de las marcas no lo traen y arrancan en 0.
+                $estado = 'DISPONIBLE'; $orden = 0; $multiplo = 1;
+                $stock = max(0, intval($p['stock_inicial'] ?? 0));
                 $stmt = $db->prepare("INSERT INTO productos (codigo,descripcion,categoria,marca,precio_mayorista,codigo_barras,foto,estado,orden,multiplo,stock_preventa,stock_preventa_inicial,preventa_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
                 $stmt->bind_param('ssssdsssiiiii', $codigo, $descripcion, $categoria, $marca, $precio, $codigoBarras, $foto, $estado, $orden, $multiplo, $stock, $stock, $preventaId);
                 if ($stmt->execute()) $creados++;
