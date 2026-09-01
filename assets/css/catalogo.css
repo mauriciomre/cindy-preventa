@@ -719,22 +719,39 @@ header {
     flex-shrink: 0
 }
 
+/* Foto grande arriba del todo del modal — a diferencia del panel de
+   desktop (que puede tapar la imagen de la card porque el cliente ya la
+   vio antes de abrirlo), en mobile conviene mostrarla de nuevo bien
+   grande porque el modal ocupa toda la pantalla. */
+.cm-photo-wrap {
+    position: relative;
+    flex-shrink: 0;
+    background: var(--pale);
+    border-bottom: 1px solid var(--border)
+}
+
+.cm-photo {
+    width: 100%;
+    height: 42vh;
+    max-height: 260px;
+    object-fit: contain;
+    display: block
+}
+
+.cm-photo-wrap .cm-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, .15)
+}
+
 .cm-head {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 6px 16px 14px;
+    padding: 12px 16px 14px;
     border-bottom: 1px solid var(--border);
-    flex-shrink: 0
-}
-
-.cm-img {
-    width: 52px;
-    height: 52px;
-    border-radius: 10px;
-    object-fit: contain;
-    background: var(--pale);
-    border: 1px solid var(--border);
     flex-shrink: 0
 }
 
@@ -779,7 +796,9 @@ header {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    overflow-y: auto
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0
 }
 
 .cm-foot {
@@ -1664,7 +1683,7 @@ header {
 
 @media(max-width:640px) {
     .grid {
-        grid-template-columns: 1fr
+        grid-template-columns: 1fr 1fr
     }
 
     .tabs {
