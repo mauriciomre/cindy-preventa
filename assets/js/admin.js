@@ -888,7 +888,9 @@ function renderPreventaTable() {
         html += '<td><span class="drag-handle">' + icon("grip-vertical", {size: 16}) + '</span></td>';
         html += '<td>' + (imgUrl
             ? '<img class="thumb" src="' + imgUrl + '?v=' + Date.now() + '" onerror="this.style.display=\'none\'">'
-            : '<div class="thumb-ph">' + icon("megaphone") + '</div>') + '</td>';
+            : pv.color_portada
+                ? '<div class="thumb" style="background:' + esc(pv.color_portada) + '"></div>'
+                : '<div class="thumb-ph">' + icon("megaphone") + '</div>') + '</td>';
         html += "<td><strong>" + esc(pv.nombre) + "</strong>" +
             (pv.detalle ? '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + esc(pv.detalle) + "</div>" : "") +
             "</td>";
