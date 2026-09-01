@@ -96,7 +96,6 @@
                         alt="Cindy Mayorista"
                         style="height: 34px"
                     />
-                    <small>CATÁLOGO DE PREVENTA</small>
                 </div>
                 <div class="h-right">
                     <div class="h-right-top">
@@ -365,6 +364,29 @@
                 <div style="padding:16px 16px 20px">
                     <div id="scannerReader" style="width:100%"></div>
                     <div id="scannerStatus" style="text-align:center;margin-top:10px;font-size:0.85em;color:#888">Apuntá la cámara al código de barras</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL "ELEGIR COLORES" (mobile — en desktop se usa el panel dentro de cada card, ver color-panel en catalogo.js) -->
+        <div class="cm-bg" id="cmBg" onclick="if(event.target===this) closeColorModal()">
+            <div class="cm-sheet" id="cmSheet">
+                <div class="cm-handle"></div>
+                <div class="cm-head">
+                    <img class="cm-img" id="cmImg" alt="" />
+                    <div class="cm-head-info">
+                        <div class="cm-name" id="cmName"></div>
+                        <div class="cm-price" id="cmPrice"></div>
+                    </div>
+                    <button class="cm-close" onclick="closeColorModal()" aria-label="Cerrar"><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+                </div>
+                <div class="cm-rows" id="cmRows"></div>
+                <div class="cm-foot">
+                    <button class="cm-remove" id="cmRemoveBtn" onclick="removeColorProduct(colorModalCode, closeColorModal)">Quitar del pedido</button>
+                    <div class="cm-foot-main">
+                        <span class="cm-total" id="cmTotal">Elegí una cantidad</span>
+                        <button class="cm-confirm" id="cmConfirmBtn" onclick="confirmColorModal()">Confirmar</button>
+                    </div>
                 </div>
             </div>
         </div>

@@ -512,7 +512,8 @@ function chgColorQty(code, idx, delta) {
     if (!el) return;
     var next = Math.max(0, (parseInt(el.value) || 0) + delta * multiplo);
     el.value = next;
-    onColorQtyInputChange(code);
+    syncColorCartIfPresent(code);
+    updateColorPickerUI(code);
 }
 
 function manualColorQty(code, idx, val) {
@@ -523,27 +524,8 @@ function manualColorQty(code, idx, val) {
     var snapped = num === 0 ? 0 : Math.max(multiplo, Math.round(num / multiplo) * multiplo);
     var el = document.getElementById("cq_" + sid(code) + "_" + idx);
     if (el) el.value = snapped;
-    onColorQtyInputChange(code);
-}
-
-// Si el producto ya está en el carrito, sincroniza de una. Si todavía no
-// se agregó, solo resalta el botón "+ Agregar" con el total cargado —
-// hasta que se lo apreta, esas unidades no están en el pedido.
-function onColorQtyInputChange(code) {
-    if (cart[code]) {
-        syncColorCartIfPresent(code);
-        return;
-    }
-    var r = sumColorInputs(code);
-    var btn = document.getElementById("ab_" + sid(code));
-    if (!btn) return;
-    if (r.total > 0) {
-        btn.classList.add("pending");
-        btn.innerHTML = "+ Agregar (" + r.total + ")";
-    } else {
-        btn.classList.remove("pending");
-        btn.innerHTML = "+ Agregar";
-    }
+    syncColorCartIfPresent(code);
+    updateColorPickerUI(code);
 }
 
 // Si el producto ya está en el carrito, cada edición de un color actualiza
@@ -567,6 +549,7 @@ function syncColorCartIfPresent(code) {
     }
     cart[code].qty = r.total;
     cart[code].colores = r.colores;
+    refreshColorTriggerButton(code);
     updateCart();
 }
 
@@ -584,34 +567,141 @@ function addOrUpdateColores(code) {
         return;
     }
     cart[code] = { p: p, qty: r.total, colores: r.colores };
-    var id = sid(code);
-    var card = document.getElementById(id);
-    if (card) {
-        card.classList.add("picked");
-        var btn = document.getElementById("ab_" + id);
-        if (btn) {
-            btn.innerHTML =
-                icon("check") + ' En pedido<br><span style="font-size:9px;opacity:.85">Quitar?</span>';
-            btn.style.fontSize = "10px";
-            btn.style.lineHeight = "1.2";
-            btn.style.padding = "5px 6px";
-            btn.classList.add("on");
-            btn.classList.remove("pending");
-            btn.onclick = function () { toggleRemove(code); };
-        }
-    }
-    var row = document.getElementById("lr_" + id);
-    if (row) {
-        row.classList.add("picked-row");
-        var lbtn = document.getElementById("ab_" + id);
-        if (lbtn) {
-            lbtn.innerHTML = icon("check") + " En pedido";
-            lbtn.classList.add("on");
-            lbtn.classList.remove("pending");
-        }
-    }
+    refreshColorTriggerButton(code);
+    var card = document.getElementById(sid(code));
+    if (card) card.classList.add("picked");
+    var row = document.getElementById("lr_" + sid(code));
+    if (row) row.classList.add("picked-row");
     saveCart();
     updateCart();
+}
+
+// Deja el botón "Elegir colores" / "En pedido · N u." de la card (grid) y
+// de la fila de tabla (list) reflejando el estado actual del carrito —
+// se reusa al agregar, al editar cantidades en vivo y al quitar.
+function refreshColorTriggerButton(code) {
+    var btn = document.getElementById("ab_" + sid(code));
+    if (!btn) return;
+    var c = cart[code];
+    btn.classList.toggle("on", !!c);
+    btn.innerHTML = c
+        ? icon("check") + ' En pedido <span style="font-weight:600;opacity:.85">· ' + c.qty + " u.</span>"
+        : icon("palette") + " Elegir colores";
+}
+
+function removeColorProduct(code, closeFn) {
+    if (!code) return;
+    rmCart(code);
+    refreshColorTriggerButton(code);
+    if (closeFn) closeFn(code);
+}
+
+function confirmColorPicker(code, closeFn) {
+    if (!code) return;
+    if (cart[code]) {
+        // Ya se sincronizó en vivo con cada cambio — solo cerrar.
+        closeFn(code);
+        return;
+    }
+    addOrUpdateColores(code);
+    if (cart[code]) closeFn(code);
+}
+
+// ── Panel "Elegir colores" dentro de la card (desktop) ──────────────────────
+// Aparece dentro de .card-body, tapando código/nombre/marca/precio al abrir
+// (translateY), sin cambiar el alto de la card — ver .color-panel en
+// catalogo.css. En mobile no se genera (ver isMobileColorPicker en
+// cardHTML), ahí se usa el modal global (openColorModal más abajo).
+function colorPanelHTML(p) {
+    var id = sid(p.CODIGO);
+    return (
+        '<div class="color-panel" id="cpanel_' + id + '">' +
+        '<div class="color-panel-head">' +
+        '<span class="color-panel-title">' + esc(p.DESCRIPCION) + "</span>" +
+        '<button class="color-panel-close" onclick="closeColorPanel(\'' + p.CODIGO + '\')" aria-label="Cerrar">' +
+        icon("x", { size: 13 }) +
+        "</button>" +
+        "</div>" +
+        '<div class="color-panel-rows">' + colorQtyRowsHTML(p) + "</div>" +
+        '<div class="color-panel-foot">' +
+        '<button class="color-panel-remove" id="cpremove_' + id + '" onclick="removeColorProduct(\'' + p.CODIGO + "', closeColorPanel)\">Quitar del pedido</button>" +
+        '<span class="color-panel-total" id="cptotal_' + id + '">Elegí una cantidad</span>' +
+        '<button class="color-panel-confirm" id="cpconfirm_' + id + '" onclick="confirmColorPicker(\'' + p.CODIGO + "', closeColorPanel)\">Confirmar</button>" +
+        "</div>" +
+        "</div>"
+    );
+}
+
+function openColorPanel(code) {
+    var panel = document.getElementById("cpanel_" + sid(code));
+    if (!panel) return;
+    // Solo una card expandida a la vez.
+    document.querySelectorAll(".color-panel.open").forEach(function (el) {
+        if (el !== panel) el.classList.remove("open");
+    });
+    panel.classList.add("open");
+    var removeBtn = document.getElementById("cpremove_" + sid(code));
+    if (removeBtn) removeBtn.style.display = cart[code] ? "" : "none";
+    updateColorPanelTotal(code);
+}
+
+function closeColorPanel(code) {
+    var panel = document.getElementById("cpanel_" + sid(code));
+    if (panel) panel.classList.remove("open");
+}
+
+function updateColorPanelTotal(code) {
+    var id = sid(code);
+    var totalEl = document.getElementById("cptotal_" + id);
+    var btn = document.getElementById("cpconfirm_" + id);
+    if (!totalEl || !btn) return;
+    var r = sumColorInputs(code);
+    totalEl.textContent = r.total > 0 ? r.total + " unidad" + (r.total === 1 ? "" : "es") : "Elegí una cantidad";
+    btn.textContent = cart[code] ? "Listo" : "Confirmar" + (r.total > 0 ? " (" + r.total + ")" : "");
+}
+
+// ── Modal "Elegir colores" (mobile) — markup fijo en index.html ────────────
+var colorModalCode = null;
+
+function openColorModal(code) {
+    var p = products.find(function (x) { return x.CODIGO === code; });
+    if (!p) return;
+    colorModalCode = code;
+    document.getElementById("cmImg").src = getImgSrc(p);
+    document.getElementById("cmImg").alt = p.DESCRIPCION;
+    document.getElementById("cmName").textContent = p.DESCRIPCION;
+    document.getElementById("cmPrice").innerHTML = fmt(p.PRECIO_MAYORISTA) + ' <span class="iva">+ IVA</span>';
+    document.getElementById("cmRows").innerHTML = colorQtyRowsHTML(p);
+    document.getElementById("cmRemoveBtn").style.display = cart[code] ? "" : "none";
+    updateColorModalTotal();
+    document.getElementById("cmBg").classList.add("open");
+}
+
+function closeColorModal() {
+    document.getElementById("cmBg").classList.remove("open");
+    colorModalCode = null;
+}
+
+function updateColorModalTotal() {
+    if (!colorModalCode) return;
+    var r = sumColorInputs(colorModalCode);
+    var totalEl = document.getElementById("cmTotal");
+    var btn = document.getElementById("cmConfirmBtn");
+    totalEl.textContent = r.total > 0 ? r.total + " unidad" + (r.total === 1 ? "" : "es") : "Elegí una cantidad";
+    btn.textContent = cart[colorModalCode] ? "Listo" : "Confirmar" + (r.total > 0 ? " (" + r.total + ")" : "");
+}
+
+function confirmColorModal() {
+    confirmColorPicker(colorModalCode, closeColorModal);
+}
+
+// Actualiza el panel (desktop) y/o el modal (mobile) si corresponde al
+// producto que se está editando — no hace nada si ninguno de los dos está
+// mostrando ese código (llamarla siempre desde chgColorQty/manualColorQty
+// es más simple que rastrear cuál de las dos superficies está activa).
+function updateColorPickerUI(code) {
+    updateColorPanelTotal(code);
+    if (colorModalCode === code) updateColorModalTotal();
 }
 
 // Ajusta cantidad al múltiplo más cercano y la limita al stock de preventa
@@ -765,32 +855,51 @@ function cardHTML(p) {
             "</div>";
     }
 
-    var addBtnHtml =
-        '<button class="add' +
-        (inCart ? " on" : "") +
-        '" id="ab_' +
-        id +
-        '" onclick="' +
-        (inCart
-            ? "toggleRemove('" + p.CODIGO + "')"
-            : hasColores
-              ? "addOrUpdateColores('" + p.CODIGO + "')"
-              : "addOrUpdate('" + p.CODIGO + "')") +
-        '"' +
-        (inCart
-            ? ' style="font-size:10px;line-height:1.2;padding:5px 6px"'
-            : "") +
-        ">" +
-        (inCart
-            ? icon("check") + ' En pedido<br><span style="font-size:9px;opacity:.85">Quitar?</span>'
-            : "+ Agregar") +
-        "</button>";
+    var addBtnHtml;
+    if (hasColores) {
+        // En mobile abre el modal global (la card ocupa toda la fila, no
+        // hay margen para un panel superpuesto legible); en desktop abre
+        // el panel que "sube" tapando esta misma card, sin agrandarla —
+        // ver .color-panel en catalogo.css y colorPanelHTML más abajo.
+        var isMobileGrid = window.matchMedia("(max-width: 640px)").matches;
+        addBtnHtml =
+            '<button class="add' +
+            (inCart ? " on" : "") +
+            '" id="ab_' +
+            id +
+            '" onclick="' +
+            (isMobileGrid ? "openColorModal('" : "openColorPanel('") +
+            p.CODIGO +
+            "')\">" +
+            (inCart
+                ? icon("check") + ' En pedido <span style="font-weight:600;opacity:.85">· ' + cart[p.CODIGO].qty + " u.</span>"
+                : icon("palette") + " Elegir colores") +
+            "</button>";
+    } else {
+        addBtnHtml =
+            '<button class="add' +
+            (inCart ? " on" : "") +
+            '" id="ab_' +
+            id +
+            '" onclick="' +
+            (inCart
+                ? "toggleRemove('" + p.CODIGO + "')"
+                : "addOrUpdate('" + p.CODIGO + "')") +
+            '"' +
+            (inCart
+                ? ' style="font-size:10px;line-height:1.2;padding:5px 6px"'
+                : "") +
+            ">" +
+            (inCart
+                ? icon("check") + ' En pedido<br><span style="font-size:9px;opacity:.85">Quitar?</span>'
+                : "+ Agregar") +
+            "</button>";
+    }
 
     if (hasColores && !sold) {
-        // Mismo orden que un producto sin color: primero se elige (acá,
-        // cantidad por color), el botón "+ Agregar" va al final de todo.
         html += infoHtml;
-        html += '<div class="foot foot-colores">' + colorQtyRowsHTML(p) + addBtnHtml + "</div>";
+        html += '<div class="foot">' + addBtnHtml + "</div>";
+        if (!isMobileGrid) html += colorPanelHTML(p);
     } else {
         html += infoHtml;
         if (sold) {
@@ -1028,9 +1137,9 @@ function listRowHTML(p) {
             (inCart ? " on" : "") +
             '" id="ab_' +
             id +
-            '" onclick="' +
-            (inCart ? "toggleRemove('" + p.CODIGO + "')" : "addOrUpdateColores('" + p.CODIGO + "')") +
-            '">' +
+            '" onclick="addOrUpdateColores(\'' +
+            p.CODIGO +
+            "')\">" +
             (inCart ? icon("check") + " En pedido" : "+ Agregar") +
             "</button></td>";
     } else {
