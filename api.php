@@ -357,6 +357,14 @@ function setupDB($db) {
         $db->query("ALTER TABLE preventas ADD COLUMN detalle VARCHAR(300) DEFAULT NULL");
     }
 
+    // Alternativa a subir una imagen: un color liso de fondo. Si hay
+    // imagen, gana la imagen (color_portada queda guardado igual, por si
+    // se saca la imagen después no hay que volver a elegir color).
+    $colCheck = $db->query("SHOW COLUMNS FROM preventas LIKE 'color_portada'");
+    if ($colCheck && $colCheck->num_rows === 0) {
+        $db->query("ALTER TABLE preventas ADD COLUMN color_portada VARCHAR(7) DEFAULT NULL");
+    }
+
     $colCheck = $db->query("SHOW COLUMNS FROM productos LIKE 'preventa_id'");
     if ($colCheck && $colCheck->num_rows === 0) {
         $db->query("ALTER TABLE productos ADD COLUMN preventa_id INT DEFAULT NULL");
@@ -516,7 +524,7 @@ switch ($action) {
         $barcode  = $_GET['barcode'] ?? '';
         $preventa = $_GET['preventa'] ?? ''; // id de preventa, o 'sin' para sin preventa asignada
         $isAdmin  = isAdminAuth($_GET['_user'] ?? '', $_GET['_pass'] ?? '');
-        $sql = "SELECT p.*, COALESCE(c.orden, 0) as cat_orden, pv.nombre as preventa_nombre, pv.detalle as preventa_detalle, pv.activa as preventa_activa, pv.imagen as preventa_imagen, pv.orden as preventa_orden, pv.mostrar_stock as preventa_mostrar_stock, UNIX_TIMESTAMP(pv.updated_at) as preventa_imagen_v
+        $sql = "SELECT p.*, COALESCE(c.orden, 0) as cat_orden, pv.nombre as preventa_nombre, pv.detalle as preventa_detalle, pv.activa as preventa_activa, pv.imagen as preventa_imagen, pv.color_portada as preventa_color_portada, pv.orden as preventa_orden, pv.mostrar_stock as preventa_mostrar_stock, UNIX_TIMESTAMP(pv.updated_at) as preventa_imagen_v
                 FROM productos p
                 LEFT JOIN categorias c ON p.categoria = c.nombre
                 LEFT JOIN preventas pv ON p.preventa_id = pv.id
@@ -971,12 +979,13 @@ switch ($action) {
         $nombre = trim($data['nombre'] ?? '');
         $detalle = isset($data['detalle']) && $data['detalle'] !== '' ? trim($data['detalle']) : null;
         $imagen = isset($data['imagen']) && $data['imagen'] !== '' ? trim($data['imagen']) : null;
+        $colorPortada = isset($data['color_portada']) && $data['color_portada'] !== '' ? trim($data['color_portada']) : null;
         $activa = !empty($data['activa']) ? 1 : 0;
         $mostrarStock = !empty($data['mostrar_stock']) ? 1 : 0;
         $orden = intval($data['orden'] ?? 0);
         if (!$nombre) { http_response_code(400); die(json_encode(['error' => 'Nombre requerido'])); }
-        $stmt = $db->prepare("INSERT INTO preventas (nombre, detalle, imagen, activa, mostrar_stock, orden) VALUES (?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param('sssiii', $nombre, $detalle, $imagen, $activa, $mostrarStock, $orden);
+        $stmt = $db->prepare("INSERT INTO preventas (nombre, detalle, imagen, color_portada, activa, mostrar_stock, orden) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param('ssssiii', $nombre, $detalle, $imagen, $colorPortada, $activa, $mostrarStock, $orden);
         if ($stmt->execute()) echo json_encode(['ok' => true, 'id' => $db->insert_id]);
         else { http_response_code(400); echo json_encode(['error' => 'Ya existe esa preventa']); }
         break;
@@ -989,6 +998,7 @@ switch ($action) {
         $detalle = isset($data['detalle']) && $data['detalle'] !== '' ? trim($data['detalle']) : null;
         $activa = !empty($data['activa']) ? 1 : 0;
         $mostrarStock = !empty($data['mostrar_stock']) ? 1 : 0;
+        $colorPortada = isset($data['color_portada']) && $data['color_portada'] !== '' ? trim($data['color_portada']) : null;
         if (isset($data['imagen'])) {
             $imagen = $data['imagen'] !== '' ? trim($data['imagen']) : null;
             // El nombre de archivo de una portada nueva es único por subida
@@ -1002,11 +1012,11 @@ switch ($action) {
                 $row = $prevImg->get_result()->fetch_assoc();
                 if ($row && $row['imagen'] && $row['imagen'] !== $imagen) $viejo = $row['imagen'];
             }
-            $stmt = $db->prepare("UPDATE preventas SET nombre=?, detalle=?, imagen=?, activa=?, mostrar_stock=? WHERE id=?");
-            $stmt->bind_param('sssiii', $nombre, $detalle, $imagen, $activa, $mostrarStock, $id);
+            $stmt = $db->prepare("UPDATE preventas SET nombre=?, detalle=?, imagen=?, color_portada=?, activa=?, mostrar_stock=? WHERE id=?");
+            $stmt->bind_param('ssssiii', $nombre, $detalle, $imagen, $colorPortada, $activa, $mostrarStock, $id);
         } else {
-            $stmt = $db->prepare("UPDATE preventas SET nombre=?, detalle=?, activa=?, mostrar_stock=? WHERE id=?");
-            $stmt->bind_param('ssiii', $nombre, $detalle, $activa, $mostrarStock, $id);
+            $stmt = $db->prepare("UPDATE preventas SET nombre=?, detalle=?, color_portada=?, activa=?, mostrar_stock=? WHERE id=?");
+            $stmt->bind_param('sssiii', $nombre, $detalle, $colorPortada, $activa, $mostrarStock, $id);
         }
         if ($stmt->execute()) {
             if (!empty($viejo)) {

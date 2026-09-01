@@ -369,6 +369,7 @@ function start() {
                     PREVENTA_DETALLE: p.preventa_detalle || null,
                     PREVENTA_IMAGEN: p.preventa_imagen || null,
                     PREVENTA_IMAGEN_V: p.preventa_imagen_v || 0,
+                    PREVENTA_COLOR_PORTADA: p.preventa_color_portada || null,
                     PREVENTA_ORDEN: p.preventa_orden != null ? Number(p.preventa_orden) : 0,
                     PREVENTA_MOSTRAR_STOCK: String(p.preventa_mostrar_stock) === "1",
                     UPDATED_AT: p.updated_at
@@ -445,6 +446,7 @@ function getPreventas() {
                 detalle: p.PREVENTA_DETALLE,
                 imagen: p.PREVENTA_IMAGEN,
                 imagen_v: p.PREVENTA_IMAGEN_V,
+                color_portada: p.PREVENTA_COLOR_PORTADA,
                 orden: p.PREVENTA_ORDEN,
             });
         }
@@ -479,7 +481,15 @@ function renderPreventaSelector() {
         // ?v=<updated_at> como cache-buster — el archivo se llama siempre
         // igual (preventa_<id>.jpeg), así que sin esto el navegador seguía
         // mostrando la portada vieja después de subir una nueva.
-        var bg = pv.imagen ? 'style="background-image:url(\'' + pv.imagen + '?v=' + (pv.imagen_v || 0) + '\')"' : "";
+        // Imagen tiene prioridad; si no hay, un color liso elegido a mano
+        // (sin el oscurecido ::before de las fotos — un color plano ya se
+        // elige con buen contraste, no le hace falta); si no hay ninguno
+        // de los dos, queda el degradado de marca de siempre.
+        var bg = pv.imagen
+            ? 'style="background-image:url(\'' + pv.imagen + '?v=' + (pv.imagen_v || 0) + '\')"'
+            : pv.color_portada
+              ? 'style="background:' + pv.color_portada + '"'
+              : "";
         html +=
             '<button class="prev-card' + (String(activePreventa) === String(pv.id) ? " on" : "") + (pv.imagen ? " has-img" : "") + '" ' + bg +
             ' onclick="setPreventa(\'' + pv.id + '\')">' +

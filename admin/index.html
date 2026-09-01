@@ -1386,7 +1386,12 @@
                                     <input id="prevImgUrl" placeholder="O pegá la URL de una imagen (ej. de Google Imágenes)..." style="flex:1" />
                                     <button type="button" class="btn-toggle" id="btnUsarUrlPrev" onclick="usarUrlPrevImg()" style="white-space:nowrap;padding:9px 12px">Usar URL</button>
                                 </div>
-                                <div class="field-hint">Si no cargás una imagen, se usa un cartel con la paleta de marca.</div>
+                                <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+                                    <span style="font-size:13px;color:var(--muted)">O un color liso en vez de imagen:</span>
+                                    <input type="color" id="prevColorPortada" value="#e84e1b" style="width:36px;height:32px;padding:2px;border:1.5px solid var(--border);border-radius:6px;cursor:pointer" onchange="usarColorPrevPortada()" />
+                                    <button type="button" class="btn-toggle" id="btnQuitarColorPrev" onclick="quitarColorPrevPortada()" style="display:none;padding:6px 10px;font-size:12px">Quitar color</button>
+                                </div>
+                                <div class="field-hint">Si cargás imagen Y color, la imagen tiene prioridad — el color queda guardado por si después sacás la imagen.</div>
                             </div>
                             <div class="field" style="display:flex;align-items:center;gap:10px">
                                 <label class="switch">

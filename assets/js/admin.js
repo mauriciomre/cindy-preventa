@@ -11,6 +11,7 @@ var pendingFile = null,
     checkTimeout = null;
 var pendingPrevFile = null;
 var pendingPrevUrl = null;
+var pendingPrevColor = null;
 var editMode = false,
     dragSrc = null;
 var sortedProducts = null;
@@ -980,6 +981,9 @@ function openPrevModal(id) {
         cur.style.display = "none";
         lbl.innerHTML = icon("camera") + " Hacé clic o arrastrá una imagen<br><small>JPG, PNG o WebP</small>";
     }
+    pendingPrevColor = pv.color_portada || null;
+    document.getElementById("prevColorPortada").value = pv.color_portada || "#e84e1b";
+    document.getElementById("btnQuitarColorPrev").style.display = pv.color_portada ? "" : "none";
     document.getElementById("prevModalBg").classList.add("open");
 }
 function closePrevModal() {
@@ -1014,6 +1018,15 @@ function usarUrlPrevImg() {
     cur.style.display = "block";
     document.getElementById("prevImgLabelText").textContent = "✓ URL pegada — se procesa al guardar";
 }
+function usarColorPrevPortada() {
+    pendingPrevColor = document.getElementById("prevColorPortada").value;
+    document.getElementById("btnQuitarColorPrev").style.display = "";
+}
+function quitarColorPrevPortada() {
+    pendingPrevColor = null;
+    document.getElementById("prevColorPortada").value = "#e84e1b";
+    document.getElementById("btnQuitarColorPrev").style.display = "none";
+}
 async function uploadPrevImage(id) {
     if (!pendingPrevFile && !pendingPrevUrl) return null;
     var fd = new FormData();
@@ -1036,7 +1049,7 @@ async function guardarPreventa() {
     var activa = document.getElementById("prevEditActiva").checked;
     var mostrar_stock = document.getElementById("prevEditMostrarStock").checked;
     if (!nombre) { toast("Ingresá un nombre", "#c62828"); return; }
-    var data = { _user: authUser, _pass: authPass, nombre, detalle, activa, mostrar_stock };
+    var data = { _user: authUser, _pass: authPass, nombre, detalle, activa, mostrar_stock, color_portada: pendingPrevColor || "" };
     if (pendingPrevFile || pendingPrevUrl) {
         var url = await uploadPrevImage(id);
         if (url) data.imagen = url;
@@ -1061,7 +1074,7 @@ async function togglePreventaActiva(id, activa) {
     var res = await fetch(API + "?action=preventa_editar&id=" + id, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ _user: authUser, _pass: authPass, nombre: pv.nombre, detalle: pv.detalle || "", activa, mostrar_stock: pv.mostrar_stock == 1 }),
+        body: JSON.stringify({ _user: authUser, _pass: authPass, nombre: pv.nombre, detalle: pv.detalle || "", activa, mostrar_stock: pv.mostrar_stock == 1, color_portada: pv.color_portada || "" }),
     });
     var json = await res.json();
     if (json.ok) {
