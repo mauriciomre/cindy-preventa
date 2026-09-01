@@ -2939,6 +2939,7 @@ function closeImportModal() {
     document.getElementById("btnImportConfirm").disabled = true;
     setImportStep(1);
     _importFilter = "todos";
+    _importStockMode = "sumar";
     window._importRows = [];
     window._importRawRows = [];
     window._importMapping = {};
@@ -2948,6 +2949,12 @@ function closeImportModal() {
 
 // ── Constantes de importación ──────────────────────────────────────────────
 var _importFilter = "todos";
+// Cómo se aplica STOCK_PREVENTA a productos que YA existen: "sumar" suma (o
+// resta, con valores negativos) el número de la fila al stock actual —
+// mismo criterio que "Sumar stock" en la tabla del admin, no pierde ventas
+// ya hechas; "reemplazar" deja el stock exacto que dice la planilla. Se
+// elige una sola vez por importación (radio en el paso de mapeo), no por fila.
+var _importStockMode = "sumar";
 
 var SYSTEM_FIELDS = [
     { key: "CODIGO",           label: "Código",           required: true },
@@ -3075,8 +3082,19 @@ function renderMappingStep(headers, rawRows) {
         html += '</select></td></tr>';
     });
 
-    html += '</tbody></table></div>'
-        + '<button class="btn btn-primary" style="margin-top:16px;width:100%" onclick="applyMapping()">Continuar → Vista previa</button>';
+    html += '</tbody></table></div>';
+
+    html += '<div style="margin-top:14px;padding:10px 12px;background:#fff3e0;border:1px solid #ffcc80;border-radius:8px;font-size:12.5px">'
+        + '<strong>Si mapeaste una columna a "Stock inicial", cómo se aplica a productos que ya existen:</strong>'
+        + '<label style="display:block;margin-top:6px;cursor:pointer">'
+        + '<input type="radio" name="stockMode" value="sumar" checked onchange="_importStockMode=this.value"> '
+        + 'Sumar/restar — el número de la fila se suma al stock actual (usá negativos para restar). No pierde stock ya vendido.</label>'
+        + '<label style="display:block;margin-top:4px;cursor:pointer">'
+        + '<input type="radio" name="stockMode" value="reemplazar" onchange="_importStockMode=this.value"> '
+        + 'Reemplazar — el número de la fila pasa a ser el stock exacto, pisando lo que había.</label>'
+        + '</div>';
+
+    html += '<button class="btn btn-primary" style="margin-top:16px;width:100%" onclick="applyMapping()">Continuar → Vista previa</button>';
 
     var wrap = document.getElementById("importMappingWrap");
     wrap.innerHTML = html;
@@ -3186,6 +3204,17 @@ function getRowStatus(row, existingData) {
     // vacío se trata como cambio, para no arriesgarse a que la fila quede
     // "SIN_CAMBIOS" y la asignación de preventa se omita en silencio al importar.
     if (row["PREVENTA"] !== undefined && row["PREVENTA"] !== "") changed = true;
+    // STOCK_PREVENTA es una operación (sumar/restar o reemplazar), no un
+    // valor a comparar directo contra el actual.
+    if (row["STOCK_PREVENTA"] !== undefined && row["STOCK_PREVENTA"] !== "") {
+        var stockVal = parseInt(row["STOCK_PREVENTA"], 10);
+        if (_importStockMode === "reemplazar") {
+            var curStock = existing.stock_preventa !== undefined ? parseInt(existing.stock_preventa, 10) : null;
+            if (curStock === null || curStock !== stockVal) changed = true;
+        } else if (stockVal !== 0) {
+            changed = true;
+        }
+    }
 
     return { status: changed ? "ACTUALIZA" : "SIN_CAMBIOS", errors: [], existing: existing };
 }
@@ -3304,6 +3333,20 @@ function buildImportPreviewHTML(enriched, counts, activeFields) {
                 return;
             }
 
+            // STOCK_PREVENTA en un producto existente es una operación
+            // (sumar/restar o reemplazar), no un valor directo — mostrar el
+            // resultado real según el modo elegido, para que quede claro
+            // antes de confirmar.
+            if (f === "STOCK_PREVENTA" && val && st.existing) {
+                var curStock = st.existing.stock_preventa !== undefined ? parseInt(st.existing.stock_preventa, 10) : 0;
+                var deltaOrNew = parseInt(val, 10);
+                var nuevoStock = _importStockMode === "reemplazar" ? Math.max(0, deltaOrNew) : Math.max(0, curStock + deltaOrNew);
+                var signo = _importStockMode === "reemplazar" ? "=" : (deltaOrNew >= 0 ? "+" + deltaOrNew : deltaOrNew);
+                html += '<td style="padding:6px 8px;font-size:12px;white-space:nowrap">'
+                    + curStock + ' <span style="color:#888">(' + signo + ')</span> → <strong>' + nuevoStock + '</strong></td>';
+                return;
+            }
+
             // Before/after en actualizaciones
             if (st.status === "ACTUALIZA" && val && dbKey && oldVal && oldVal !== val) {
                 var numFields = ["PRECIO_MAYORISTA", "MULTIPLO"];
@@ -3384,7 +3427,7 @@ async function confirmImport() {
         var res = await fetch(API + "?action=importar_masivo", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ _user: authUser, _pass: authPass, productos: rows }),
+            body: JSON.stringify({ _user: authUser, _pass: authPass, productos: rows, stock_mode: _importStockMode }),
         });
         var json = await res.json();
         if (json.ok) {

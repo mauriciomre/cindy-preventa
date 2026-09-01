@@ -765,6 +765,12 @@ switch ($action) {
         checkAuth($data);
         $productos = $data['productos'] ?? [];
         if (empty($productos)) { http_response_code(400); die(json_encode(['error' => 'Sin productos'])); }
+        // Cómo se aplica STOCK_PREVENTA a productos que YA existen: "reemplazar"
+        // deja el número exacto de la fila; cualquier otro valor (o ausente) es
+        // "sumar", que suma (o resta, con negativos) al stock actual — mismo
+        // criterio que "Sumar stock" en el admin, no pisa en silencio lo ya
+        // vendido. Elegido una sola vez por importación, no por fila.
+        $stockMode = ($data['stock_mode'] ?? 'sumar') === 'reemplazar' ? 'reemplazar' : 'sumar';
         $imported = 0; $updated = 0; $errors = [];
 
         $import_id = 'imp_' . date('Ymd_His') . '_' . substr(uniqid(), -4);
@@ -783,15 +789,13 @@ switch ($action) {
             $codigo = trim($p['CODIGO'] ?? '');
             if (!$codigo) { $errors[] = ['codigo' => '(vacío)', 'motivo' => 'CODIGO obligatorio']; continue; }
 
-            $chk = $db->prepare("SELECT codigo,descripcion,categoria,marca,precio_mayorista,multiplo,estado,codigo_barras FROM productos WHERE codigo=?");
+            $chk = $db->prepare("SELECT codigo,descripcion,categoria,marca,precio_mayorista,multiplo,estado,codigo_barras,stock_preventa,stock_preventa_inicial FROM productos WHERE codigo=?");
             $chk->bind_param('s', $codigo); $chk->execute();
             $existing = $chk->get_result()->fetch_assoc();
 
             if ($existing) {
-                // Actualiza datos del producto. A propósito NO toca stock_preventa
-                // acá — para sumar stock de un producto ya cargado se usa
-                // "stock_agregar" desde el admin, así no se pisa en silencio lo
-                // que ya se vendió con una reimportación de precios/descripciones.
+                // Actualiza datos del producto, incluyendo stock_preventa si la
+                // fila trae STOCK_PREVENTA (ver $stockMode arriba).
                 $prevJson = json_encode($existing, JSON_UNESCAPED_UNICODE);
                 $snapStmt = $db->prepare("INSERT INTO import_snapshots (import_id, codigo, accion, datos_anteriores) VALUES (?,?,'updated',?)");
                 $snapStmt->bind_param('sss', $import_id, $codigo, $prevJson);
@@ -803,6 +807,21 @@ switch ($action) {
                 if (isset($p['MARCA'])          && $p['MARCA']          !== '') { $sets[] = 'marca=?';            $params[] = trim($p['MARCA']);                 $types .= 's'; }
                 if (isset($p['PRECIO_MAYORISTA']) && $p['PRECIO_MAYORISTA'] !== '') { $sets[] = 'precio_mayorista=?'; $params[] = floatval($p['PRECIO_MAYORISTA']); $types .= 'd'; }
                 if (isset($p['MULTIPLO'])       && $p['MULTIPLO']       !== '') { $sets[] = 'multiplo=?';         $params[] = max(1, intval($p['MULTIPLO']));    $types .= 'i'; }
+                if (isset($p['STOCK_PREVENTA'])  && $p['STOCK_PREVENTA']  !== '' && is_numeric($p['STOCK_PREVENTA'])) {
+                    $curStock   = intval($existing['stock_preventa'] ?? 0);
+                    $curInicial = intval($existing['stock_preventa_inicial'] ?? 0);
+                    if ($stockMode === 'reemplazar') {
+                        $newStock = max(0, intval($p['STOCK_PREVENTA']));
+                        $delta = $newStock - $curStock;
+                    } else {
+                        $delta = intval($p['STOCK_PREVENTA']);
+                        $newStock = max(0, $curStock + $delta);
+                        $delta = $newStock - $curStock; // delta real aplicado, ya clampeado a 0
+                    }
+                    $newInicial = max($newStock, $curInicial + $delta);
+                    $sets[] = 'stock_preventa=?';         $params[] = $newStock;   $types .= 'i';
+                    $sets[] = 'stock_preventa_inicial=?'; $params[] = $newInicial; $types .= 'i';
+                }
                 if (isset($p['ESTADO'])         && $p['ESTADO']         !== '') { $sets[] = 'estado=?';           $params[] = strtoupper(trim($p['ESTADO']));    $types .= 's'; }
                 if (isset($p['CODIGO_BARRAS'])  && $p['CODIGO_BARRAS']  !== '') { $sets[] = 'codigo_barras=?';    $params[] = trim($p['CODIGO_BARRAS']);          $types .= 's'; }
                 if (isset($p['PREVENTA'])       && $p['PREVENTA']       !== '') { $sets[] = 'preventa_id=?';      $params[] = resolver_preventa_id($db, $p['PREVENTA']); $types .= 'i'; }
@@ -850,7 +869,7 @@ switch ($action) {
         if (!$codigos) { echo json_encode(['ok' => true, 'productos' => (object)[]]); break; }
         $ph = implode(',', array_fill(0, count($codigos), '?'));
         $types = str_repeat('s', count($codigos));
-        $stmt = $db->prepare("SELECT codigo, descripcion, categoria, marca, precio_mayorista, multiplo, estado, codigo_barras FROM productos WHERE codigo IN ($ph)");
+        $stmt = $db->prepare("SELECT codigo, descripcion, categoria, marca, precio_mayorista, multiplo, estado, codigo_barras, stock_preventa FROM productos WHERE codigo IN ($ph)");
         $stmt->bind_param($types, ...$codigos);
         $stmt->execute();
         $res = $stmt->get_result();
@@ -882,17 +901,20 @@ switch ($action) {
                 if ($row['accion'] === 'updated') {
                     $prev = json_decode($row['datos_anteriores'], true);
                     if (!$prev) { $errors[] = ['codigo' => $row['codigo'], 'motivo' => 'snapshot JSON inválido']; continue; }
-                    $desc  = $prev['descripcion']     ?? '';
-                    $cat   = $prev['categoria']       ?? '';
-                    $marca = isset($prev['marca']) && $prev['marca'] !== null ? strval($prev['marca']) : null;
-                    $pmay  = floatval($prev['precio_mayorista'] ?? 0);
-                    $est   = $prev['estado']          ?? 'DISPONIBLE';
-                    $cb    = isset($prev['codigo_barras']) && $prev['codigo_barras'] !== null ? strval($prev['codigo_barras']) : null;
-                    $cod   = $row['codigo'];
+                    $desc     = $prev['descripcion']     ?? '';
+                    $cat      = $prev['categoria']       ?? '';
+                    $marca    = isset($prev['marca']) && $prev['marca'] !== null ? strval($prev['marca']) : null;
+                    $pmay     = floatval($prev['precio_mayorista'] ?? 0);
+                    $multiplo = max(1, intval($prev['multiplo'] ?? 1));
+                    $est      = $prev['estado']          ?? 'DISPONIBLE';
+                    $cb       = isset($prev['codigo_barras']) && $prev['codigo_barras'] !== null ? strval($prev['codigo_barras']) : null;
+                    $stock    = intval($prev['stock_preventa'] ?? 0);
+                    $stockIni = intval($prev['stock_preventa_inicial'] ?? 0);
+                    $cod      = $row['codigo'];
 
-                    $stmt = $db->prepare("UPDATE productos SET descripcion=?,categoria=?,marca=?,precio_mayorista=?,estado=?,codigo_barras=? WHERE codigo=?");
+                    $stmt = $db->prepare("UPDATE productos SET descripcion=?,categoria=?,marca=?,precio_mayorista=?,multiplo=?,estado=?,codigo_barras=?,stock_preventa=?,stock_preventa_inicial=? WHERE codigo=?");
                     if (!$stmt) throw new Exception("prepare UPDATE falló para " . $cod . ": " . $db->error);
-                    $stmt->bind_param('sssdsss', $desc, $cat, $marca, $pmay, $est, $cb, $cod);
+                    $stmt->bind_param('sssdissiis', $desc, $cat, $marca, $pmay, $multiplo, $est, $cb, $stock, $stockIni, $cod);
                     if ($stmt->execute()) $restored++;
                     else $errors[] = ['codigo' => $cod, 'motivo' => $stmt->error];
                     $stmt->close();
