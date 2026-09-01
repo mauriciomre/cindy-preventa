@@ -516,7 +516,7 @@ switch ($action) {
         $barcode  = $_GET['barcode'] ?? '';
         $preventa = $_GET['preventa'] ?? ''; // id de preventa, o 'sin' para sin preventa asignada
         $isAdmin  = isAdminAuth($_GET['_user'] ?? '', $_GET['_pass'] ?? '');
-        $sql = "SELECT p.*, COALESCE(c.orden, 0) as cat_orden, pv.nombre as preventa_nombre, pv.detalle as preventa_detalle, pv.activa as preventa_activa, pv.imagen as preventa_imagen, pv.orden as preventa_orden, pv.mostrar_stock as preventa_mostrar_stock
+        $sql = "SELECT p.*, COALESCE(c.orden, 0) as cat_orden, pv.nombre as preventa_nombre, pv.detalle as preventa_detalle, pv.activa as preventa_activa, pv.imagen as preventa_imagen, pv.orden as preventa_orden, pv.mostrar_stock as preventa_mostrar_stock, UNIX_TIMESTAMP(pv.updated_at) as preventa_imagen_v
                 FROM productos p
                 LEFT JOIN categorias c ON p.categoria = c.nombre
                 LEFT JOIN preventas pv ON p.preventa_id = pv.id

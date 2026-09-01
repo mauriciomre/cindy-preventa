@@ -368,6 +368,7 @@ function start() {
                     PREVENTA_NOMBRE: p.preventa_nombre || null,
                     PREVENTA_DETALLE: p.preventa_detalle || null,
                     PREVENTA_IMAGEN: p.preventa_imagen || null,
+                    PREVENTA_IMAGEN_V: p.preventa_imagen_v || 0,
                     PREVENTA_ORDEN: p.preventa_orden != null ? Number(p.preventa_orden) : 0,
                     PREVENTA_MOSTRAR_STOCK: String(p.preventa_mostrar_stock) === "1",
                     UPDATED_AT: p.updated_at
@@ -443,6 +444,7 @@ function getPreventas() {
                 nombre: p.PREVENTA_NOMBRE,
                 detalle: p.PREVENTA_DETALLE,
                 imagen: p.PREVENTA_IMAGEN,
+                imagen_v: p.PREVENTA_IMAGEN_V,
                 orden: p.PREVENTA_ORDEN,
             });
         }
@@ -462,13 +464,17 @@ function setPreventa(id) {
 
 function renderPreventaSelector() {
     var wrap = document.getElementById("preventaSelector");
-    if (!wrap) return;
+    var outer = document.getElementById("preventaSelectorOuter");
+    if (!wrap || !outer) return;
     var preventas = getPreventas();
-    if (!preventas.length) { wrap.innerHTML = ""; wrap.style.display = "none"; return; }
-    wrap.style.display = "";
+    if (!preventas.length) { wrap.innerHTML = ""; outer.style.display = "none"; return; }
+    outer.style.display = "";
     var html = "";
     preventas.forEach(function (pv) {
-        var bg = pv.imagen ? 'style="background-image:url(\'' + pv.imagen + '\')"' : "";
+        // ?v=<updated_at> como cache-buster — el archivo se llama siempre
+        // igual (preventa_<id>.jpeg), así que sin esto el navegador seguía
+        // mostrando la portada vieja después de subir una nueva.
+        var bg = pv.imagen ? 'style="background-image:url(\'' + pv.imagen + '?v=' + (pv.imagen_v || 0) + '\')"' : "";
         html +=
             '<button class="prev-card' + (String(activePreventa) === String(pv.id) ? " on" : "") + (pv.imagen ? " has-img" : "") + '" ' + bg +
             ' onclick="setPreventa(\'' + pv.id + '\')">' +
@@ -480,6 +486,20 @@ function renderPreventaSelector() {
         '<button class="prev-card prev-card-all' + (activePreventa === "TODAS" ? " on" : "") + '" onclick="setPreventa(\'TODAS\')">' +
         '<span class="prev-card-name">Todas las preventas</span></button>';
     wrap.innerHTML = html;
+    updatePrevSelectorFade();
+    wrap.onscroll = updatePrevSelectorFade;
+    window.addEventListener("resize", updatePrevSelectorFade);
+}
+
+// Sin scrollbar visible, la única pista de que hay más preventas para el
+// costado es este degradado con flecha — se esconde solo si ya se scrolleó
+// hasta el final, o si todo entra sin hacer falta scrollear.
+function updatePrevSelectorFade() {
+    var wrap = document.getElementById("preventaSelector");
+    var outer = document.getElementById("preventaSelectorOuter");
+    if (!wrap || !outer) return;
+    var atEnd = wrap.scrollLeft + wrap.clientWidth >= wrap.scrollWidth - 2;
+    outer.classList.toggle("at-end", atEnd);
 }
 
 function render() {
