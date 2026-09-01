@@ -469,7 +469,12 @@ function renderPreventaSelector() {
     var preventas = getPreventas();
     if (!preventas.length) { wrap.innerHTML = ""; outer.style.display = "none"; return; }
     outer.style.display = "";
-    var html = "";
+    // "Todas las preventas" va primera (es el default y la opción más
+    // usada) y con color de marca bien visible — antes quedaba al final,
+    // blanca, la menos llamativa de toda la fila.
+    var html =
+        '<button class="prev-card prev-card-all' + (activePreventa === "TODAS" ? " on" : "") + '" onclick="setPreventa(\'TODAS\')">' +
+        '<span class="prev-card-name">Todas las preventas</span></button>';
     preventas.forEach(function (pv) {
         // ?v=<updated_at> como cache-buster — el archivo se llama siempre
         // igual (preventa_<id>.jpeg), así que sin esto el navegador seguía
@@ -482,9 +487,6 @@ function renderPreventaSelector() {
             (pv.detalle ? '<span class="prev-card-detalle">' + pv.detalle + "</span>" : "") +
             "</span></button>";
     });
-    html +=
-        '<button class="prev-card prev-card-all' + (activePreventa === "TODAS" ? " on" : "") + '" onclick="setPreventa(\'TODAS\')">' +
-        '<span class="prev-card-name">Todas las preventas</span></button>';
     wrap.innerHTML = html;
     updatePrevSelectorFade();
     wrap.onscroll = updatePrevSelectorFade;
@@ -500,6 +502,16 @@ function updatePrevSelectorFade() {
     if (!wrap || !outer) return;
     var atEnd = wrap.scrollLeft + wrap.clientWidth >= wrap.scrollWidth - 2;
     outer.classList.toggle("at-end", atEnd);
+}
+
+// Click en la flecha del degradado — antes era solo decorativa
+// (pointer-events:none), así que tocarla no hacía nada. Ahora es un botón
+// real que avanza el scroll una pantalla (menos un poco, para que se note
+// que sigue la fila anterior).
+function scrollPrevSelector() {
+    var wrap = document.getElementById("preventaSelector");
+    if (!wrap) return;
+    wrap.scrollBy({ left: wrap.clientWidth - 60, behavior: "smooth" });
 }
 
 function render() {

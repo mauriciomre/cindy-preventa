@@ -114,8 +114,17 @@ if ($imagenUrl !== '') {
 // blanco como a una foto de producto (ver helpers.php).
 $dst = $esPreventa ? redimensionar_preventa_cover($src) : redimensionar_a_cuadro($src, IMG_W, IMG_H);
 
-// Guardar como JPEG
-$filename = $codigo . '.jpeg';
+// Guardar como JPEG. Las portadas de preventa llevan un sufijo único por
+// subida — a diferencia de una foto de producto (1 código = 1 archivo,
+// tiene sentido que se pise), acá el nombre venía siendo siempre igual
+// (preventa_<id>.jpeg), así que re-subir una nueva portada no cambiaba el
+// valor de productos.imagen en la base → MySQL no dispara
+// ON UPDATE CURRENT_TIMESTAMP si ninguna columna cambia de verdad, y el
+// cache-buster (?v=updated_at) del catálogo público se quedaba pisado.
+// Con la URL siempre distinta, ni siquiera hace falta ese cache-buster.
+$filename = $esPreventa
+    ? $codigo . '_' . time() . mt_rand(100, 999) . '.jpeg'
+    : $codigo . '.jpeg';
 $filepath = $dir . $filename;
 imagejpeg($dst, $filepath, 85);
 
