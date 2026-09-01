@@ -72,6 +72,82 @@ function getImgSrc(p) {
     return "imgs/" + (p.CODIGO || "").replace(/\//g, "_") + ".jpeg" + "?v=" + v;
 }
 
+// ── Lightbox de foto de producto (grilla, tabla y modal de colores) ────────
+// La animación "crece desde la miniatura" se arma a mano con un solo <img>
+// compartido (#lightboxImg, en index.html): se lo para primero exacto en el
+// rect de la miniatura clickeada (sin transición) y recién en el frame
+// siguiente se le anima top/left/width/height al tamaño grande — closeLightbox
+// hace el camino inverso antes de ocultar. Sin esto (aplicar el tamaño final
+// de una) se vería un fundido genérico, no la miniatura "creciendo".
+var lightboxOriginRect = null;
+
+function openLightbox(imgEl) {
+    // Sin foto real todavía (rota / no cargó) no hay nada que agrandar.
+    if (!imgEl.src || imgEl.naturalWidth === 0) return;
+    var bg = document.getElementById("lightboxBg");
+    var img = document.getElementById("lightboxImg");
+    var rect = imgEl.getBoundingClientRect();
+    lightboxOriginRect = rect;
+
+    img.src = imgEl.src;
+    img.style.transition = "none";
+    img.style.top = rect.top + "px";
+    img.style.left = rect.left + "px";
+    img.style.width = rect.width + "px";
+    img.style.height = rect.height + "px";
+    bg.style.transition = "none";
+    bg.style.backgroundColor = "rgba(10,8,6,0)";
+    bg.classList.add("open");
+
+    // Forzar reflow antes de animar — si no, el navegador puede fusionar el
+    // estado inicial y el final en un solo paso y no se ve ningún movimiento.
+    void img.offsetWidth;
+
+    requestAnimationFrame(function () {
+        var target = lightboxTargetRect();
+        img.style.transition = "top .3s cubic-bezier(.2,.8,.2,1), left .3s cubic-bezier(.2,.8,.2,1), width .3s cubic-bezier(.2,.8,.2,1), height .3s cubic-bezier(.2,.8,.2,1)";
+        bg.style.transition = "background-color .3s ease";
+        bg.style.backgroundColor = "rgba(10,8,6,.85)";
+        img.style.top = target.top + "px";
+        img.style.left = target.left + "px";
+        img.style.width = target.width + "px";
+        img.style.height = target.height + "px";
+    });
+}
+
+function lightboxTargetRect() {
+    var w = Math.min(window.innerWidth * 0.92, 640);
+    var h = Math.min(window.innerHeight * 0.8, 640);
+    return {
+        top: (window.innerHeight - h) / 2,
+        left: (window.innerWidth - w) / 2,
+        width: w,
+        height: h,
+    };
+}
+
+function closeLightbox() {
+    var bg = document.getElementById("lightboxBg");
+    if (!bg.classList.contains("open")) return;
+    var img = document.getElementById("lightboxImg");
+    var r = lightboxOriginRect;
+    bg.style.backgroundColor = "rgba(10,8,6,0)";
+    if (r) {
+        img.style.top = r.top + "px";
+        img.style.left = r.left + "px";
+        img.style.width = r.width + "px";
+        img.style.height = r.height + "px";
+    }
+    setTimeout(function () {
+        bg.classList.remove("open");
+        lightboxOriginRect = null;
+    }, 300);
+}
+
+document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") closeLightbox();
+});
+
 function setView(v) {
     viewMode = v;
     document.getElementById("btnGrid").classList.toggle("on", v === "grid");
@@ -809,7 +885,7 @@ function cardHTML(p) {
         src +
         '" alt="' +
         p.DESCRIPCION +
-        '" onerror="this.style.display=\'none\'"></div>';
+        '" onclick="openLightbox(this)" onerror="this.style.display=\'none\'"></div>';
     html += '<div class="card-body">';
     html +=
         '<div class="c-top"><span class="code">' +
@@ -1101,7 +1177,7 @@ function listRowHTML(p) {
     html +=
         '<td><img class="list-thumb" data-src="' +
         src +
-        '" alt="" onerror="this.style.display=\'none\'"></td>';
+        '" alt="" onclick="openLightbox(this)" onerror="this.style.display=\'none\'"></td>';
     html +=
         '<td><span class="code">' +
         p.CODIGO +
