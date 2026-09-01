@@ -510,18 +510,21 @@ function updatePrevSelectorFade() {
     var wrap = document.getElementById("preventaSelector");
     var outer = document.getElementById("preventaSelectorOuter");
     if (!wrap || !outer) return;
+    var atStart = wrap.scrollLeft <= 2;
     var atEnd = wrap.scrollLeft + wrap.clientWidth >= wrap.scrollWidth - 2;
+    outer.classList.toggle("at-start", atStart);
     outer.classList.toggle("at-end", atEnd);
 }
 
-// Click en la flecha del degradado — antes era solo decorativa
-// (pointer-events:none), así que tocarla no hacía nada. Ahora es un botón
-// real que avanza el scroll una pantalla (menos un poco, para que se note
-// que sigue la fila anterior).
-function scrollPrevSelector() {
+// Click en las flechas del degradado — antes solo había una (derecha) y
+// era decorativa (pointer-events:none), así que tocarla no hacía nada.
+// Ahora son 2 botones reales (izquierda/derecha) que avanzan o retroceden
+// el scroll una pantalla (menos un poco, para que se note que sigue la
+// fila anterior/siguiente). dir: 1 = derecha, -1 = izquierda.
+function scrollPrevSelector(dir) {
     var wrap = document.getElementById("preventaSelector");
     if (!wrap) return;
-    wrap.scrollBy({ left: wrap.clientWidth - 60, behavior: "smooth" });
+    wrap.scrollBy({ left: dir * (wrap.clientWidth - 60), behavior: "smooth" });
 }
 
 function render() {
