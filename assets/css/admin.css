@@ -570,24 +570,42 @@ header {
     box-shadow: 0 1px 4px rgba(0, 0, 0, .08)
 }
 
+/* overflow-y:auto (no hidden) + max-height acotada: es lo que convierte esta
+   caja en su propio panel de scroll, requisito real para que el header
+   sticky funcione — con overflow-y:hidden y altura libre (como antes), el
+   header nunca tiene un "scrollport" propio contra el cual pegarse (ver
+   th sticky abajo) y termina scrolleando con el resto de la página. */
 .table-scroll {
     overflow-x: auto;
-    overflow-y: hidden
+    overflow-y: auto;
+    max-height: 65vh
 }
 
+/* border-collapse:separate (con border-spacing:0) en vez de collapse: es lo
+   que permite que position:sticky funcione en los th — con collapse, Chrome
+   computa position:static en las celdas sin excepción (limitación real del
+   modelo de bordes colapsados, no un bug nuestro). Visualmente no cambia
+   nada porque las celdas solo usan border-bottom, nunca bordes laterales. */
 table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     background: #fff
 }
 
+/* Sticky top:0 relativo a .table-scroll (que ahora es su propio panel de
+   scroll con altura acotada, no la página entera) — pegado al borde
+   superior de esa caja, no del viewport. */
 th {
     background: var(--blue);
     color: #fff;
     padding: 11px 14px;
     text-align: left;
     font-size: 13px;
-    white-space: nowrap
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 3
 }
 
 td {
@@ -617,7 +635,7 @@ tr:hover td {
 
 th.sticky-col {
     background: var(--blue);
-    z-index: 2
+    z-index: 4
 }
 
 td.sticky-col {
