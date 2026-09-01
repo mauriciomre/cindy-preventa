@@ -2965,7 +2965,7 @@ var SYSTEM_FIELDS = [
     { key: "CATEGORIA",        label: "Categoría",        required: false },
     { key: "MARCA",            label: "Marca",            required: false },
     { key: "PRECIO_MAYORISTA", label: "Precio mayorista", required: false },
-    { key: "STOCK_PREVENTA",   label: "Stock inicial (solo productos nuevos)", required: false },
+    { key: "STOCK_PREVENTA",   label: "Stock", required: false },
     { key: "MULTIPLO",         label: "Múltiplo de venta", required: false },
     { key: "ESTADO",           label: "Estado",           required: false },
     { key: "PREVENTA",         label: "Preventa",         required: false },
@@ -3087,7 +3087,7 @@ function renderMappingStep(headers, rawRows) {
     html += '</tbody></table></div>';
 
     html += '<div style="margin-top:14px;padding:10px 12px;background:#fff3e0;border:1px solid #ffcc80;border-radius:8px;font-size:12.5px">'
-        + '<strong>Si mapeaste una columna a "Stock inicial", cómo se aplica a productos que ya existen:</strong>'
+        + '<strong>Si mapeaste una columna a "Stock", cómo se aplica a productos que ya existen:</strong>'
         + '<label style="display:block;margin-top:6px;cursor:pointer">'
         + '<input type="radio" name="stockMode" value="sumar" checked onchange="_importStockMode=this.value"> '
         + 'Sumar/restar — el número de la fila se suma al stock actual (usá negativos para restar). No pierde stock ya vendido.</label>'
