@@ -235,6 +235,16 @@ function lbInitZoomHandlers() {
 
     img.addEventListener("pointerdown", function (e) {
         lbPointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+        // Capturar SIEMPRE el puntero al target, no solo cuando arranca un
+        // arrastre — sin esto, en un pellizco de 2 dedos apenas uno se
+        // despega visualmente del área de la foto (algo casi inevitable al
+        // separarlos) el navegador deja de mandarle sus pointermove al
+        // <img> y el pellizco se queda "trabado" a mitad de gesto en mobile
+        // (bug real reportado por Mauricio — no pasaba en desktop porque el
+        // mouse no se "sale" del elemento de la misma forma). Va en un
+        // try/catch: si por lo que sea falla, no tiene que tirar abajo el
+        // resto de la lógica de seguimiento del pellizco.
+        try { img.setPointerCapture(e.pointerId); } catch (err) {}
         var ids = Object.keys(lbPointers);
         if (ids.length === 2) {
             var p1 = lbPointers[ids[0]], p2 = lbPointers[ids[1]];
@@ -260,7 +270,6 @@ function lbInitZoomHandlers() {
         }
         if (lbZoom > 1) {
             lbDragStart = { x: e.clientX, y: e.clientY, panX: lbPanX, panY: lbPanY };
-            img.setPointerCapture(e.pointerId);
         }
     });
 
