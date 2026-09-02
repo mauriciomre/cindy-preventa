@@ -844,7 +844,11 @@ tr:hover td.sticky-col {
     padding: 3px 10px;
     border-radius: 10px;
     font-size: 11px;
-    font-weight: 700
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap
 }
 
 .badge-agot {
@@ -853,7 +857,11 @@ tr:hover td.sticky-col {
     padding: 3px 10px;
     border-radius: 10px;
     font-size: 11px;
-    font-weight: 700
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap
 }
 
 .actions {
