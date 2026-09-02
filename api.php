@@ -207,6 +207,29 @@ function manager_texto_normalizado($s) {
     return $s;
 }
 
+// Sufijo para códigos provisorios de variante (ej. "-BEI" para BEIGE).
+// Una sola palabra (caso más común): 3 letras de esa palabra, igual que
+// siempre. Variantes de dos o más palabras: 2 letras de cada una de las
+// primeras 2 palabras — NO la frase entera truncada ni solo la última
+// palabra, porque ninguna de esas dos alternativas evita colisiones reales:
+// "CRAB RED"/"CRAB CAMEL" truncados enteros colisionan en "CRA"; "SHELL
+// PINK"/"HOLIDAY PINK" con "última palabra" colisionan en "PIN" (mismo
+// color, distinto calificador). Verificado sin colisiones contra los 274
+// renglones reales de Chimola SS 27 (bug real que perdió 5 variantes en la
+// carga del 2026-09-02, ver nota de proyecto en el vault).
+function manager_sufijo_variante($variante) {
+    if ($variante === '') return '';
+    $palabras = preg_split('/\s+/', trim($variante));
+    if (count($palabras) === 1) {
+        return '-' . mb_strtoupper(mb_substr(preg_replace('/[^A-Za-zÁÉÍÓÚÑ]/u', '', $palabras[0]), 0, 3), 'UTF-8');
+    }
+    $sufijo = '';
+    foreach (array_slice($palabras, 0, 2) as $p) {
+        $sufijo .= mb_substr(preg_replace('/[^A-Za-zÁÉÍÓÚÑ]/u', '', $p), 0, 2);
+    }
+    return '-' . mb_strtoupper($sufijo, 'UTF-8');
+}
+
 // Devuelve el Base64 crudo (sin decodificar) de la foto principal (Orden=1)
 // de un artículo en Manager, o null si no existe. Solo-lectura
 // (GetDTArticulosImagenes/GetImage) — compartida entre "manager_imagen_producto"
@@ -1204,11 +1227,34 @@ switch ($action) {
                 // color que ya estén cargadas, si las hay).
                 $candidatos = manager_buscar_por_codigo_proveedor($token, $codigo);
                 $generico = null;
+                foreach ($candidatos as $c) { if ($c['es_generico']) $generico = $c; }
+
+                // Match de variante: primero se busca IGUALDAD exacta entre
+                // lo pedido y el color real (la descripción del candidato
+                // menos la base genérica en común) — evita falsos positivos
+                // como "BLUE" matcheando contra "... DEEP BLUE" por ser
+                // substring (bug real, Chimola SS 27, 2026-09-02: perdió la
+                // variante BLUE de un artículo que también tenía DEEP BLUE).
+                // Si no hay genérico contra el cual aislar el color, se cae
+                // al substring de siempre como último recurso.
                 $match = null;
-                foreach ($candidatos as $c) {
-                    if ($c['es_generico']) $generico = $c;
-                    if ($variante !== '' && !$match && strpos(manager_texto_normalizado($c['descripcion']), manager_texto_normalizado($variante)) !== false) {
-                        $match = $c;
+                if ($variante !== '' && $generico) {
+                    $varNorm  = manager_texto_normalizado($variante);
+                    $baseNorm = manager_texto_normalizado($generico['descripcion']);
+                    foreach ($candidatos as $c) {
+                        if ($c['es_generico']) continue;
+                        $descNorm = manager_texto_normalizado($c['descripcion']);
+                        $colorSolo = trim(str_replace($baseNorm, '', $descNorm));
+                        if ($colorSolo === $varNorm) { $match = $c; break; }
+                    }
+                }
+                if (!$match && $variante !== '') {
+                    foreach ($candidatos as $c) {
+                        if ($c['es_generico']) continue;
+                        if (strpos(manager_texto_normalizado($c['descripcion']), manager_texto_normalizado($variante)) !== false) {
+                            $match = $c;
+                            break;
+                        }
                     }
                 }
                 if (!$match && $variante === '' && $generico) $match = $generico;
@@ -1229,7 +1275,7 @@ switch ($action) {
                     // puntual todavía no — se arma un código provisorio
                     // (mismo criterio de sufijo que usa Manager) para no
                     // pisar otro color del mismo artículo.
-                    $sufijo = $variante !== '' ? '-' . mb_strtoupper(mb_substr(preg_replace('/[^A-Za-zÁÉÍÓÚÑ]/u', '', $variante), 0, 3), 'UTF-8') : '';
+                    $sufijo = manager_sufijo_variante($variante);
                     $codigoFinal = $codigo . $sufijo;
                     $categoria = $generico['categoria'];
                     $marca = $generico['marca'];
@@ -1241,7 +1287,7 @@ switch ($action) {
                 } elseif ($descFallback !== '') {
                     // Nada en Manager todavía (lo más común en preventa) —
                     // se usan los datos que vinieron pegados de la planilla.
-                    $sufijo = $variante !== '' ? '-' . mb_strtoupper(mb_substr(preg_replace('/[^A-Za-zÁÉÍÓÚÑ]/u', '', $variante), 0, 3), 'UTF-8') : '';
+                    $sufijo = manager_sufijo_variante($variante);
                     $codigoFinal = $codigo . $sufijo;
                     $categoria = '';
                     $marca = null;
