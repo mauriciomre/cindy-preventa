@@ -573,6 +573,27 @@ header {
     object-fit: contain
 }
 
+/* Fade suave al terminar de cargar (ver activateLazy() en catalogo.js) —
+   sin esto, la carga diferida (lazy) hace que las fotos aparezcan de
+   golpe apenas entran en pantalla, muy notorio al cambiar de preventa o
+   categoría (se re-arma toda la grilla de una vez). Arranca en 0 y solo
+   la clase .loaded (agregada en el evento "load" de la imagen) la sube a
+   1 — una imagen que tarda en llegar por red se ve aparecer con
+   delicadeza en vez de "pop-in", y una ya cacheada igual hace la
+   transición pero casi instantánea. */
+.card-img img,
+.lc-img,
+.list-thumb {
+    opacity: 0;
+    transition: opacity .35s ease
+}
+
+.card-img img.loaded,
+.lc-img.loaded,
+.list-thumb.loaded {
+    opacity: 1
+}
+
 .card-body {
     padding: 10px 12px 12px;
     display: flex;

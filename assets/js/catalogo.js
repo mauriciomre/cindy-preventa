@@ -33,6 +33,20 @@ fetch(API_URL + "?action=config_get")
     })
     .catch(function () {});
 
+// Fade suave (ver .loaded en catalogo.css): el listener de "load" se
+// engancha ANTES de asignar el src, así una imagen ya cacheada (que puede
+// terminar de cargar casi sincrónicamente) no se pierde el evento.
+function loadImgWithFade(img, src) {
+    img.addEventListener(
+        "load",
+        function () {
+            img.classList.add("loaded");
+        },
+        { once: true },
+    );
+    img.src = src;
+}
+
 var lazyObs = null;
 if (window.IntersectionObserver) {
     lazyObs = new IntersectionObserver(
@@ -42,7 +56,7 @@ if (window.IntersectionObserver) {
                     var img = e.target,
                         src = img.getAttribute("data-src");
                     if (src) {
-                        img.src = src;
+                        loadImgWithFade(img, src);
                         img.removeAttribute("data-src");
                     }
                     lazyObs.unobserve(img);
@@ -56,7 +70,7 @@ if (window.IntersectionObserver) {
 function activateLazy() {
     if (!lazyObs) {
         document.querySelectorAll("img[data-src]").forEach(function (i) {
-            i.src = i.getAttribute("data-src") || "";
+            loadImgWithFade(i, i.getAttribute("data-src") || "");
         });
         return;
     }
