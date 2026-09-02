@@ -936,12 +936,22 @@ td.editing {
     display: flex
 }
 
+/* overflow-x:hidden explícito — sin esto, la regla de la spec CSS que
+   empareja los dos ejes de overflow hace que overflow-x compute a "auto"
+   solo por tener overflow-y:auto acá abajo, y cualquier modal con
+   contenido ancho (una tabla sin su propio .table-wrap/.table-scroll,
+   por ejemplo) termina con scroll horizontal del MODAL ENTERO en vez de
+   quedar contenido — pasaba en el modal de detalle de pedido con la
+   tabla de ítems. Ningún modal necesita scrollear para el costado por sí
+   mismo; si algo de adentro es más ancho, que scrollee ESO (ver
+   tablas-admin-responsive.md). */
 .modal {
     background: #fff;
     border-radius: 14px;
     padding: 28px;
     width: min(540px, 95vw);
     max-height: 90vh;
+    overflow-x: hidden;
     overflow-y: auto
 }
 
