@@ -625,6 +625,33 @@ header {
     max-height: none
 }
 
+/* Modal "Productos de una preventa": mismo problema que las secciones de
+   arriba pero adentro de un modal — el buscador + textarea de arriba
+   quedan con su alto natural y el modal entero ya no scrollea
+   (overflow:hidden en vez del overflow-y:auto de .modal por defecto), solo
+   la tabla de adentro, así no hay dos scrollbars compitiendo por el mismo
+   espacio y la tabla se ve con el ancho/alto real del modal (900px) en vez
+   de amontonada en la mitad de abajo de un modal angosto de 640px. */
+#prevProductosModalBg .modal {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden
+}
+
+#prevProductosModalBg .table-wrap {
+    flex: 1;
+    min-height: 150px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden
+}
+
+#prevProductosModalBg .table-scroll {
+    flex: 1;
+    min-height: 0;
+    max-height: none
+}
+
 /* border-collapse:separate (con border-spacing:0) en vez de collapse: es lo
    que permite que position:sticky funcione en los th — con collapse, Chrome
    computa position:static en las celdas sin excepción (limitación real del
