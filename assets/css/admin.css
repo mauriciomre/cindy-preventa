@@ -581,6 +581,50 @@ header {
     max-height: 65vh
 }
 
+/* Listados del admin (Productos, Preventas, Categorías, Pedidos, Clientes):
+   la tabla ocupa el espacio vertical que va quedando libre en vez de una
+   altura fija — con el 65vh de siempre, cualquier sección donde el resto
+   del contenido (h2, texto, toolbar, tiles de stats) sea más bajo que el
+   caso más alto deja un hueco muerto abajo de la tabla sin usar; y en
+   Productos, cuando los tiles se achican al scrollear (.stats.compact), la
+   tabla tampoco tenía cómo "estirarse" para aprovechar el lugar liberado.
+   Con la sección entera como columna flex de altura fija (todo el alto
+   debajo del topbar) y el resto de los hijos con su tamaño natural,
+   .table-wrap (flex:1) es el único que crece o se achica según lo que
+   sobre. Colores queda afuera a propósito — ahí .table-wrap no es hijo
+   directo de la sección (va adentro de un wrapper con max-width propio). */
+#secProductos.section.on,
+#secPreventas.section.on,
+#secCategorias.section.on,
+#secPedidos.section.on,
+#secClientes.section.on {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 52px);
+    box-sizing: border-box
+}
+
+#secProductos > .table-wrap,
+#secPreventas > .table-wrap,
+#secCategorias > .table-wrap,
+#secPedidos > .table-wrap,
+#secClientes > .table-wrap {
+    flex: 1;
+    min-height: 200px;
+    display: flex;
+    flex-direction: column
+}
+
+#secProductos > .table-wrap .table-scroll,
+#secPreventas > .table-wrap .table-scroll,
+#secCategorias > .table-wrap .table-scroll,
+#secPedidos > .table-wrap .table-scroll,
+#secClientes > .table-wrap .table-scroll {
+    flex: 1;
+    min-height: 0;
+    max-height: none
+}
+
 /* border-collapse:separate (con border-spacing:0) en vez de collapse: es lo
    que permite que position:sticky funcione en los th — con collapse, Chrome
    computa position:static en las celdas sin excepción (limitación real del
