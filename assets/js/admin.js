@@ -22,6 +22,7 @@ var prevOriginalImagen = null;
 var editMode = false,
     dragSrc = null;
 var sortedProducts = null;
+var toolsDragSrc = null;
 
 // Columnas visibles — persistidas en localStorage
 var COLS = [
@@ -34,6 +35,7 @@ var COLS = [
     { key: "preventa", label: "Preventa", default: true },
     { key: "may", label: "Mayorista", default: true },
     { key: "estado", label: "Estado", default: true },
+    { key: "ingreso", label: "Ingresó", default: true },
     { key: "stock", label: "Stock preventa", default: true },
     { key: "multiplo", label: "Múltiplo", default: true },
     { key: "barras", label: "Cód. Barras", default: false },
@@ -120,6 +122,8 @@ async function doLogin() {
             loadFavs();
             renderFavbar();
             checkLastImport();
+            applyToolsOrder();
+            initToolsDragDrop();
         } else {
             document.getElementById("lerr").textContent =
                 "Usuario o contraseña incorrectos";
@@ -162,6 +166,8 @@ async function tryAutoLogin() {
             loadFavs();
             renderFavbar();
             checkLastImport();
+            applyToolsOrder();
+            initToolsDragDrop();
         } else {
             localStorage.removeItem("tb_admin_user");
             localStorage.removeItem("tb_admin_pass");
@@ -1396,6 +1402,7 @@ function renderTableHeader() {
     if (col("preventa")) h += '<th class="col-hide-3">Preventa</th>';
     if (col("may")) h += "<th>Mayorista</th>";
     if (col("estado")) h += "<th>Estado</th>";
+    if (col("ingreso")) h += "<th>Ingresó</th>";
     if (col("stock")) h += "<th>Stock preventa</th>";
     if (col("multiplo")) h += '<th class="col-hide-1">Múltiplo</th>';
     if (col("barras")) h += '<th class="col-hide-1">Cód. Barras</th>';
@@ -1511,6 +1518,15 @@ function renderTableFromList(list) {
                     ">DISPONIBLE</option><option" +
                     (p.estado === "AGOTADO" ? " selected" : "") +
                     ">AGOTADO</option></select></td>";
+            if (col("ingreso"))
+                html +=
+                    '<td class="editing"><select class="inline-select" data-field="ingreso" data-id="' +
+                    p.id +
+                    '"><option value="0"' +
+                    (p.ingreso != 1 ? " selected" : "") +
+                    ">No</option><option value=\"1\"" +
+                    (p.ingreso == 1 ? " selected" : "") +
+                    ">Sí</option></select></td>";
             if (col("stock"))
                 html +=
                     '<td class="editing"><input class="inline-input" type="number" value="' +
@@ -1570,6 +1586,13 @@ function renderTableFromList(list) {
                     '">' +
                     p.estado +
                     "</span></td>";
+            if (col("ingreso"))
+                html +=
+                    "<td>" +
+                    (p.ingreso == 1
+                        ? '<span class="badge-disp">' + icon("check") + " Sí</span>"
+                        : '<span class="badge-agot">' + icon("clock") + " No</span>") +
+                    "</td>";
             if (col("stock"))
                 html +=
                     "<td>" +
@@ -3072,6 +3095,7 @@ var SYSTEM_FIELDS = [
     { key: "MULTIPLO",         label: "Múltiplo de venta", required: false },
     { key: "ESTADO",           label: "Estado",           required: false },
     { key: "PREVENTA",         label: "Preventa",         required: false },
+    { key: "INGRESO",          label: "Ingresó",          required: false },
 ];
 
 var FIELD_ALIASES = {
@@ -3085,7 +3109,15 @@ var FIELD_ALIASES = {
     "MULTIPLO":         ["MULTIPLO", "MULTIPLE", "PACK", "UNIDADES_POR_PACK"],
     "ESTADO":           ["ESTADO", "STATUS", "STATE", "DISPONIBILIDAD", "ACTIVO"],
     "PREVENTA":         ["PREVENTA", "CAMPAÑA", "CAMPANIA", "PROMO"],
+    "INGRESO":          ["INGRESO", "INGRESÓ", "LLEGO", "LLEGÓ", "RECIBIDO"],
 };
+
+// Mismo criterio que parse_ingreso_valor() en api.php — para poder mostrar
+// el preview de import con el valor ya interpretado (Sí/No), no el texto crudo.
+function ingresoBool(v) {
+    v = String(v || "").trim().toUpperCase();
+    return ["SI", "SÍ", "S", "YES", "Y", "1", "TRUE", "X"].indexOf(v) >= 0;
+}
 
 function normalizeHeader(h) {
     return h.toUpperCase().trim()
@@ -3290,6 +3322,7 @@ function getRowStatus(row, existingData) {
         MULTIPLO:         "multiplo",
         ESTADO:           "estado",
         CODIGO_BARRAS:    "codigo_barras",
+        INGRESO:          "ingreso",
     };
     var changed = false;
     Object.keys(fieldMap).forEach(function(k) {
@@ -3300,6 +3333,8 @@ function getRowStatus(row, existingData) {
             if (Math.round(parseFloat(newV) * 100) !== Math.round(parseFloat(oldV) * 100)) changed = true;
         } else if (k === "ESTADO") {
             if (newV.toUpperCase() !== oldV.toUpperCase()) changed = true;
+        } else if (k === "INGRESO") {
+            if (ingresoBool(newV) !== (oldV === "1")) changed = true;
         } else {
             if (newV !== oldV) changed = true;
         }
@@ -3345,7 +3380,7 @@ function renderImportPreview(rows, existingData) {
     enriched.forEach(function(r) { counts[r._status.status]++; });
 
     // Detectar qué campos vinieron en el archivo
-    var ORDERED = ["CODIGO","CODIGO_BARRAS","DESCRIPCION","CATEGORIA","MARCA","PRECIO_MAYORISTA","STOCK_PREVENTA","MULTIPLO","ESTADO","PREVENTA"];
+    var ORDERED = ["CODIGO","CODIGO_BARRAS","DESCRIPCION","CATEGORIA","MARCA","PRECIO_MAYORISTA","STOCK_PREVENTA","MULTIPLO","ESTADO","PREVENTA","INGRESO"];
     var activeFields = ORDERED.filter(function(f) {
         return rows.some(function(r) { return r[f] !== undefined && r[f] !== ""; });
     });
@@ -3367,7 +3402,7 @@ function buildImportPreviewHTML(enriched, counts, activeFields) {
     var fieldMap = {
         DESCRIPCION: "descripcion", CATEGORIA: "categoria", MARCA: "marca",
         PRECIO_MAYORISTA: "precio_mayorista", MULTIPLO: "multiplo",
-        ESTADO: "estado", CODIGO_BARRAS: "codigo_barras",
+        ESTADO: "estado", CODIGO_BARRAS: "codigo_barras", INGRESO: "ingreso",
     };
 
     var html = "";
@@ -3449,6 +3484,21 @@ function buildImportPreviewHTML(enriched, counts, activeFields) {
                 var signo = _importStockMode === "reemplazar" ? "=" : (deltaOrNew >= 0 ? "+" + deltaOrNew : deltaOrNew);
                 html += '<td style="padding:6px 8px;font-size:12px;white-space:nowrap">'
                     + curStock + ' <span style="color:#888">(' + signo + ')</span> → <strong>' + nuevoStock + '</strong></td>';
+                return;
+            }
+
+            // INGRESO: mostrar el valor ya interpretado (Sí/No), no el texto
+            // crudo de la planilla ("SI", "1", "x", etc.).
+            if (f === "INGRESO" && val) {
+                var newBool = ingresoBool(val);
+                var oldBool = st.existing ? String(st.existing.ingreso || "") === "1" : false;
+                if (st.existing && newBool !== oldBool) {
+                    html += '<td style="padding:6px 8px;font-size:12px">'
+                        + '<span style="text-decoration:line-through;color:#aaa">' + (oldBool ? "Sí" : "No") + '</span>'
+                        + ' → <strong>' + (newBool ? "Sí" : "No") + '</strong></td>';
+                } else {
+                    html += '<td style="padding:6px 8px">' + (newBool ? "Sí" : "No") + '</td>';
+                }
                 return;
             }
 
@@ -3920,13 +3970,13 @@ async function undoLastImport(import_id) {
 // ── Exportar plantilla vacía ──────────────────────────────────────────────────
 function exportTemplate() {
     if (typeof XLSX === 'undefined') { alert('Cargando SheetJS, intentá de nuevo.'); return; }
-    var headers = ['CODIGO', 'CODIGO_BARRAS', 'DESCRIPCION', 'CATEGORIA', 'MARCA', 'PRECIO_MAYORISTA', 'STOCK_PREVENTA', 'MULTIPLO', 'ESTADO', 'PREVENTA'];
+    var headers = ['CODIGO', 'CODIGO_BARRAS', 'DESCRIPCION', 'CATEGORIA', 'MARCA', 'PRECIO_MAYORISTA', 'STOCK_PREVENTA', 'MULTIPLO', 'ESTADO', 'PREVENTA', 'INGRESO'];
     var wb = XLSX.utils.book_new();
     var ws = XLSX.utils.aoa_to_sheet([headers]);
     // Ancho de columna aproximado
     ws['!cols'] = [
         {wch: 14}, {wch: 16}, {wch: 40}, {wch: 22},
-        {wch: 18}, {wch: 18}, {wch: 14}, {wch: 10}, {wch: 12}, {wch: 22}
+        {wch: 18}, {wch: 18}, {wch: 14}, {wch: 10}, {wch: 12}, {wch: 22}, {wch: 10}
     ];
     XLSX.utils.book_append_sheet(wb, ws, 'Productos');
     XLSX.writeFile(wb, 'plantilla_importacion_travelblue.xlsx');
@@ -3939,7 +3989,7 @@ async function exportCatalog() {
         var res  = await fetch(API + '?action=productos&_user=' + encodeURIComponent(authUser) + '&_pass=' + encodeURIComponent(authPass));
         var json = await res.json();
         if (!Array.isArray(json) || !json.length) { alert('No hay productos para exportar.'); return; }
-        var headers = ['CODIGO', 'CODIGO_BARRAS', 'DESCRIPCION', 'CATEGORIA', 'MARCA', 'PRECIO_MAYORISTA', 'STOCK_PREVENTA', 'MULTIPLO', 'ESTADO', 'PREVENTA'];
+        var headers = ['CODIGO', 'CODIGO_BARRAS', 'DESCRIPCION', 'CATEGORIA', 'MARCA', 'PRECIO_MAYORISTA', 'STOCK_PREVENTA', 'MULTIPLO', 'ESTADO', 'PREVENTA', 'INGRESO'];
         var rows = json.map(function(p) {
             return [
                 p.codigo        || '',
@@ -3951,14 +4001,15 @@ async function exportCatalog() {
                 p.stock_preventa != null ? Number(p.stock_preventa) : '',
                 p.multiplo      || 1,
                 p.estado        || '',
-                p.preventa_nombre || ''
+                p.preventa_nombre || '',
+                p.ingreso == 1  ? 'SI' : 'NO'
             ];
         });
         var wb = XLSX.utils.book_new();
         var ws = XLSX.utils.aoa_to_sheet([headers].concat(rows));
         ws['!cols'] = [
             {wch: 14}, {wch: 16}, {wch: 40}, {wch: 22},
-            {wch: 18}, {wch: 12}, {wch: 14}, {wch: 10}, {wch: 12}, {wch: 22}
+            {wch: 18}, {wch: 12}, {wch: 14}, {wch: 10}, {wch: 12}, {wch: 22}, {wch: 10}
         ];
         XLSX.utils.book_append_sheet(wb, ws, 'Productos');
         var fecha = new Date().toISOString().slice(0, 10);
@@ -4316,6 +4367,88 @@ async function checkLastImport() {
             }
         }
     } catch (e) { /* silencioso */ }
+}
+
+// ── Orden personalizado de las tarjetas de Herramientas ────────────────────────
+// Se guarda solo en localStorage (por navegador, no por usuario/servidor) —
+// no hace falta sincronizar entre admins ni entre dispositivos para esto.
+var TOOLS_ORDER_KEY = "tb_tools_order";
+
+function applyToolsOrder() {
+    var grid = document.getElementById("herramientasGrid");
+    if (!grid) return;
+    var saved;
+    try { saved = JSON.parse(localStorage.getItem(TOOLS_ORDER_KEY) || "null"); } catch (e) { saved = null; }
+    if (!saved || !saved.length) return;
+    var boxes = Array.from(grid.querySelectorAll(".config-box[data-tool-id]"));
+    // Armar la secuencia final completa ANTES de mover nada — appendChild
+    // mueve al final de la grilla, así que solo da el orden correcto si se
+    // recorre ya en el orden deseado (mover de a una en el orden guardado,
+    // sin primero calcular la lista completa, deja las últimas movidas mal
+    // ubicadas respecto a las primeras).
+    var byId = {};
+    boxes.forEach(function (b) { byId[b.dataset.toolId] = b; });
+    var finalOrder = saved.filter(function (id) { return byId[id]; }).map(function (id) { return byId[id]; });
+    // Cualquier tarjeta nueva que no estuviera en el orden guardado (ej. una
+    // herramienta agregada después) queda al final, en el orden del HTML.
+    boxes.forEach(function (b) { if (finalOrder.indexOf(b) === -1) finalOrder.push(b); });
+    finalOrder.forEach(function (b) { grid.appendChild(b); });
+}
+
+function saveToolsOrder() {
+    var grid = document.getElementById("herramientasGrid");
+    if (!grid) return;
+    var order = Array.from(grid.querySelectorAll(".config-box[data-tool-id]")).map(function (b) {
+        return b.dataset.toolId;
+    });
+    try { localStorage.setItem(TOOLS_ORDER_KEY, JSON.stringify(order)); } catch (e) {}
+}
+
+function initToolsDragDrop() {
+    var grid = document.getElementById("herramientasGrid");
+    if (!grid) return;
+    var boxes = grid.querySelectorAll(".config-box[data-tool-id]");
+    boxes.forEach(function (box) {
+        // Solo arrastrar desde el handle — si no, cualquier click/selección
+        // de texto dentro de la tarjeta (botones, textarea) dispararía un
+        // intento de drag sin querer.
+        var handle = box.querySelector(".tool-drag-handle");
+        if (handle) {
+            handle.addEventListener("mousedown", function () {
+                box.draggable = true;
+            });
+            box.addEventListener("dragend", function () {
+                box.draggable = false;
+            });
+        }
+        box.draggable = false;
+
+        box.addEventListener("dragstart", function (e) {
+            toolsDragSrc = box;
+            box.classList.add("dragging");
+            e.dataTransfer.effectAllowed = "move";
+        });
+        box.addEventListener("dragend", function () {
+            box.classList.remove("dragging");
+            grid.querySelectorAll(".config-box").forEach(function (b) { b.classList.remove("drag-over"); });
+        });
+        box.addEventListener("dragover", function (e) {
+            e.preventDefault();
+            grid.querySelectorAll(".config-box").forEach(function (b) { b.classList.remove("drag-over"); });
+            if (box !== toolsDragSrc) box.classList.add("drag-over");
+        });
+        box.addEventListener("drop", function (e) {
+            e.preventDefault();
+            if (toolsDragSrc && toolsDragSrc !== box) {
+                var all = Array.from(grid.querySelectorAll(".config-box[data-tool-id]"));
+                var si = all.indexOf(toolsDragSrc), di = all.indexOf(box);
+                if (si < di) grid.insertBefore(toolsDragSrc, box.nextSibling);
+                else grid.insertBefore(toolsDragSrc, box);
+                saveToolsOrder();
+            }
+            box.classList.remove("drag-over");
+        });
+    });
 }
 
 // ── Image bulk import ─────────────────────────────────────────────────────────

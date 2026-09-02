@@ -519,20 +519,21 @@
                         <input type="search" class="tools-search" placeholder="Buscar herramienta…"
                             oninput="filterTools(this,'herramientasGrid')">
                         <div class="tools-grid" id="herramientasGrid">
-                            <div class="config-box" data-keywords="importar productos excel actualizar agregar">
-                                <h3><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg> Importar productos</h3>
+                            <div class="config-box" data-tool-id="importar-excel" data-keywords="importar productos excel actualizar agregar">
+                                <h3><span class="drag-handle tool-drag-handle"><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg></span><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg> Importar productos</h3>
                                 <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
                                     Cargá un archivo Excel para actualizar o agregar productos al catálogo.
                                     Columnas soportadas: <strong>CODIGO</strong> (obligatorio), CODIGO_BARRAS,
                                     DESCRIPCION, CATEGORIA, MARCA, PRECIO_MAYORISTA, ESTADO, PREVENTA (nombre de una
-                                    preventa ya creada — si no matchea ninguna, el producto queda sin preventa).
+                                    preventa ya creada — si no matchea ninguna, el producto queda sin preventa),
+                                    INGRESO (SI/NO — si la mercadería ya llegó al local).
                                 </p>
                                 <button class="btn" style="background:#198754;color:#fff" onclick="openImportModal()">
                                     <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M8 13h2"/><path d="M14 13h2"/><path d="M8 17h2"/><path d="M14 17h2"/></svg> Importar Excel
                                 </button>
                             </div>
-                            <div class="config-box" data-keywords="importar codigo sku manager autocompletar foto precio descripcion preventa">
-                                <h3><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> Importar por código</h3>
+                            <div class="config-box" data-tool-id="importar-codigo" data-keywords="importar codigo sku manager autocompletar foto precio descripcion preventa">
+                                <h3><span class="drag-handle tool-drag-handle"><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg></span><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> Importar por código</h3>
                                 <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
                                     Pegá una lista de códigos y elegí una preventa — el resto (descripción,
                                     categoría, marca, precio mayorista, código de barras y foto) se completa
@@ -545,14 +546,14 @@
                                     <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> Importar por código
                                 </button>
                             </div>
-                            <div class="config-box" data-keywords="deshacer revertir importacion importación undo rollback">
-                                <h3><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></svg> Deshacer última importación</h3>
+                            <div class="config-box" data-tool-id="deshacer-import" data-keywords="deshacer revertir importacion importación undo rollback">
+                                <h3><span class="drag-handle tool-drag-handle"><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg></span><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></svg> Deshacer última importación</h3>
                                 <div id="toolUndoInfo">
                                     <p style="font-size:13px;color:var(--muted)">Cargando…</p>
                                 </div>
                             </div>
-                            <div class="config-box" data-keywords="ingreso ingresó mercaderia mercadería llego llegó sku codigos masivo">
-                                <h3><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> Marcar productos como ingresados</h3>
+                            <div class="config-box" data-tool-id="marcar-ingresado" data-keywords="ingreso ingresó mercaderia mercadería llego llegó sku codigos masivo">
+                                <h3><span class="drag-handle tool-drag-handle"><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg></span><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> Marcar productos como ingresados</h3>
                                 <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
                                     Pegá los códigos de los productos cuya mercadería ya llegó al local
                                     (uno por línea, o separados por coma/espacio) y marcalos todos de una.
@@ -563,8 +564,8 @@
                                 </button>
                                 <div id="ingresoBulkResult" style="font-size:13px;margin-top:10px"></div>
                             </div>
-                            <div class="config-box" data-keywords="descargar plantilla excel encabezados vacía">
-                                <h3><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg> Descargar plantilla</h3>
+                            <div class="config-box" data-tool-id="plantilla" data-keywords="descargar plantilla excel encabezados vacía">
+                                <h3><span class="drag-handle tool-drag-handle"><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg></span><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg> Descargar plantilla</h3>
                                 <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
                                     Descargá una plantilla Excel vacía con los encabezados correctos
                                     para completar y luego importar.
@@ -573,8 +574,8 @@
                                     <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg> Descargar plantilla vacía
                                 </button>
                             </div>
-                            <div class="config-box" data-keywords="exportar catálogo excel respaldo backup completo">
-                                <h3><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><path d="m3.3 7 7.703 4.734a2 2 0 0 0 1.994 0L20.7 7"/><path d="m7.5 4.27 9 5.15"/></svg> Exportar catálogo completo</h3>
+                            <div class="config-box" data-tool-id="exportar-catalogo" data-keywords="exportar catálogo excel respaldo backup completo">
+                                <h3><span class="drag-handle tool-drag-handle"><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg></span><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><path d="m3.3 7 7.703 4.734a2 2 0 0 0 1.994 0L20.7 7"/><path d="m7.5 4.27 9 5.15"/></svg> Exportar catálogo completo</h3>
                                 <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
                                     Descargá todos los productos actuales del catálogo en formato Excel.
                                     Útil como respaldo o para editar en masa.
@@ -583,8 +584,8 @@
                                     <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg> Exportar catálogo actual
                                 </button>
                             </div>
-                            <div class="config-box" data-keywords="importar imágenes fotos zip masivo subir">
-                                <h3><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg> Importar imágenes</h3>
+                            <div class="config-box" data-tool-id="importar-imagenes" data-keywords="importar imágenes fotos zip masivo subir">
+                                <h3><span class="drag-handle tool-drag-handle"><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg></span><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg> Importar imágenes</h3>
                                 <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
                                     Subí múltiples imágenes o un archivo ZIP para asignarlas masivamente.
                                     Nombrá cada imagen con el <strong>código del producto</strong> (ej: <code>33020.jpg</code>).
@@ -593,8 +594,8 @@
                                     <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg> Importar imágenes
                                 </button>
                             </div>
-                            <div class="config-box" data-keywords="imprimir nota pedido precios categoría a4">
-                                <h3><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg> Nota de pedido</h3>
+                            <div class="config-box" data-tool-id="nota-pedido" data-keywords="imprimir nota pedido precios categoría a4">
+                                <h3><span class="drag-handle tool-drag-handle"><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg></span><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg> Nota de pedido</h3>
                                 <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
                                     Imprimí una hoja A4 con todos los productos disponibles del catálogo,
                                     agrupados por categoría, para usar como referencia de precios.

@@ -1443,6 +1443,22 @@ td.editing {
     margin-bottom: 16px
 }
 
+/* Handle de reordenar tarjetas de Herramientas (arrastrar y soltar) */
+.tool-drag-handle {
+    float: right;
+    color: #ccc;
+    cursor: grab;
+    margin-left: 8px
+}
+.tool-drag-handle:active { cursor: grabbing }
+.tools-grid .config-box.dragging {
+    opacity: .4;
+    background: var(--pale)
+}
+.tools-grid .config-box.drag-over {
+    box-shadow: 0 0 0 3px var(--blue) inset
+}
+
 /* ── Grid de herramientas / configuración ── */
 .tools-grid {
     display: grid;

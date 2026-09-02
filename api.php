@@ -546,6 +546,13 @@ function resolver_preventa_id($db, $nombre) {
     return $row ? intval($row['id']) : null;
 }
 
+// Interpreta la columna INGRESO de un Excel: "SI"/"SÍ"/"S"/"YES"/"1"/"TRUE"
+// (case-insensitive) es Sí, cualquier otra cosa (incluido vacío) es No.
+function parse_ingreso_valor($v) {
+    $v = mb_strtoupper(trim((string)($v ?? '')), 'UTF-8');
+    return in_array($v, ['SI', 'SÍ', 'S', 'YES', 'Y', '1', 'TRUE', 'X'], true) ? 1 : 0;
+}
+
 function normalizarTel($tel) {
     $tel = preg_replace('/[^0-9]/', '', $tel);
     if (substr($tel, 0, 2) === '54') $tel = substr($tel, 2);
@@ -872,6 +879,7 @@ switch ($action) {
                 if (isset($p['ESTADO'])         && $p['ESTADO']         !== '') { $sets[] = 'estado=?';           $params[] = strtoupper(trim($p['ESTADO']));    $types .= 's'; }
                 if (isset($p['CODIGO_BARRAS'])  && $p['CODIGO_BARRAS']  !== '') { $sets[] = 'codigo_barras=?';    $params[] = trim($p['CODIGO_BARRAS']);          $types .= 's'; }
                 if (isset($p['PREVENTA'])       && $p['PREVENTA']       !== '') { $sets[] = 'preventa_id=?';      $params[] = resolver_preventa_id($db, $p['PREVENTA']); $types .= 'i'; }
+                if (isset($p['INGRESO'])        && $p['INGRESO']        !== '') { $sets[] = 'ingreso=?';          $params[] = parse_ingreso_valor($p['INGRESO']); $types .= 'i'; }
                 if (empty($sets)) { $updated++; continue; }
                 $params[] = $codigo; $types .= 's';
                 $stmt = $db->prepare("UPDATE productos SET " . implode(',', $sets) . " WHERE codigo=?");
@@ -891,11 +899,12 @@ switch ($action) {
                 $cb     = isset($p['CODIGO_BARRAS']) && $p['CODIGO_BARRAS'] !== '' ? trim($p['CODIGO_BARRAS']) : null;
                 $stock  = intval($p['STOCK_PREVENTA'] ?? 0);
                 $preventaId = resolver_preventa_id($db, $p['PREVENTA'] ?? '');
+                $ingreso = parse_ingreso_valor($p['INGRESO'] ?? '');
                 if (!$desc || !$cat) { $errors[] = ['codigo' => $codigo, 'motivo' => 'DESCRIPCION y CATEGORIA obligatorias para producto nuevo']; continue; }
                 $o = 0;
                 $multiplo = isset($p['MULTIPLO']) && $p['MULTIPLO'] !== '' ? max(1, intval($p['MULTIPLO'])) : 1;
-                $stmt = $db->prepare("INSERT INTO productos (codigo,descripcion,categoria,marca,precio_mayorista,estado,orden,multiplo,codigo_barras,stock_preventa,stock_preventa_inicial,preventa_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
-                $stmt->bind_param('ssssdsiisiii', $codigo, $desc, $cat, $marca, $may, $estado, $o, $multiplo, $cb, $stock, $stock, $preventaId);
+                $stmt = $db->prepare("INSERT INTO productos (codigo,descripcion,categoria,marca,precio_mayorista,estado,orden,multiplo,codigo_barras,stock_preventa,stock_preventa_inicial,preventa_id,ingreso) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                $stmt->bind_param('ssssdsiisiiii', $codigo, $desc, $cat, $marca, $may, $estado, $o, $multiplo, $cb, $stock, $stock, $preventaId, $ingreso);
                 if ($stmt->execute()) $imported++;
                 else $errors[] = ['codigo' => $codigo, 'motivo' => $db->error];
             }
@@ -916,7 +925,7 @@ switch ($action) {
         if (!$codigos) { echo json_encode(['ok' => true, 'productos' => (object)[]]); break; }
         $ph = implode(',', array_fill(0, count($codigos), '?'));
         $types = str_repeat('s', count($codigos));
-        $stmt = $db->prepare("SELECT codigo, descripcion, categoria, marca, precio_mayorista, multiplo, estado, codigo_barras, stock_preventa FROM productos WHERE codigo IN ($ph)");
+        $stmt = $db->prepare("SELECT codigo, descripcion, categoria, marca, precio_mayorista, multiplo, estado, codigo_barras, stock_preventa, ingreso FROM productos WHERE codigo IN ($ph)");
         $stmt->bind_param($types, ...$codigos);
         $stmt->execute();
         $res = $stmt->get_result();
