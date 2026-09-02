@@ -505,6 +505,14 @@ function setupDB($db) {
         $db->query("ALTER TABLE pedido_items ADD COLUMN colores_detalle TEXT DEFAULT NULL");
     }
 
+    // "Ingresó": la mercadería de ESTE ítem ya llegó físicamente al local —
+    // toggle manual por producto, para poder discriminar al imprimir el
+    // pedido qué artículos ya están y cuáles todavía se están esperando.
+    $colCheck = $db->query("SHOW COLUMNS FROM pedido_items LIKE 'ingreso'");
+    if ($colCheck && $colCheck->num_rows === 0) {
+        $db->query("ALTER TABLE pedido_items ADD COLUMN ingreso TINYINT(1) NOT NULL DEFAULT 0");
+    }
+
     $db->query("CREATE TABLE IF NOT EXISTS pedido_estados (
         id INT AUTO_INCREMENT PRIMARY KEY,
         pedido_id INT NOT NULL,
@@ -1785,6 +1793,20 @@ switch ($action) {
         $es = $db->prepare("INSERT INTO pedido_estados (pedido_id,estado) VALUES (?,?)");
         $es->bind_param('is', $id, $estado);
         $es->execute();
+        echo json_encode(['ok' => true]);
+        break;
+
+    case 'pedido_item_ingreso':
+        // Toggle "Ingresó" por ítem del pedido — id acá es el de pedido_items,
+        // no el del pedido. Se guarda tal cual lo manda el admin (checkbox),
+        // sin validar transición de estado como pedido_estado.
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $itemId = intval($_GET['id'] ?? 0);
+        $ingreso = !empty($data['ingreso']) ? 1 : 0;
+        $stmt = $db->prepare("UPDATE pedido_items SET ingreso=? WHERE id=?");
+        $stmt->bind_param('ii', $ingreso, $itemId);
+        $stmt->execute();
         echo json_encode(['ok' => true]);
         break;
 

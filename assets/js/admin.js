@@ -2480,7 +2480,7 @@ async function openPedidoModal(id) {
     // Items
     html +=
         '<div class="table-wrap" style="margin-bottom:16px"><div class="table-scroll">' +
-        '<table style="width:100%"><thead><tr><th>Código</th><th>Descripción</th><th>Cant.</th><th>Precio</th><th>Subtotal</th><th>Stock</th></tr></thead><tbody>';
+        '<table style="width:100%"><thead><tr><th>Código</th><th>Descripción</th><th>Cant.</th><th>Precio</th><th>Subtotal</th><th>Stock</th><th style="text-align:center">Ingresó</th></tr></thead><tbody>';
     p.items.forEach(function (item) {
         html +=
             "<tr><td><code>" +
@@ -2500,6 +2500,9 @@ async function openPedidoModal(id) {
             (item.en_lista_espera == 1
                 ? '<span class="badge-agot">' + icon("clock") + ' LISTA DE ESPERA</span>'
                 : '<span class="badge-disp">' + icon("check") + ' Confirmado</span>') +
+            '</td><td style="text-align:center">' +
+            '<input type="checkbox" ' + (item.ingreso == 1 ? "checked " : "") +
+            'onchange="toggleIngresoItem(' + item.id + ',this.checked)">' +
             "</td></tr>";
     });
     html += "</tbody></table></div></div>";
@@ -2539,6 +2542,24 @@ async function cambiarEstadoPedido() {
         loadPedidos();
         openPedidoModal(pedidoActual.id);
     } else toast("Error", "#c62828");
+}
+
+// "Ingresó" es por ítem (pedido_items.id), no por el pedido entero — se
+// actualiza en el objeto en memoria (pedidoActual) sin recargar todo el
+// modal, así el checkbox no salta de posición ni pierde el foco.
+async function toggleIngresoItem(itemId, checked) {
+    var res = await fetch(API + "?action=pedido_item_ingreso&id=" + itemId, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ _user: authUser, _pass: authPass, ingreso: checked }),
+    });
+    var json = await res.json();
+    if (json.ok) {
+        if (pedidoActual) {
+            var item = pedidoActual.items.find(function (it) { return it.id == itemId; });
+            if (item) item.ingreso = checked ? 1 : 0;
+        }
+    } else toast("Error al actualizar", "#c62828");
 }
 
 async function guardarPedidoObs() {
@@ -2620,37 +2641,54 @@ function imprimirPedido() {
         grupos[g].push(item);
     });
 
-    orden.forEach(function (nombreGrupo) {
-        html += '<h3 style="font-size:13px;color:#e84e1b;margin:16px 0 6px 0;text-transform:uppercase">' + esc(nombreGrupo) + '</h3>';
-        html += "<table><thead><tr>";
-        html +=
-            '<th>Código</th><th>Descripción</th><th style="text-align:center">Cant.</th>';
-        html += '<th style="text-align:left">Precio / Subtotal</th>';
-        html += '<th style="text-align:center;width:70px">Preparado</th>';
-        html += "</tr></thead><tbody>";
-        grupos[nombreGrupo].forEach(function (item) {
-            html += "<tr>";
-            html += '<td style="white-space:nowrap">' + item.codigo + "</td>";
-            html += '<td class="desc">' + item.descripcion +
+    // Tabla de un subgrupo de ítems (código/descripción/cant/precio +
+    // casillero de "Preparado" en blanco para tildar a mano en el papel).
+    function tablaItems(items) {
+        var h = "<table><thead><tr>";
+        h += '<th>Código</th><th>Descripción</th><th style="text-align:center">Cant.</th>';
+        h += '<th style="text-align:left">Precio / Subtotal</th>';
+        h += '<th style="text-align:center;width:70px">Preparado</th>';
+        h += "</tr></thead><tbody>";
+        items.forEach(function (item) {
+            h += "<tr>";
+            h += '<td style="white-space:nowrap">' + item.codigo + "</td>";
+            h += '<td class="desc">' + item.descripcion +
                 (item.colores_detalle
                     ? '<div style="font-size:10px;color:#666;margin-top:2px">' + formatColoresDetalle(item.colores_detalle) + "</div>"
                     : "") +
                 "</td>";
-            html +=
+            h +=
                 '<td style="text-align:center;font-weight:bold">' +
                 item.cantidad +
                 "</td>";
-            html +=
+            h +=
                 '<td class="price-cell"><span class="price-unit">' +
                 fmt(item.precio_unitario) +
                 '</span><br><span class="price-sub">' +
                 fmt(item.subtotal) +
                 "</span></td>";
-            html +=
+            h +=
                 '<td style="text-align:center"><span class="deposit-box"></span></td>';
-            html += "</tr>";
+            h += "</tr>";
         });
-        html += "</tbody></table>";
+        h += "</tbody></table>";
+        return h;
+    }
+
+    orden.forEach(function (nombreGrupo) {
+        html += '<h3 style="font-size:13px;color:#e84e1b;margin:16px 0 6px 0;text-transform:uppercase">' + esc(nombreGrupo) + '</h3>';
+        // Dentro de cada preventa, separar lo que ya ingresó al local de lo
+        // que todavía se está esperando — así se prepara primero lo que hay.
+        var pendientes = grupos[nombreGrupo].filter(function (i) { return i.ingreso != 1; });
+        var ingresados = grupos[nombreGrupo].filter(function (i) { return i.ingreso == 1; });
+        if (pendientes.length) {
+            html += '<h4 style="font-size:11px;color:#b71c1c;margin:8px 0 4px 0;text-transform:uppercase">Pendiente de ingreso</h4>';
+            html += tablaItems(pendientes);
+        }
+        if (ingresados.length) {
+            html += '<h4 style="font-size:11px;color:#2e7d32;margin:8px 0 4px 0;text-transform:uppercase">Ya ingresó</h4>';
+            html += tablaItems(ingresados);
+        }
     });
     html +=
         '<div class="total">TOTAL: ' +
@@ -3794,13 +3832,26 @@ function showUndoBanner(import_id, imported, updated) {
 
 function hideUndoBanner() {
     var banner = document.getElementById("undoBanner");
-    if (banner) banner.style.display = "none";
+    if (!banner) return;
+    // Recordar en localStorage cuál import_id se cerró a mano, para que
+    // checkLastImport() no lo vuelva a mostrar en la próxima carga de
+    // página — antes reaparecía siempre, aunque ya lo hubieras cerrado.
+    if (banner._importId) {
+        try { localStorage.setItem("tb_dismissed_import", banner._importId); } catch (e) {}
+    }
+    banner.style.display = "none";
 }
 
 async function undoLastImport(import_id) {
     if (!confirm("¿Seguro que querés revertir la última importación? Los productos vuelven al estado anterior.")) return;
+    // Feedback de "revirtiendo..." en los dos lugares posibles desde donde
+    // se pudo haber disparado esto — el cartel de arriba (si está visible)
+    // y/o la tarjeta de Herramientas.
+    var spinnerHtml = '<span><span style="display:inline-block;animation:spin .6s linear infinite">' + icon("loader-circle") + '</span> Revirtiendo...</span>';
     var banner = document.getElementById("undoBanner");
-    if (banner) banner.innerHTML = '<span><span style="display:inline-block;animation:spin .6s linear infinite">' + icon("loader-circle") + '</span> Revirtiendo...</span>';
+    if (banner) banner.innerHTML = spinnerHtml;
+    var toolInfo = document.getElementById("toolUndoInfo");
+    if (toolInfo) toolInfo.innerHTML = spinnerHtml;
     try {
         var res = await fetch(API + "?action=import_rollback", {
             method: "POST",
@@ -3812,6 +3863,7 @@ async function undoLastImport(import_id) {
             toast("↩ Importación revertida — " + json.restored + " producto(s) restaurado(s)");
             hideUndoBanner();
             loadProducts();
+            checkLastImport(); // refresca el cartel y la tarjeta con lo que quede (si hay otra importación previa, o "nada para deshacer")
         } else {
             toast("Error al revertir: " + (json.error || "desconocido"), "#c62828");
             hideUndoBanner();
@@ -4185,16 +4237,40 @@ async function checkLastImport() {
         var res = await fetch(API + "?action=import_last");
         var json = await res.json();
         if (json.ok && json.import_id) {
-            var banner = document.getElementById("undoBanner");
-            if (!banner) return;
             var d = new Date(json.created_at);
             var hora = d.getHours().toString().padStart(2,"0") + ":" + d.getMinutes().toString().padStart(2,"0");
             var fechaStr = d.toLocaleDateString("es-AR") + " " + hora;
+
+            // Tarjeta de Herramientas: siempre muestra el estado real,
+            // exista o no el cartel de arriba (independiente de si ya se
+            // cerró a mano) — para poder deshacer una importación vieja
+            // aunque el cartel automático ya no esté.
+            var toolInfo = document.getElementById("toolUndoInfo");
+            if (toolInfo) {
+                toolInfo.innerHTML =
+                    '<p style="font-size:13px;color:var(--muted);margin-bottom:12px">Última importación reversible: <strong>' + fechaStr + '</strong> (' + json.n + ' producto(s)).</p>' +
+                    '<button class="btn btn-danger" onclick="undoLastImport(\'' + json.import_id + '\')">' + icon("undo-2", {size: 16}) + ' Deshacer esa importación</button>';
+            }
+
+            // Cartel de arriba: si el admin ya lo cerró a mano para ESTA
+            // MISMA importación en otra carga de página, no reaparece —
+            // pero la tarjeta de Herramientas de arriba sigue disponible.
+            var dismissed = null;
+            try { dismissed = localStorage.getItem("tb_dismissed_import"); } catch (e) {}
+            if (dismissed === json.import_id) return;
+            var banner = document.getElementById("undoBanner");
+            if (!banner) return;
             banner.innerHTML =
                 '<span>' + icon("undo-2", {size: 14}) + ' Hay una importación reversible del ' + fechaStr + ' (' + json.n + ' producto(s)).</span>' +
                 '<button onclick="undoLastImport(\'' + json.import_id + '\')">Deshacer</button>' +
                 '<button onclick="hideUndoBanner()" style="background:transparent;color:inherit;opacity:.6;margin-left:4px">' + icon("x") + '</button>';
             banner.style.display = "flex";
+            banner._importId = json.import_id;
+        } else {
+            var toolInfoEmpty = document.getElementById("toolUndoInfo");
+            if (toolInfoEmpty) {
+                toolInfoEmpty.innerHTML = '<p style="font-size:13px;color:var(--muted)">No hay ninguna importación reciente para deshacer.</p>';
+            }
         }
     } catch (e) { /* silencioso */ }
 }
