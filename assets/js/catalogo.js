@@ -1606,9 +1606,11 @@ function addOrUpdate(code) {
     updateCart();
 }
 
-function rmCart(code) {
+// Resetea la UI de la card/fila de un producto (botón "+ Agregar", inputs de
+// color y cantidad) sin tocar `cart` ni guardar/re-renderizar — compartido
+// por rmCart() (un solo producto) y vaciarCarrito() (todos de una).
+function resetProductoUI(code) {
     var multiplo = getMultiplo(code);
-    delete cart[code];
     var id = sid(code);
     var qEl = document.getElementById("qn_" + id);
     if (qEl) qEl.value = multiplo;
@@ -1637,8 +1639,29 @@ function rmCart(code) {
             lbtn.classList.remove("on");
         }
     }
+}
+
+function rmCart(code) {
+    delete cart[code];
+    resetProductoUI(code);
     saveCart();
     updateCart();
+}
+
+// Vacía todo el carrito de una — pide confirmación porque no se puede
+// deshacer (a diferencia de sacar un producto de a uno, que es fácil de
+// volver a agregar si fue sin querer).
+function vaciarCarrito() {
+    var codes = Object.keys(cart);
+    if (!codes.length) return;
+    if (!confirm("¿Vaciar todo el carrito? Se van a quitar los " + codes.length + " producto(s) del pedido.")) return;
+    codes.forEach(function (code) {
+        resetProductoUI(code);
+    });
+    cart = {};
+    saveCart();
+    updateCart();
+    toastCarrito("Carrito vaciado", "#333");
 }
 
 function setCartQty(code, qty) {
