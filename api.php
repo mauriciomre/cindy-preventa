@@ -1711,6 +1711,21 @@ switch ($action) {
         $data = json_decode(file_get_contents('php://input'), true);
         checkAuth($data);
         $id = intval($_GET['id'] ?? 0);
+        // Idempotente: si ya estaba eliminado, no devolver el stock de nuevo
+        // (evita duplicar la devolución si se llama dos veces por error).
+        $actual = $db->query("SELECT estado FROM pedidos WHERE id=$id")->fetch_assoc();
+        if ($actual && $actual['estado'] !== 'ELIMINADO') {
+            // Devuelve stock de TODOS los ítems, incluidos los que quedaron
+            // en lista de espera al confirmar el pedido (nunca llegaron a
+            // descontar de verdad) — decisión consciente por simplicidad,
+            // a costa de sumar de más en ese caso puntual.
+            $items = $db->query("SELECT codigo, cantidad FROM pedido_items WHERE pedido_id=$id")->fetch_all(MYSQLI_ASSOC);
+            foreach ($items as $it) {
+                $upd = $db->prepare("UPDATE productos SET stock_preventa = stock_preventa + ? WHERE codigo=?");
+                $upd->bind_param('is', $it['cantidad'], $it['codigo']);
+                $upd->execute();
+            }
+        }
         $estado = 'ELIMINADO';
         $stmt = $db->prepare("UPDATE pedidos SET estado=? WHERE id=?");
         $stmt->bind_param('si', $estado, $id);
@@ -1725,6 +1740,19 @@ switch ($action) {
         $data = json_decode(file_get_contents('php://input'), true);
         checkAuth($data);
         $id = intval($_GET['id'] ?? 0);
+        // Simétrico con pedido_eliminar: si de verdad estaba eliminado, al
+        // restaurarlo se vuelve a descontar el mismo stock que se le había
+        // devuelto — si ya no alcanza, se permite igual (stock negativo es
+        // información real, no se clampea, mismo criterio de toda la app).
+        $actual = $db->query("SELECT estado FROM pedidos WHERE id=$id")->fetch_assoc();
+        if ($actual && $actual['estado'] === 'ELIMINADO') {
+            $items = $db->query("SELECT codigo, cantidad FROM pedido_items WHERE pedido_id=$id")->fetch_all(MYSQLI_ASSOC);
+            foreach ($items as $it) {
+                $upd = $db->prepare("UPDATE productos SET stock_preventa = stock_preventa - ? WHERE codigo=?");
+                $upd->bind_param('is', $it['cantidad'], $it['codigo']);
+                $upd->execute();
+            }
+        }
         $estado = 'PENDIENTE';
         $stmt = $db->prepare("UPDATE pedidos SET estado=? WHERE id=?");
         $stmt->bind_param('si', $estado, $id);
