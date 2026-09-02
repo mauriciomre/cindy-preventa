@@ -2014,10 +2014,9 @@ async function saveProduct() {
     );
     var codigoBarras = document.getElementById("fCodigoBarras").value.trim() || null;
     var preventaId = document.getElementById("fPreventa").value || "";
-    var stockPreventa = Math.max(
-        0,
-        parseInt(document.getElementById("fStockPreventa").value) || 0,
-    );
+    // Sin Math.max(0, ...) acá — el stock nunca se clampea a 0, un negativo
+    // (sobreventa/backorder) es información real, no un error a esconder.
+    var stockPreventa = parseInt(document.getElementById("fStockPreventa").value) || 0;
     if (!codigo || !descripcion || !categoria || !may) {
         toast("Todos los campos son obligatorios", "#c62828");
         return;
