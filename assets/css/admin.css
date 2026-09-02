@@ -1157,7 +1157,8 @@ td.editing {
     display: flex;
     gap: 12px;
     margin-bottom: 20px;
-    flex-wrap: wrap
+    flex-wrap: wrap;
+    transition: gap .15s ease, margin-bottom .15s ease
 }
 
 .stat {
@@ -1166,19 +1167,42 @@ td.editing {
     padding: 14px 20px;
     flex: 1;
     min-width: 120px;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, .06)
+    box-shadow: 0 1px 4px rgba(0, 0, 0, .06);
+    transition: padding .15s ease
 }
 
 .stat-n {
     font-size: 28px;
     font-weight: 800;
-    color: var(--blue)
+    color: var(--blue);
+    transition: font-size .15s ease
 }
 
 .stat-l {
     font-size: 12px;
     color: var(--muted);
-    margin-top: 2px
+    margin-top: 2px;
+    transition: font-size .15s ease, margin-top .15s ease
+}
+
+/* Achicadas al scrollear la página (ver initStatsShrink() en admin.js) — más
+   espacio vertical real para la tabla sin perder de un vistazo los totales. */
+.stats.compact {
+    gap: 8px;
+    margin-bottom: 10px
+}
+
+.stats.compact .stat {
+    padding: 6px 14px
+}
+
+.stats.compact .stat-n {
+    font-size: 16px
+}
+
+.stats.compact .stat-l {
+    font-size: 10px;
+    margin-top: 0
 }
 
 /* TOAST */
