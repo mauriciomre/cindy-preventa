@@ -394,6 +394,17 @@ function setupDB($db) {
         $db->query("ALTER TABLE productos ADD INDEX idx_preventa_id (preventa_id)");
     }
 
+    // "Ingresó": atributo del PRODUCTO (no del pedido) — indica si esa
+    // mercadería ya llegó físicamente al local. Se usa para segmentar la
+    // impresión de pedidos, y al ser del producto se refleja igual en
+    // TODOS los pedidos pendientes que lo incluyan, no solo en uno.
+    // Reemplaza al intento anterior (pedido_items.ingreso, por ítem de
+    // pedido) — esa columna queda sin usar, no se borra por prolijidad.
+    $colCheck = $db->query("SHOW COLUMNS FROM productos LIKE 'ingreso'");
+    if ($colCheck && $colCheck->num_rows === 0) {
+        $db->query("ALTER TABLE productos ADD COLUMN ingreso TINYINT(1) NOT NULL DEFAULT 0");
+    }
+
     $db->query("CREATE TABLE IF NOT EXISTS import_snapshots (
         id INT AUTO_INCREMENT PRIMARY KEY,
         import_id VARCHAR(50) NOT NULL,
@@ -654,8 +665,9 @@ switch ($action) {
         // (sobreventa/backorder), no un error a esconder.
         $stockInicial = intval($data['stock_preventa'] ?? 0);
         $preventaId = isset($data['preventa_id']) && $data['preventa_id'] !== '' ? intval($data['preventa_id']) : null;
-        $stmt = $db->prepare("INSERT INTO productos (codigo,descripcion,categoria,marca,precio_mayorista,foto,estado,orden,multiplo,codigo_barras,stock_preventa,stock_preventa_inicial,preventa_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
-        $stmt->bind_param('ssssdssiisiii', $data['codigo'], $data['descripcion'], $data['categoria'], $marca, $data['precio_mayorista'], $data['foto'], $data['estado'], $orden, $multiplo, $codigoBarras, $stockInicial, $stockInicial, $preventaId);
+        $ingreso = !empty($data['ingreso']) ? 1 : 0;
+        $stmt = $db->prepare("INSERT INTO productos (codigo,descripcion,categoria,marca,precio_mayorista,foto,estado,orden,multiplo,codigo_barras,stock_preventa,stock_preventa_inicial,preventa_id,ingreso) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+        $stmt->bind_param('ssssdssiisiiii', $data['codigo'], $data['descripcion'], $data['categoria'], $marca, $data['precio_mayorista'], $data['foto'], $data['estado'], $orden, $multiplo, $codigoBarras, $stockInicial, $stockInicial, $preventaId, $ingreso);
         if ($stmt->execute()) {
             $newId = $db->insert_id;
             $colores = $data['colores'] ?? [];
@@ -683,8 +695,9 @@ switch ($action) {
         // además lleva el acumulado en stock_preventa_inicial).
         $stock = intval($data['stock_preventa'] ?? 0);
         $preventaId = isset($data['preventa_id']) && $data['preventa_id'] !== '' ? intval($data['preventa_id']) : null;
-        $stmt = $db->prepare("UPDATE productos SET codigo=?,descripcion=?,categoria=?,marca=?,precio_mayorista=?,foto=?,estado=?,orden=?,multiplo=?,codigo_barras=?,stock_preventa=?,preventa_id=?,updated_at=NOW() WHERE id=?");
-        $stmt->bind_param('ssssdssiisiii', $data['codigo'], $data['descripcion'], $data['categoria'], $marca, $data['precio_mayorista'], $data['foto'], $data['estado'], $orden, $multiplo, $codigoBarras, $stock, $preventaId, $id);
+        $ingreso = !empty($data['ingreso']) ? 1 : 0;
+        $stmt = $db->prepare("UPDATE productos SET codigo=?,descripcion=?,categoria=?,marca=?,precio_mayorista=?,foto=?,estado=?,orden=?,multiplo=?,codigo_barras=?,stock_preventa=?,preventa_id=?,ingreso=?,updated_at=NOW() WHERE id=?");
+        $stmt->bind_param('ssssdssiisiiii', $data['codigo'], $data['descripcion'], $data['categoria'], $marca, $data['precio_mayorista'], $data['foto'], $data['estado'], $orden, $multiplo, $codigoBarras, $stock, $preventaId, $ingreso, $id);
         if ($stmt->execute()) {
             if (isset($data['colores'])) {
                 $delStmt = $db->prepare("DELETE FROM producto_colores WHERE producto_id=?");
@@ -1777,7 +1790,13 @@ switch ($action) {
             c.cuit_dni, c.email, c.domicilio, c.localidad, c.cp, c.provincia, c.transporte
             FROM pedidos p JOIN clientes c ON p.cliente_id=c.id WHERE p.id=$id")->fetch_assoc();
         if (!$pedido) { http_response_code(404); die(json_encode(['error' => 'No encontrado'])); }
-        $pedido['items'] = $db->query("SELECT * FROM pedido_items WHERE pedido_id=$id")->fetch_all(MYSQLI_ASSOC);
+        // "ingreso" viene del PRODUCTO actual (pr.ingreso), no de un snapshot
+        // del ítem — así si se marca/desmarca desde Productos o desde otro
+        // pedido, se ve reflejado acá también sin tener que resincronizar nada.
+        $pedido['items'] = $db->query("SELECT pi.*, COALESCE(pr.ingreso, 0) as ingreso
+            FROM pedido_items pi
+            LEFT JOIN productos pr ON pr.codigo = pi.codigo
+            WHERE pi.pedido_id=$id")->fetch_all(MYSQLI_ASSOC);
         $pedido['historial'] = $db->query("SELECT * FROM pedido_estados WHERE pedido_id=$id ORDER BY created_at ASC")->fetch_all(MYSQLI_ASSOC);
         echo json_encode($pedido);
         break;
@@ -1796,18 +1815,41 @@ switch ($action) {
         echo json_encode(['ok' => true]);
         break;
 
-    case 'pedido_item_ingreso':
-        // Toggle "Ingresó" por ítem del pedido — id acá es el de pedido_items,
-        // no el del pedido. Se guarda tal cual lo manda el admin (checkbox),
-        // sin validar transición de estado como pedido_estado.
+    case 'producto_ingreso':
+        // Toggle "Ingresó" de UN producto (por código) — se refleja en todos
+        // los pedidos que lo incluyan, porque es un atributo del producto.
         $data = json_decode(file_get_contents('php://input'), true);
         checkAuth($data);
-        $itemId = intval($_GET['id'] ?? 0);
+        $codigo = trim($data['codigo'] ?? '');
         $ingreso = !empty($data['ingreso']) ? 1 : 0;
-        $stmt = $db->prepare("UPDATE pedido_items SET ingreso=? WHERE id=?");
-        $stmt->bind_param('ii', $ingreso, $itemId);
+        $stmt = $db->prepare("UPDATE productos SET ingreso=? WHERE codigo=?");
+        $stmt->bind_param('is', $ingreso, $codigo);
         $stmt->execute();
         echo json_encode(['ok' => true]);
+        break;
+
+    case 'productos_ingreso_bulk':
+        // Marca (o desmarca) "Ingresó" para una LISTA de códigos de una — la
+        // herramienta de Herramientas pega una lista de SKU y confirma acá.
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $codigos = array_values(array_unique(array_filter(array_map('trim', $data['codigos'] ?? []))));
+        $ingreso = !empty($data['ingreso']) ? 1 : 0;
+        if (!$codigos) { echo json_encode(['ok' => true, 'actualizados' => 0, 'no_encontrados' => []]); break; }
+        $placeholders = implode(',', array_fill(0, count($codigos), '?'));
+        $types = str_repeat('s', count($codigos));
+        $stmt = $db->prepare("UPDATE productos SET ingreso=? WHERE codigo IN ($placeholders)");
+        $stmt->bind_param('i' . $types, $ingreso, ...$codigos);
+        $stmt->execute();
+        // No se usa affected_rows: MySQL no cuenta una fila como "afectada"
+        // si el valor ya era el mismo, y acá interesa saber cuántos códigos
+        // matchearon de verdad, no cuántos cambiaron.
+        $stmt2 = $db->prepare("SELECT codigo FROM productos WHERE codigo IN ($placeholders)");
+        $stmt2->bind_param($types, ...$codigos);
+        $stmt2->execute();
+        $existentes = array_column($stmt2->get_result()->fetch_all(MYSQLI_ASSOC), 'codigo');
+        $noEncontrados = array_values(array_diff($codigos, $existentes));
+        echo json_encode(['ok' => true, 'actualizados' => count($existentes), 'no_encontrados' => $noEncontrados]);
         break;
 
     case 'pedido_actualizar':

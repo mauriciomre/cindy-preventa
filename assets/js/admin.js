@@ -1812,6 +1812,7 @@ function openModal(p) {
         ? Math.round(p.precio_mayorista)
         : "";
     document.getElementById("fEstado").value = p ? p.estado : "DISPONIBLE";
+    document.getElementById("fIngreso").value = p && p.ingreso == 1 ? "1" : "0";
     document.getElementById("fMultiplo").value = p ? p.multiplo || 1 : 1;
     document.getElementById("fStockPreventa").value = p
         ? p.stock_preventa || 0
@@ -2078,6 +2079,7 @@ async function saveProduct() {
         precio_mayorista: parseFloat(may) || 0,
         foto: fotoUrl,
         estado: document.getElementById("fEstado").value,
+        ingreso: document.getElementById("fIngreso").value === "1",
         orden: orden,
         multiplo,
         codigo_barras: codigoBarras,
@@ -2502,7 +2504,7 @@ async function openPedidoModal(id) {
                 : '<span class="badge-disp">' + icon("check") + ' Confirmado</span>') +
             '</td><td style="text-align:center">' +
             '<input type="checkbox" ' + (item.ingreso == 1 ? "checked " : "") +
-            'onchange="toggleIngresoItem(' + item.id + ',this.checked)">' +
+            "onchange=\"toggleIngresoItem('" + item.codigo + "',this.checked)\">" +
             "</td></tr>";
     });
     html += "</tbody></table></div></div>";
@@ -2544,22 +2546,63 @@ async function cambiarEstadoPedido() {
     } else toast("Error", "#c62828");
 }
 
-// "Ingresó" es por ítem (pedido_items.id), no por el pedido entero — se
-// actualiza en el objeto en memoria (pedidoActual) sin recargar todo el
-// modal, así el checkbox no salta de posición ni pierde el foco.
-async function toggleIngresoItem(itemId, checked) {
-    var res = await fetch(API + "?action=pedido_item_ingreso&id=" + itemId, {
+// "Ingresó" es un atributo del PRODUCTO (no del pedido) — togglearlo acá
+// actualiza productos.ingreso, y por lo tanto se refleja igual en cualquier
+// otro pedido pendiente que tenga ese mismo código. Se actualiza en memoria
+// (pedidoActual, TODOS los ítems con ese código) sin recargar todo el modal,
+// así el checkbox no salta de posición ni pierde el foco.
+async function toggleIngresoItem(codigo, checked) {
+    var res = await fetch(API + "?action=producto_ingreso", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ _user: authUser, _pass: authPass, ingreso: checked }),
+        body: JSON.stringify({ _user: authUser, _pass: authPass, codigo: codigo, ingreso: checked }),
     });
     var json = await res.json();
     if (json.ok) {
         if (pedidoActual) {
-            var item = pedidoActual.items.find(function (it) { return it.id == itemId; });
-            if (item) item.ingreso = checked ? 1 : 0;
+            pedidoActual.items.forEach(function (it) {
+                if (it.codigo === codigo) it.ingreso = checked ? 1 : 0;
+            });
         }
+        var prod = allProducts.find(function (p) { return p.codigo === codigo; });
+        if (prod) prod.ingreso = checked ? 1 : 0;
     } else toast("Error al actualizar", "#c62828");
+}
+
+// Herramientas → "Marcar productos como ingresados": pega una lista de SKU
+// (uno por línea, o separados por coma/espacio) y los marca todos de una,
+// sin tener que abrir cada producto o cada pedido por separado.
+async function marcarIngresoBulk() {
+    var raw = document.getElementById("ingresoSkuList").value;
+    var codigos = raw
+        .split(/[\n,;]+/)
+        .map(function (s) { return s.trim(); })
+        .filter(Boolean);
+    var resultEl = document.getElementById("ingresoBulkResult");
+    if (!codigos.length) {
+        toast("Pegá al menos un código", "#c62828");
+        return;
+    }
+    resultEl.innerHTML = '<p style="color:var(--muted)">Marcando...</p>';
+    var res = await fetch(API + "?action=productos_ingreso_bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ _user: authUser, _pass: authPass, codigos: codigos, ingreso: true }),
+    });
+    var json = await res.json();
+    if (json.ok) {
+        toast("✔ " + json.actualizados + " producto(s) marcado(s) como ingresado");
+        document.getElementById("ingresoSkuList").value = "";
+        resultEl.innerHTML =
+            '<p style="color:#198754">' + json.actualizados + " marcado(s) correctamente.</p>" +
+            (json.no_encontrados.length
+                ? '<p style="color:#c62828">No encontrados: ' + json.no_encontrados.join(", ") + "</p>"
+                : "");
+        await loadProducts();
+    } else {
+        toast("Error: " + (json.error || "desconocido"), "#c62828");
+        resultEl.innerHTML = "";
+    }
 }
 
 async function guardarPedidoObs() {

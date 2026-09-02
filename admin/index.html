@@ -551,6 +551,18 @@
                                     <p style="font-size:13px;color:var(--muted)">Cargando…</p>
                                 </div>
                             </div>
+                            <div class="config-box" data-keywords="ingreso ingresó mercaderia mercadería llego llegó sku codigos masivo">
+                                <h3><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> Marcar productos como ingresados</h3>
+                                <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
+                                    Pegá los códigos de los productos cuya mercadería ya llegó al local
+                                    (uno por línea, o separados por coma/espacio) y marcalos todos de una.
+                                </p>
+                                <textarea id="ingresoSkuList" rows="4" style="width:100%;box-sizing:border-box;padding:10px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;resize:vertical" placeholder="Ej:&#10;529508&#10;529509&#10;R201-CRCA"></textarea>
+                                <button class="btn" style="background:#198754;color:#fff;margin-top:10px" onclick="marcarIngresoBulk()">
+                                    <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> Marcar como ingresado
+                                </button>
+                                <div id="ingresoBulkResult" style="font-size:13px;margin-top:10px"></div>
+                            </div>
                             <div class="config-box" data-keywords="descargar plantilla excel encabezados vacía">
                                 <h3><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg> Descargar plantilla</h3>
                                 <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
@@ -1121,6 +1133,13 @@
                                         18...
                                     </div>
                                 </div>
+                            </div>
+                            <div class="field">
+                                <label>Ingresó</label>
+                                <select id="fIngreso">
+                                    <option value="0" selected>No — todavía no llegó al local</option>
+                                    <option value="1">Sí — la mercadería ya está</option>
+                                </select>
                             </div>
                             <div class="row2">
                                 <div class="field">
