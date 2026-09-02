@@ -3667,7 +3667,7 @@ function renderImportSkuPreview() {
             '<td style="padding:6px 8px;word-break:break-word">' + esc(r.marca || "—") + "</td>" +
             '<td style="padding:6px 8px;white-space:nowrap">' + fmt(r.precio_mayorista) + "</td>" +
             '<td style="padding:6px 8px">' +
-                '<input type="number" min="0" value="' + (r.stock_inicial || 0) + '" ' +
+                '<input type="number" value="' + (r.stock_inicial || 0) + '" ' +
                 'style="width:100%;padding:3px 4px;font-size:12px;border:1.5px solid var(--border);border-radius:5px" ' +
                 'oninput="importSkuRows[' + idx + '].stock_inicial=parseInt(this.value)||0">' +
             "</td>" +

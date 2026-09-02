@@ -619,7 +619,9 @@ switch ($action) {
         $multiplo = max(1, intval($data['multiplo'] ?? 1));
         $codigoBarras = isset($data['codigo_barras']) && $data['codigo_barras'] !== '' ? trim($data['codigo_barras']) : null;
         $marca = isset($data['marca']) && $data['marca'] !== '' ? trim($data['marca']) : null;
-        $stockInicial = max(0, intval($data['stock_preventa'] ?? 0));
+        // El stock nunca se clampea a 0 — un negativo es información real
+        // (sobreventa/backorder), no un error a esconder.
+        $stockInicial = intval($data['stock_preventa'] ?? 0);
         $preventaId = isset($data['preventa_id']) && $data['preventa_id'] !== '' ? intval($data['preventa_id']) : null;
         $stmt = $db->prepare("INSERT INTO productos (codigo,descripcion,categoria,marca,precio_mayorista,foto,estado,orden,multiplo,codigo_barras,stock_preventa,stock_preventa_inicial,preventa_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
         $stmt->bind_param('ssssdssiisiii', $data['codigo'], $data['descripcion'], $data['categoria'], $marca, $data['precio_mayorista'], $data['foto'], $data['estado'], $orden, $multiplo, $codigoBarras, $stockInicial, $stockInicial, $preventaId);
@@ -648,7 +650,7 @@ switch ($action) {
         // stock_preventa se puede corregir a mano desde el formulario de edición
         // (para sumar stock de verdad, ver el endpoint "stock_agregar", que
         // además lleva el acumulado en stock_preventa_inicial).
-        $stock = max(0, intval($data['stock_preventa'] ?? 0));
+        $stock = intval($data['stock_preventa'] ?? 0);
         $preventaId = isset($data['preventa_id']) && $data['preventa_id'] !== '' ? intval($data['preventa_id']) : null;
         $stmt = $db->prepare("UPDATE productos SET codigo=?,descripcion=?,categoria=?,marca=?,precio_mayorista=?,foto=?,estado=?,orden=?,multiplo=?,codigo_barras=?,stock_preventa=?,preventa_id=?,updated_at=NOW() WHERE id=?");
         $stmt->bind_param('ssssdssiisiii', $data['codigo'], $data['descripcion'], $data['categoria'], $marca, $data['precio_mayorista'], $data['foto'], $data['estado'], $orden, $multiplo, $codigoBarras, $stock, $preventaId, $id);
@@ -751,7 +753,7 @@ switch ($action) {
             $foto = $p['FOTO'] ?? null; $o = 0; $multiplo = 1;
             $estado = strtoupper($p['ESTADO'] ?? 'DISPONIBLE');
             $codigoBarras = isset($p['CODIGO_BARRAS']) && $p['CODIGO_BARRAS'] !== '' ? trim($p['CODIGO_BARRAS']) : null;
-            $stock = max(0, intval($p['STOCK_PREVENTA'] ?? 0));
+            $stock = intval($p['STOCK_PREVENTA'] ?? 0);
             $stmt = $db->prepare("INSERT IGNORE INTO productos (codigo,descripcion,categoria,precio_mayorista,foto,estado,orden,multiplo,codigo_barras,stock_preventa,stock_preventa_inicial) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
             $stmt->bind_param('sssdssiisii', $p['CODIGO'], $p['DESCRIPCION'], $p['CATEGORIA'], $p['PRECIO_MAYORISTA'], $foto, $estado, $o, $multiplo, $codigoBarras, $stock, $stock);
             if ($stmt->execute()) $imported++;
@@ -808,15 +810,16 @@ switch ($action) {
                 if (isset($p['PRECIO_MAYORISTA']) && $p['PRECIO_MAYORISTA'] !== '') { $sets[] = 'precio_mayorista=?'; $params[] = floatval($p['PRECIO_MAYORISTA']); $types .= 'd'; }
                 if (isset($p['MULTIPLO'])       && $p['MULTIPLO']       !== '') { $sets[] = 'multiplo=?';         $params[] = max(1, intval($p['MULTIPLO']));    $types .= 'i'; }
                 if (isset($p['STOCK_PREVENTA'])  && $p['STOCK_PREVENTA']  !== '' && is_numeric($p['STOCK_PREVENTA'])) {
+                    // El stock nunca se clampea a 0 — un negativo (sobreventa/
+                    // backorder) es información real, no un error a esconder.
                     $curStock   = intval($existing['stock_preventa'] ?? 0);
                     $curInicial = intval($existing['stock_preventa_inicial'] ?? 0);
                     if ($stockMode === 'reemplazar') {
-                        $newStock = max(0, intval($p['STOCK_PREVENTA']));
+                        $newStock = intval($p['STOCK_PREVENTA']);
                         $delta = $newStock - $curStock;
                     } else {
                         $delta = intval($p['STOCK_PREVENTA']);
-                        $newStock = max(0, $curStock + $delta);
-                        $delta = $newStock - $curStock; // delta real aplicado, ya clampeado a 0
+                        $newStock = $curStock + $delta;
                     }
                     $newInicial = max($newStock, $curInicial + $delta);
                     $sets[] = 'stock_preventa=?';         $params[] = $newStock;   $types .= 'i';
@@ -842,7 +845,7 @@ switch ($action) {
                 $may    = floatval($p['PRECIO_MAYORISTA'] ?? 0);
                 $estado = strtoupper(trim($p['ESTADO'] ?? 'DISPONIBLE'));
                 $cb     = isset($p['CODIGO_BARRAS']) && $p['CODIGO_BARRAS'] !== '' ? trim($p['CODIGO_BARRAS']) : null;
-                $stock  = max(0, intval($p['STOCK_PREVENTA'] ?? 0));
+                $stock  = intval($p['STOCK_PREVENTA'] ?? 0);
                 $preventaId = resolver_preventa_id($db, $p['PREVENTA'] ?? '');
                 if (!$desc || !$cat) { $errors[] = ['codigo' => $codigo, 'motivo' => 'DESCRIPCION y CATEGORIA obligatorias para producto nuevo']; continue; }
                 $o = 0;
@@ -1333,7 +1336,7 @@ switch ($action) {
                 // sabida de antemano, viene de la planilla del proveedor).
                 // La mayoría de las marcas no lo traen y arrancan en 0.
                 $estado = 'DISPONIBLE'; $orden = 0; $multiplo = 1;
-                $stock = max(0, intval($p['stock_inicial'] ?? 0));
+                $stock = intval($p['stock_inicial'] ?? 0);
                 $stmt = $db->prepare("INSERT INTO productos (codigo,descripcion,categoria,marca,precio_mayorista,codigo_barras,foto,estado,orden,multiplo,stock_preventa,stock_preventa_inicial,preventa_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
                 $stmt->bind_param('ssssdsssiiiii', $codigo, $descripcion, $categoria, $marca, $precio, $codigoBarras, $foto, $estado, $orden, $multiplo, $stock, $stock, $preventaId);
                 if ($stmt->execute()) $creados++;
