@@ -933,6 +933,62 @@ tr.drag-over td {
     box-shadow: 0 0 0 2px rgba(0, 0, 0, .2)
 }
 
+/* "¿Quién pidió?" — autocompletado de código/descripción */
+.qp-suggestions {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    margin-top: 4px;
+    max-height: 260px;
+    overflow-y: auto;
+    z-index: 20;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, .1)
+}
+.qp-suggestion-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    display: flex;
+    gap: 8px;
+    align-items: baseline
+}
+.qp-suggestion-item code {
+    font-weight: 700;
+    flex-shrink: 0
+}
+.qp-suggestion-item:hover,
+.qp-suggestion-item.active {
+    background: var(--pale)
+}
+.qp-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--pale);
+    border-radius: 20px;
+    padding: 5px 6px 5px 12px;
+    font-size: 12px;
+    margin: 0 6px 6px 0
+}
+.qp-chip button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    padding: 3px;
+    border-radius: 50%
+}
+.qp-chip button:hover {
+    background: rgba(0, 0, 0, .08);
+    color: #c62828
+}
+
 .inline-save {
     background: var(--green);
     color: #fff;

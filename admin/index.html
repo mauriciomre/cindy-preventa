@@ -151,6 +151,14 @@
                             <span class="si-icon"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg></span
                             ><span class="si-label">Pedidos</span>
                         </button>
+                        <button
+                            class="sidebar-item"
+                            data-section="quienpidio"
+                            onclick="showSection('quienpidio', this)"
+                        >
+                            <span class="si-icon"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span
+                            ><span class="si-label">¿Quién pidió?</span>
+                        </button>
                     </div>
                     <div class="sidebar-group">
                         <button
@@ -574,21 +582,6 @@
                                     </button>
                                 </div>
                             </div>
-                            <div class="config-box" data-tool-id="quien-pidio" data-keywords="quien pidio pidió cliente pedido articulo artículo control mercaderia mercadería llego llegó">
-                                <h3><span class="drag-handle tool-drag-handle"><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg></span><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> ¿Quién pidió estos artículos?</h3>
-                                <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
-                                    Escaneá o pegá los códigos de los artículos que van llegando al local (uno
-                                    por línea, o separados por coma/espacio), para ver en un reporte qué pedidos
-                                    pendientes los incluyen y completarlos a mano.
-                                </p>
-                                <textarea id="lookupCodigos" rows="4" style="width:100%;box-sizing:border-box;padding:10px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;resize:vertical" placeholder="Ej:&#10;529508&#10;529509&#10;R201-CRCA"></textarea>
-                                <div style="display:flex;gap:8px;margin-top:10px">
-                                    <button class="btn" style="padding:9px 12px" onclick="openBarcodeScanner(function(code){agregarCodigoALista('lookupCodigos', code);})" title="Escanear código de barras">
-                                        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
-                                    </button>
-                                    <button class="btn" style="background:#0d6efd;color:#fff" onclick="buscarPedidosPorProductos()">Buscar pedidos</button>
-                                </div>
-                            </div>
                             <div class="config-box" data-tool-id="plantilla" data-keywords="descargar plantilla excel encabezados vacía">
                                 <h3><span class="drag-handle tool-drag-handle"><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg></span><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg> Descargar plantilla</h3>
                                 <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
@@ -842,6 +835,44 @@
                                     </thead>
                                     <tbody id="pedidosTbody"></tbody>
                                 </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ¿QUIÉN PIDIÓ? -->
+                    <div class="wrap section" id="secQuienpidio">
+                        <h2 style="font-size:16px;font-weight:800;color:var(--blue);margin-bottom:12px">¿Quién pidió estos artículos?</h2>
+                        <p style="font-size:13px;color:var(--muted);margin-bottom:20px;max-width:640px">
+                            Cargá acá los artículos que van llegando al local para controlarlos contra los
+                            pedidos pendientes — de a uno, con sugerencias mientras tipeás (así se evitan
+                            errores de tipeo), o pegando/escaneando varios de una.
+                        </p>
+                        <div style="max-width:640px">
+                            <label style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:6px">Agregar de a uno</label>
+                            <div style="position:relative;margin-bottom:20px">
+                                <input type="text" id="qpInput" placeholder="Escribí código o descripción..." autocomplete="off"
+                                    style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px"
+                                    oninput="qpOnInput()" onkeydown="qpOnKeydown(event)">
+                                <div id="qpSuggestions" class="qp-suggestions" style="display:none"></div>
+                            </div>
+
+                            <label style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:6px">O pegar / escanear varios de una</label>
+                            <textarea id="qpListaTextarea" rows="3" style="width:100%;box-sizing:border-box;padding:10px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;resize:vertical" placeholder="Ej:&#10;529508&#10;529509"></textarea>
+                            <div style="display:flex;gap:8px;margin-top:10px;margin-bottom:24px">
+                                <button class="btn" style="padding:9px 12px" onclick="openBarcodeScanner(function(code){qpAgregarEscaneado(code);})" title="Escanear código de barras">
+                                    <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+                                </button>
+                                <button class="btn" style="background:#0d6efd;color:#fff" onclick="qpAgregarLista()">Agregar lista</button>
+                            </div>
+
+                            <label style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:8px">Artículos cargados</label>
+                            <div id="qpChips" style="margin-bottom:20px"></div>
+
+                            <div style="display:flex;gap:8px">
+                                <button class="btn" style="background:#eee" onclick="qpVaciarLista()">Vaciar lista</button>
+                                <button class="btn" style="background:#198754;color:#fff" id="btnQpGenerar" onclick="qpGenerarReporte()" disabled>
+                                    <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> Generar reporte (0)
+                                </button>
                             </div>
                         </div>
                     </div>

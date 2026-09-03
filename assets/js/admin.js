@@ -124,6 +124,7 @@ async function doLogin() {
             checkLastImport();
             applyToolsOrder();
             initToolsDragDrop();
+            renderQpChips();
         } else {
             document.getElementById("lerr").textContent =
                 "Usuario o contraseña incorrectos";
@@ -168,6 +169,7 @@ async function tryAutoLogin() {
             checkLastImport();
             applyToolsOrder();
             initToolsDragDrop();
+            renderQpChips();
         } else {
             localStorage.removeItem("tb_admin_user");
             localStorage.removeItem("tb_admin_pass");
@@ -2792,13 +2794,173 @@ async function fetchYMostrarPedidosPorProductos(codigos) {
     document.getElementById("lookupModalBg").classList.add("open");
 }
 
-async function buscarPedidosPorProductos() {
-    var codigos = parsearListaCodigos(document.getElementById("lookupCodigos").value);
-    if (!codigos.length) {
-        toast("Pegá al menos un código", "#c62828");
+// ── Sección "¿Quién pidió?" — carga de artículos con autocompletado ────────
+// En vez de un textarea "en crudo" (donde un typo se pierde en silencio),
+// esta sección arma la lista contra el catálogo real (allProducts, ya en
+// memoria): de a uno con sugerencias mientras se tipea, o pegando/escaneando
+// varios de una — en los tres casos, solo entran códigos que existen de
+// verdad. Al generar el reporte, reusa el mismo modal/impresión de siempre.
+var _qpCodigos = []; // [{codigo, descripcion}] — lo que ya se cargó
+var _qpSuggestions = [];
+var _qpActiveIndex = -1;
+
+function qpOnInput() {
+    var q = document.getElementById("qpInput").value.trim().toLowerCase();
+    if (!q) {
+        _qpSuggestions = [];
+        _qpActiveIndex = -1;
+        renderQpSuggestions();
         return;
     }
-    await fetchYMostrarPedidosPorProductos(codigos);
+    var yaCargados = _qpCodigos.map(function (c) { return c.codigo; });
+    _qpSuggestions = allProducts
+        .filter(function (p) {
+            return (
+                yaCargados.indexOf(p.codigo) === -1 &&
+                (p.codigo.toLowerCase().indexOf(q) !== -1 || (p.descripcion || "").toLowerCase().indexOf(q) !== -1)
+            );
+        })
+        .slice(0, 8);
+    _qpActiveIndex = _qpSuggestions.length ? 0 : -1;
+    renderQpSuggestions();
+}
+
+function renderQpSuggestions() {
+    var box = document.getElementById("qpSuggestions");
+    if (!_qpSuggestions.length) {
+        box.style.display = "none";
+        box.innerHTML = "";
+        return;
+    }
+    box.innerHTML = _qpSuggestions
+        .map(function (p, i) {
+            return (
+                '<div class="qp-suggestion-item' + (i === _qpActiveIndex ? " active" : "") +
+                '" onmousedown="qpSeleccionar(' + i + ')"><code>' + esc(p.codigo) + "</code><span>" +
+                esc(p.descripcion || "") + "</span></div>"
+            );
+        })
+        .join("");
+    box.style.display = "block";
+}
+
+function qpOnKeydown(e) {
+    if (e.key === "ArrowDown") {
+        if (_qpSuggestions.length) {
+            e.preventDefault();
+            _qpActiveIndex = (_qpActiveIndex + 1) % _qpSuggestions.length;
+            renderQpSuggestions();
+        }
+    } else if (e.key === "ArrowUp") {
+        if (_qpSuggestions.length) {
+            e.preventDefault();
+            _qpActiveIndex = (_qpActiveIndex - 1 + _qpSuggestions.length) % _qpSuggestions.length;
+            renderQpSuggestions();
+        }
+    } else if (e.key === "Enter") {
+        e.preventDefault();
+        if (_qpActiveIndex >= 0 && _qpSuggestions[_qpActiveIndex]) {
+            qpSeleccionar(_qpActiveIndex);
+        } else {
+            // Sin sugerencia resaltada: solo agrega si el texto matchea EXACTO
+            // un código real — evita que un typo se cuele igual con Enter.
+            var val = document.getElementById("qpInput").value.trim();
+            var exact = val && allProducts.find(function (p) { return p.codigo.toLowerCase() === val.toLowerCase(); });
+            if (exact) qpAgregar(exact.codigo, exact.descripcion);
+            else if (val) toast("Código no reconocido — elegí una sugerencia de la lista", "#c62828");
+        }
+    } else if (e.key === "Escape") {
+        _qpSuggestions = [];
+        renderQpSuggestions();
+    }
+}
+
+function qpSeleccionar(i) {
+    var p = _qpSuggestions[i];
+    if (p) qpAgregar(p.codigo, p.descripcion);
+}
+
+function qpAgregar(codigo, descripcion) {
+    if (_qpCodigos.some(function (c) { return c.codigo === codigo; })) {
+        toast("Ese código ya está en la lista", "#e65100");
+    } else {
+        _qpCodigos.push({ codigo: codigo, descripcion: descripcion || "" });
+        renderQpChips();
+    }
+    var input = document.getElementById("qpInput");
+    input.value = "";
+    _qpSuggestions = [];
+    renderQpSuggestions();
+    input.focus();
+}
+
+function qpQuitar(codigo) {
+    _qpCodigos = _qpCodigos.filter(function (c) { return c.codigo !== codigo; });
+    renderQpChips();
+}
+
+function renderQpChips() {
+    var el = document.getElementById("qpChips");
+    var btn = document.getElementById("btnQpGenerar");
+    if (!el || !btn) return;
+    if (!_qpCodigos.length) {
+        el.innerHTML = '<p style="color:var(--muted);font-size:13px">Todavía no cargaste ningún artículo.</p>';
+    } else {
+        el.innerHTML = _qpCodigos
+            .map(function (c) {
+                return (
+                    '<span class="qp-chip"><code>' + esc(c.codigo) + "</code> " + esc(c.descripcion || "") +
+                    '<button type="button" onclick="qpQuitar(\'' + esc(c.codigo) + '\')" title="Quitar">' +
+                    icon("x", { size: 12 }) + "</button></span>"
+                );
+            })
+            .join("");
+    }
+    btn.disabled = !_qpCodigos.length;
+    btn.innerHTML = icon("search") + " Generar reporte (" + _qpCodigos.length + ")";
+}
+
+// Pegar/escanear una lista completa de una — cada código se valida contra el
+// catálogo real antes de agregarse; los que no matchean quedan en el cuadro
+// de texto (no se pierden) para poder corregirlos y reintentar.
+async function qpAgregarLista() {
+    var raw = document.getElementById("qpListaTextarea").value;
+    var codigos = parsearListaCodigos(raw);
+    if (!codigos.length) return;
+    var noReconocidos = [];
+    codigos.forEach(function (codigo) {
+        var p = allProducts.find(function (pp) { return pp.codigo.toLowerCase() === codigo.toLowerCase(); });
+        if (!p) { noReconocidos.push(codigo); return; }
+        if (!_qpCodigos.some(function (c) { return c.codigo === p.codigo; })) {
+            _qpCodigos.push({ codigo: p.codigo, descripcion: p.descripcion });
+        }
+    });
+    renderQpChips();
+    document.getElementById("qpListaTextarea").value = noReconocidos.join("\n");
+    if (noReconocidos.length) {
+        toast(noReconocidos.length + " código(s) no reconocido(s) — quedaron en el cuadro para revisar", "#e65100");
+    } else {
+        toast("Códigos agregados a la lista");
+    }
+}
+
+function qpAgregarEscaneado(code) {
+    var p = allProducts.find(function (pp) { return pp.codigo.toLowerCase() === code.toLowerCase(); });
+    if (!p) {
+        toast("Código escaneado no reconocido: " + code, "#c62828");
+        return;
+    }
+    qpAgregar(p.codigo, p.descripcion);
+}
+
+function qpVaciarLista() {
+    _qpCodigos = [];
+    renderQpChips();
+}
+
+async function qpGenerarReporte() {
+    if (!_qpCodigos.length) return;
+    await fetchYMostrarPedidosPorProductos(_qpCodigos.map(function (c) { return c.codigo; }));
 }
 
 function renderLookupModal(codigosBuscados, grupos) {
