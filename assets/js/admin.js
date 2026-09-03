@@ -2636,21 +2636,103 @@ async function cambiarEstadoPedido() {
     } else toast("Error", "#c62828");
 }
 
-// Herramientas → "Marcar productos como ingresados": pega una lista de SKU
-// (uno por línea, o separados por coma/espacio) y los marca todos de una,
-// sin tener que abrir cada producto o cada pedido por separado.
-async function marcarIngresoBulk() {
-    var raw = document.getElementById("ingresoSkuList").value;
+// Escaneo que AGREGA un código como línea nueva a una textarea de lista (en
+// vez de reemplazar lo ya cargado) — compartido entre las herramientas que
+// aceptan varios códigos de una.
+function agregarCodigoALista(textareaId, code) {
+    var el = document.getElementById(textareaId);
+    if (!el) return;
+    var actual = el.value.trim();
+    el.value = actual ? actual + "\n" + code : code;
+}
+
+function parsearListaCodigos(raw) {
     var codigos = raw
         .split(/[\n,;]+/)
         .map(function (s) { return s.trim(); })
         .filter(Boolean);
-    var resultEl = document.getElementById("ingresoBulkResult");
+    // Dedup conservando el orden de aparición.
+    return codigos.filter(function (c, i) { return codigos.indexOf(c) === i; });
+}
+
+// Herramientas → "Marcar productos como ingresados": pega una lista de SKU
+// (uno por línea, o separados por coma/espacio) — antes de aplicar nada,
+// muestra una vista previa (mismo criterio que el wizard de import de
+// Excel) para poder ver qué código no matcheó con el catálogo y elegir
+// cuáles de los encontrados se marcan de verdad (todos, por defecto).
+async function previsualizarIngresoBulk() {
+    var codigos = parsearListaCodigos(document.getElementById("ingresoSkuList").value);
     if (!codigos.length) {
         toast("Pegá al menos un código", "#c62828");
         return;
     }
-    resultEl.innerHTML = '<p style="color:var(--muted)">Marcando...</p>';
+    var res = await fetch(API + "?action=check_codigos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ _user: authUser, _pass: authPass, codigos: codigos }),
+    });
+    var json = await res.json();
+    if (!json.ok) {
+        toast("Error al verificar los códigos", "#c62828");
+        return;
+    }
+    renderIngresoPreview(codigos, json.productos || {});
+    document.getElementById("ingresoPreviewModalBg").classList.add("open");
+}
+
+function renderIngresoPreview(codigos, productos) {
+    var html =
+        '<div class="table-wrap"><div class="table-scroll"><table><thead><tr>' +
+        '<th style="width:36px"></th><th>Código</th><th>Descripción</th><th>Ya ingresado</th>' +
+        "</tr></thead><tbody>";
+    var encontrados = 0;
+    codigos.forEach(function (codigo) {
+        var p = productos[codigo];
+        if (!p) {
+            html +=
+                '<tr style="background:#ffebee"><td></td><td><code>' + esc(codigo) + "</code></td>" +
+                '<td colspan="2" style="color:#c62828;font-size:12px">' +
+                icon("triangle-alert") + " No encontrado en el catálogo</td></tr>";
+            return;
+        }
+        encontrados++;
+        html +=
+            "<tr><td><input type=\"checkbox\" class=\"ingreso-preview-check\" value=\"" + esc(codigo) +
+            "\" checked onchange=\"actualizarContadorIngresoPreview()\"></td>" +
+            "<td><code>" + esc(codigo) + "</code></td>" +
+            "<td>" + esc(p.descripcion || "") + "</td><td>" +
+            (p.ingreso == 1
+                ? '<span class="badge-disp">' + icon("check") + " Sí</span>"
+                : '<span class="badge-agot">' + icon("clock") + " No</span>") +
+            "</td></tr>";
+    });
+    html += "</tbody></table></div></div>";
+    html +=
+        '<p style="font-size:12px;color:var(--muted);margin-top:10px">' +
+        encontrados + " de " + codigos.length +
+        " código(s) encontrados en el catálogo. Desmarcá los que no querés marcar como ingresados.</p>";
+    document.getElementById("ingresoPreviewModalBody").innerHTML = html;
+    actualizarContadorIngresoPreview();
+}
+
+function actualizarContadorIngresoPreview() {
+    var n = document.querySelectorAll(".ingreso-preview-check:checked").length;
+    var btn = document.getElementById("btnConfirmarIngresoBulk");
+    btn.innerHTML = icon("check") + " Marcar seleccionados (" + n + ")";
+    btn.disabled = n === 0;
+}
+
+function closeIngresoPreviewModal() {
+    document.getElementById("ingresoPreviewModalBg").classList.remove("open");
+}
+
+async function confirmarIngresoBulk() {
+    var codigos = Array.from(document.querySelectorAll(".ingreso-preview-check:checked")).map(function (el) {
+        return el.value;
+    });
+    if (!codigos.length) return;
+    var btn = document.getElementById("btnConfirmarIngresoBulk");
+    btn.disabled = true;
     var res = await fetch(API + "?action=productos_ingreso_bulk", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2660,57 +2742,168 @@ async function marcarIngresoBulk() {
     if (json.ok) {
         toast("✔ " + json.actualizados + " producto(s) marcado(s) como ingresado");
         document.getElementById("ingresoSkuList").value = "";
-        resultEl.innerHTML =
-            '<p style="color:#198754">' + json.actualizados + " marcado(s) correctamente.</p>" +
-            (json.no_encontrados.length
-                ? '<p style="color:#c62828">No encontrados: ' + json.no_encontrados.join(", ") + "</p>"
-                : "");
+        closeIngresoPreviewModal();
         await loadProducts();
+        // El reporte de pedidos afectados se abre solo, apenas se confirma
+        // el ingreso — no hace falta ir a buscarlo aparte con la otra
+        // herramienta ("¿Quién pidió estos artículos?", misma lógica).
+        await fetchYMostrarPedidosPorProductos(codigos);
     } else {
+        btn.disabled = false;
         toast("Error: " + (json.error || "desconocido"), "#c62828");
-        resultEl.innerHTML = "";
     }
 }
 
-// Herramientas → "¿Quién pidió este artículo?": al ir controlando mercadería
-// que llega físicamente al local artículo por artículo, muestra qué pedidos
-// pendientes incluyen ese código, para completarlos a mano.
-async function buscarPedidosPorProducto() {
-    var codigo = document.getElementById("lookupCodigo").value.trim();
-    var resultEl = document.getElementById("lookupResult");
-    if (!codigo) { resultEl.innerHTML = ""; return; }
-    resultEl.innerHTML = '<p style="color:var(--muted)">Buscando...</p>';
-    var res = await fetch(API + "?action=pedidos_por_producto&codigo=" + encodeURIComponent(codigo));
+// ── "¿Quién pidió estos artículos?" ─────────────────────────────────────────
+// Núcleo compartido entre la búsqueda manual (Herramientas) y el reporte que
+// se abre solo al confirmar "Marcar productos como ingresados" — mismo
+// reporte, dos disparadores distintos.
+var _lookupReportData = null; // {codigosBuscados, grupos} — lo usa Imprimir
+
+async function fetchYMostrarPedidosPorProductos(codigos) {
+    if (!codigos || !codigos.length) return;
+    var res = await fetch(API + "?action=pedidos_por_productos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codigos: codigos }),
+    });
     var json = await res.json();
-    if (!json.ok || !json.pedidos.length) {
-        resultEl.innerHTML = '<p style="color:var(--muted)">Ningún pedido pendiente incluye ese código.</p>';
+    var items = json.ok && json.items ? json.items : [];
+    // Agrupar las filas planas (una por ítem encontrado) por pedido.
+    var porPedido = {}, ordenPedidos = [];
+    items.forEach(function (it) {
+        if (!porPedido[it.pedido_id]) {
+            porPedido[it.pedido_id] = {
+                pedido_id: it.pedido_id,
+                cliente_nombre: it.cliente_nombre,
+                cliente_tel: it.cliente_tel,
+                estado: it.estado,
+                created_at: it.created_at,
+                observaciones: it.observaciones,
+                items: [],
+            };
+            ordenPedidos.push(it.pedido_id);
+        }
+        porPedido[it.pedido_id].items.push(it);
+    });
+    var grupos = ordenPedidos.map(function (id) { return porPedido[id]; });
+    _lookupReportData = { codigosBuscados: codigos, grupos: grupos };
+    renderLookupModal(codigos, grupos);
+    document.getElementById("lookupModalBg").classList.add("open");
+}
+
+async function buscarPedidosPorProductos() {
+    var codigos = parsearListaCodigos(document.getElementById("lookupCodigos").value);
+    if (!codigos.length) {
+        toast("Pegá al menos un código", "#c62828");
         return;
     }
-    var html =
-        '<div class="table-wrap"><div class="table-scroll"><table><thead><tr>' +
-        "<th>#</th><th>Cliente</th><th>Cant.</th><th>Estado</th><th>Fecha</th><th></th>" +
-        "</tr></thead><tbody>";
-    json.pedidos.forEach(function (p) {
-        var fecha = new Date(p.created_at).toLocaleDateString("es-AR");
+    await fetchYMostrarPedidosPorProductos(codigos);
+}
+
+function renderLookupModal(codigosBuscados, grupos) {
+    var body = document.getElementById("lookupModalBody");
+    var codigosHtml = codigosBuscados.map(function (c) { return "<code>" + esc(c) + "</code>"; }).join(" ");
+    if (!grupos.length) {
+        body.innerHTML =
+            '<p style="font-size:13px;color:var(--muted)">Ningún pedido pendiente incluye ' +
+            (codigosBuscados.length > 1 ? "estos códigos" : "ese código") + ": " + codigosHtml + "</p>";
+        return;
+    }
+    var html = '<p style="font-size:12px;color:var(--muted);margin-bottom:14px">Códigos buscados: ' + codigosHtml + "</p>";
+    grupos.forEach(function (g) {
+        var fecha = new Date(g.created_at).toLocaleString("es-AR");
+        html += '<div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">';
         html +=
-            "<tr><td><strong>#" + p.pedido_id + "</strong></td>" +
-            "<td>" + esc(p.cliente_nombre) + "</td>" +
-            '<td style="text-align:center">' +
-            p.cantidad +
-            (p.colores_detalle
-                ? '<div style="font-size:10px;color:var(--muted)">' + formatColoresDetalle(p.colores_detalle) + "</div>"
+            "<div><strong>Pedido #" + g.pedido_id + "</strong> — " + esc(g.cliente_nombre) +
+            (g.cliente_tel
+                ? ' · <a href="https://wa.me/' + g.cliente_tel + '" target="_blank" style="color:var(--blue)">+' + g.cliente_tel + "</a>"
                 : "") +
-            (p.en_lista_espera == 1
-                ? '<div style="font-size:10px;color:#b71c1c;font-weight:700">Lista de espera</div>'
-                : "") +
-            "</td>" +
-            "<td>" + estadoBadge(p.estado) + "</td>" +
-            '<td style="font-size:12px;color:var(--muted);white-space:nowrap">' + fecha + "</td>" +
-            '<td><button class="btn btn-edit" onclick="openPedidoModal(' + p.pedido_id + ')">Ver</button></td>' +
-            "</tr>";
+            "</div>";
+        html += "<div>" + estadoBadge(g.estado) + ' <span style="font-size:11px;color:var(--muted)">' + fecha + "</span></div>";
+        html += "</div>";
+        if (g.observaciones) {
+            html +=
+                '<p style="font-size:12px;background:#fff8e1;padding:6px 10px;border-radius:6px;margin-bottom:8px"><strong>Obs:</strong> ' +
+                esc(g.observaciones) + "</p>";
+        }
+        html += '<div class="table-wrap"><div class="table-scroll"><table><thead><tr><th>Código</th><th>Descripción</th><th style="text-align:center">Cant.</th><th></th></tr></thead><tbody>';
+        g.items.forEach(function (it) {
+            html +=
+                "<tr><td><code>" + esc(it.codigo) + "</code></td><td>" + esc(it.descripcion || "") +
+                (it.colores_detalle
+                    ? '<div style="font-size:10px;color:var(--muted)">' + formatColoresDetalle(it.colores_detalle) + "</div>"
+                    : "") +
+                '</td><td style="text-align:center">' + it.cantidad + "</td><td>" +
+                (it.en_lista_espera == 1
+                    ? '<span style="font-size:10px;color:#b71c1c;font-weight:700">Lista de espera</span>'
+                    : "") +
+                "</td></tr>";
+        });
+        html += "</tbody></table></div></div>";
+        html += '<div style="margin-top:8px"><button class="btn btn-edit" onclick="verPedidoDesdeLookup(' + g.pedido_id + ')">Ver pedido completo</button></div>';
+        html += "</div>";
     });
-    html += "</tbody></table></div></div>";
-    resultEl.innerHTML = html;
+    body.innerHTML = html;
+}
+
+function closeLookupModal() {
+    document.getElementById("lookupModalBg").classList.remove("open");
+}
+
+// Los modales comparten z-index (la app no soporta modales apilados) — así
+// que abrir el pedido desde el reporte cierra el reporte primero, para que
+// no quede tapado detrás.
+function verPedidoDesdeLookup(id) {
+    closeLookupModal();
+    openPedidoModal(id);
+}
+
+function imprimirLookupReport() {
+    if (!_lookupReportData) return;
+    var codigosBuscados = _lookupReportData.codigosBuscados;
+    var grupos = _lookupReportData.grupos;
+    var fecha = new Date().toLocaleString("es-AR");
+    var html =
+        '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Reporte de pedidos por artículo</title><style>' +
+        "body{font-family:Arial,sans-serif;padding:20px;font-size:12px;color:#000}" +
+        "h1{font-size:16px;margin-bottom:4px}" +
+        "table{width:100%;border-collapse:collapse;margin:8px 0 14px}" +
+        "th{background:#e84e1b;color:#fff;padding:5px 8px;text-align:left;font-size:11px}" +
+        "td{padding:5px 8px;border-bottom:1px solid #eee;font-size:11px}" +
+        ".pedido-box{border:1px solid #999;border-radius:6px;padding:10px;margin-bottom:12px;page-break-inside:avoid}" +
+        ".pedido-head{display:flex;justify-content:space-between;font-weight:bold;margin-bottom:6px}" +
+        ".obs{background:#fff8e1;padding:5px 8px;border-radius:4px;margin-bottom:6px}" +
+        "@media print{@page{size:A4 portrait;margin:12mm}}" +
+        "</style></head><body>";
+    html += "<h1>Reporte: pedidos que incluyen estos artículos</h1>";
+    html += '<p style="color:#555;margin-bottom:10px">Generado: ' + fecha + " — Códigos: " + codigosBuscados.join(", ") + "</p>";
+    if (!grupos.length) {
+        html += "<p>Ningún pedido pendiente incluye estos códigos.</p>";
+    }
+    grupos.forEach(function (g) {
+        var fechaPedido = new Date(g.created_at).toLocaleString("es-AR");
+        html += '<div class="pedido-box">';
+        html +=
+            '<div class="pedido-head"><span>Pedido #' + g.pedido_id + " — " + esc(g.cliente_nombre) +
+            (g.cliente_tel ? " — +" + g.cliente_tel : "") + "</span><span>" +
+            (ESTADO_LABELS[g.estado] ? ESTADO_LABELS[g.estado].label : g.estado) + " — " + fechaPedido + "</span></div>";
+        if (g.observaciones) html += '<div class="obs"><strong>Obs:</strong> ' + esc(g.observaciones) + "</div>";
+        html += "<table><thead><tr><th>Código</th><th>Descripción</th><th>Cant.</th><th>Estado ítem</th></tr></thead><tbody>";
+        g.items.forEach(function (it) {
+            html +=
+                "<tr><td>" + esc(it.codigo) + "</td><td>" + esc(it.descripcion || "") +
+                (it.colores_detalle ? " — " + formatColoresDetalle(it.colores_detalle) : "") + "</td><td>" +
+                it.cantidad + "</td><td>" + (it.en_lista_espera == 1 ? "Lista de espera" : "Confirmado") + "</td></tr>";
+        });
+        html += "</tbody></table></div>";
+    });
+    html += "</body></html>";
+    var w = window.open("", "_blank");
+    w.document.write(html);
+    w.document.close();
+    w.print();
 }
 
 async function guardarPedidoObs() {

@@ -565,26 +565,29 @@
                                     (uno por línea, o separados por coma/espacio) y marcalos todos de una.
                                 </p>
                                 <textarea id="ingresoSkuList" rows="4" style="width:100%;box-sizing:border-box;padding:10px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;resize:vertical" placeholder="Ej:&#10;529508&#10;529509&#10;R201-CRCA"></textarea>
-                                <button class="btn" style="background:#198754;color:#fff;margin-top:10px" onclick="marcarIngresoBulk()">
-                                    <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> Marcar como ingresado
-                                </button>
-                                <div id="ingresoBulkResult" style="font-size:13px;margin-top:10px"></div>
-                            </div>
-                            <div class="config-box" data-tool-id="quien-pidio" data-keywords="quien pidio pidió cliente pedido articulo artículo control mercaderia mercadería llego llegó">
-                                <h3><span class="drag-handle tool-drag-handle"><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg></span><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> ¿Quién pidió este artículo?</h3>
-                                <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
-                                    Escaneá o tipeá el código de un artículo que va llegando al local, para ver
-                                    qué pedidos pendientes lo incluyen y completarlos a mano.
-                                </p>
-                                <div style="display:flex;gap:8px">
-                                    <input type="text" id="lookupCodigo" placeholder="Código del artículo" style="flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px"
-                                        onkeydown="if (event.key === 'Enter') buscarPedidosPorProducto();">
-                                    <button class="btn" style="padding:9px 12px" onclick="openBarcodeScanner(function(code){document.getElementById('lookupCodigo').value=code;buscarPedidosPorProducto();})" title="Escanear código de barras">
+                                <div style="display:flex;gap:8px;margin-top:10px">
+                                    <button class="btn" style="padding:9px 12px" onclick="openBarcodeScanner(function(code){agregarCodigoALista('ingresoSkuList', code);})" title="Escanear código de barras">
                                         <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
                                     </button>
-                                    <button class="btn" style="background:#0d6efd;color:#fff" onclick="buscarPedidosPorProducto()">Buscar</button>
+                                    <button class="btn" style="background:#198754;color:#fff" onclick="previsualizarIngresoBulk()">
+                                        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg> Vista previa
+                                    </button>
                                 </div>
-                                <div id="lookupResult" style="font-size:13px;margin-top:12px"></div>
+                            </div>
+                            <div class="config-box" data-tool-id="quien-pidio" data-keywords="quien pidio pidió cliente pedido articulo artículo control mercaderia mercadería llego llegó">
+                                <h3><span class="drag-handle tool-drag-handle"><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg></span><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> ¿Quién pidió estos artículos?</h3>
+                                <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
+                                    Escaneá o pegá los códigos de los artículos que van llegando al local (uno
+                                    por línea, o separados por coma/espacio), para ver en un reporte qué pedidos
+                                    pendientes los incluyen y completarlos a mano.
+                                </p>
+                                <textarea id="lookupCodigos" rows="4" style="width:100%;box-sizing:border-box;padding:10px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;resize:vertical" placeholder="Ej:&#10;529508&#10;529509&#10;R201-CRCA"></textarea>
+                                <div style="display:flex;gap:8px;margin-top:10px">
+                                    <button class="btn" style="padding:9px 12px" onclick="openBarcodeScanner(function(code){agregarCodigoALista('lookupCodigos', code);})" title="Escanear código de barras">
+                                        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+                                    </button>
+                                    <button class="btn" style="background:#0d6efd;color:#fff" onclick="buscarPedidosPorProductos()">Buscar pedidos</button>
+                                </div>
                             </div>
                             <div class="config-box" data-tool-id="plantilla" data-keywords="descargar plantilla excel encabezados vacía">
                                 <h3><span class="drag-handle tool-drag-handle"><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg></span><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg> Descargar plantilla</h3>
@@ -941,6 +944,34 @@
                                     onclick="guardarPedidoObs()"
                                 >
                                     <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg> Guardar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- MODAL VISTA PREVIA — MARCAR PRODUCTOS COMO INGRESADOS -->
+                    <div class="modal-bg" id="ingresoPreviewModalBg">
+                        <div class="modal" style="width: min(700px, 95vw); max-width: 700px">
+                            <h2>Vista previa — marcar como ingresado</h2>
+                            <div id="ingresoPreviewModalBody"></div>
+                            <div class="modal-foot">
+                                <button class="btn" style="background: #eee" onclick="closeIngresoPreviewModal()">Cancelar</button>
+                                <button class="btn" style="background:#198754;color:#fff" id="btnConfirmarIngresoBulk" onclick="confirmarIngresoBulk()">
+                                    <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> Marcar seleccionados
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- MODAL ¿QUIÉN PIDIÓ ESTOS ARTÍCULOS? -->
+                    <div class="modal-bg" id="lookupModalBg">
+                        <div class="modal" style="width: min(900px, 95vw); max-width: 900px">
+                            <h2>¿Quién pidió estos artículos?</h2>
+                            <div id="lookupModalBody"></div>
+                            <div class="modal-foot">
+                                <button class="btn" style="background: #eee" onclick="closeLookupModal()">Cerrar</button>
+                                <button class="btn" style="background: #1565c0; color: #fff" onclick="imprimirLookupReport()">
+                                    <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg> Imprimir
                                 </button>
                             </div>
                         </div>

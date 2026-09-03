@@ -1861,24 +1861,30 @@ switch ($action) {
         echo json_encode(['ok' => true, 'actualizados' => count($existentes), 'no_encontrados' => $noEncontrados]);
         break;
 
-    case 'pedidos_por_producto':
-        // "¿Quién pidió este artículo?" — al ir ingresando mercadería físico
-        // al local, artículo por artículo, sirve para ver de un vistazo qué
-        // pedidos pendientes lo incluyen y completarlos a mano. Excluye
-        // pedidos ELIMINADOS (no hay nada que completar ahí).
-        $codigo = trim($_GET['codigo'] ?? '');
-        if (!$codigo) { echo json_encode(['ok' => true, 'pedidos' => []]); break; }
-        $stmt = $db->prepare("SELECT pi.cantidad, pi.colores_detalle, pi.en_lista_espera,
-                p.id as pedido_id, p.estado, p.created_at,
+    case 'pedidos_por_productos':
+        // "¿Quién pidió estos artículos?" — al ir ingresando mercadería física
+        // al local, sirve para ver de un vistazo qué pedidos pendientes
+        // incluyen una LISTA de códigos (uno o varios) y completarlos a mano.
+        // Excluye pedidos ELIMINADOS (no hay nada que completar ahí). Devuelve
+        // una fila por cada (pedido, código encontrado) — se agrupa por
+        // pedido del lado del cliente, para poder mostrar qué códigos
+        // buscados corresponden a cada pedido.
+        $data = json_decode(file_get_contents('php://input'), true);
+        $codigos = array_values(array_unique(array_filter(array_map('trim', $data['codigos'] ?? []))));
+        if (!$codigos) { echo json_encode(['ok' => true, 'items' => []]); break; }
+        $placeholders = implode(',', array_fill(0, count($codigos), '?'));
+        $types = str_repeat('s', count($codigos));
+        $stmt = $db->prepare("SELECT pi.codigo, pi.descripcion, pi.cantidad, pi.colores_detalle, pi.en_lista_espera,
+                p.id as pedido_id, p.estado, p.created_at, p.observaciones,
                 c.nombre as cliente_nombre, c.telefono as cliente_tel
             FROM pedido_items pi
             JOIN pedidos p ON p.id = pi.pedido_id
             JOIN clientes c ON c.id = p.cliente_id
-            WHERE pi.codigo = ? AND p.estado != 'ELIMINADO'
+            WHERE pi.codigo IN ($placeholders) AND p.estado != 'ELIMINADO'
             ORDER BY p.created_at ASC");
-        $stmt->bind_param('s', $codigo);
+        $stmt->bind_param($types, ...$codigos);
         $stmt->execute();
-        echo json_encode(['ok' => true, 'pedidos' => $stmt->get_result()->fetch_all(MYSQLI_ASSOC)]);
+        echo json_encode(['ok' => true, 'items' => $stmt->get_result()->fetch_all(MYSQLI_ASSOC)]);
         break;
 
     case 'pedido_actualizar':
