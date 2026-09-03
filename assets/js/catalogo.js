@@ -8,6 +8,21 @@ var products = [],
     viewMode = "grid",
     sortMode = "default";
 
+// ── Renderizado incremental del catálogo (infinite scroll) ──────────────────
+// Con varios cientos de productos, armar TODAS las cards de una en un solo
+// innerHTML gigante traba el navegador (sobre todo en celulares) — se nota
+// justo al entrar o al cambiar de filtro. En vez de eso se renderiza de a
+// tandas: el primer tramo entra al toque, y el resto se va agregando (sin
+// re-crear lo que ya está en pantalla) a medida que se hace scroll hacia
+// abajo, con un sensor invisible al final de la lista.
+var CATALOG_PAGE_SIZE = 60;
+var _catList = [];       // lista filtrada/ordenada completa de esta vista
+var _catRendered = 0;    // cuántos productos de _catList ya están en el DOM
+var _catUseGroups = false;
+var _catViewMode = "grid";
+var _catGroupEls = {};   // categoría -> contenedor donde seguir agregando (grid) o "" (list, usa tbody directo)
+var _catObserver = null;
+
 // ── CARRITO PERSISTENTE ───────────────────────────────────────────────────────
 function saveCart() {
     try {
@@ -1053,36 +1068,103 @@ function renderProds() {
 function renderGrid(list, el, sortBar) {
     // Si está en TODOS y es orden por defecto, agrupar por categoría
     var useGroups = activeCat === "TODOS" && sortMode === "default";
-    var html = sortBar;
+    _catList = list;
+    _catRendered = 0;
+    _catUseGroups = useGroups;
+    _catViewMode = "grid";
+    _catGroupEls = {};
 
-    if (useGroups) {
-        var bycat = {},
-            order = [];
-        list.forEach(function (p) {
-            if (!bycat[p.CATEGORIA]) {
-                bycat[p.CATEGORIA] = [];
-                order.push(p.CATEGORIA);
-            }
-            bycat[p.CATEGORIA].push(p);
-        });
-        order.forEach(function (cat) {
-            html +=
-                '<div class="cat-title">' + cat + '</div><div class="grid">';
-            bycat[cat].forEach(function (p) {
-                html += cardHTML(p);
+    el.innerHTML =
+        sortBar +
+        '<div id="catalogItems"></div>' +
+        '<div id="catalogSentinel" style="height:1px"></div>';
+    renderNextCatalogChunk();
+    setupInfiniteScroll();
+}
+
+// Agrega el próximo tramo de CATALOG_PAGE_SIZE productos al DOM ya existente
+// (sin tocar lo que ya está pintado) — tanto para la vista grilla como lista.
+function renderNextCatalogChunk() {
+    if (_catRendered >= _catList.length) return;
+    var itemsEl = document.getElementById("catalogItems");
+    if (!itemsEl) return;
+    var chunk = _catList.slice(_catRendered, _catRendered + CATALOG_PAGE_SIZE);
+
+    if (_catViewMode === "grid") {
+        if (_catUseGroups) {
+            chunk.forEach(function (p) {
+                var cat = p.CATEGORIA;
+                var gridDiv = _catGroupEls[cat];
+                if (!gridDiv) {
+                    var titleDiv = document.createElement("div");
+                    titleDiv.className = "cat-title";
+                    titleDiv.textContent = cat;
+                    itemsEl.appendChild(titleDiv);
+                    gridDiv = document.createElement("div");
+                    gridDiv.className = "grid";
+                    itemsEl.appendChild(gridDiv);
+                    _catGroupEls[cat] = gridDiv;
+                }
+                gridDiv.insertAdjacentHTML("beforeend", cardHTML(p));
             });
-            html += "</div>";
-        });
+        } else {
+            var flatGrid = _catGroupEls._flat;
+            if (!flatGrid) {
+                flatGrid = document.createElement("div");
+                flatGrid.className = "grid";
+                itemsEl.appendChild(flatGrid);
+                _catGroupEls._flat = flatGrid;
+            }
+            var gridHtml = "";
+            chunk.forEach(function (p) { gridHtml += cardHTML(p); });
+            flatGrid.insertAdjacentHTML("beforeend", gridHtml);
+        }
     } else {
-        html += '<div class="grid">';
-        list.forEach(function (p) {
-            html += cardHTML(p);
+        // Lista: todo va en el mismo <tbody>, con una fila de encabezado de
+        // categoría la primera vez que aparece cada una.
+        var tbody = _catGroupEls._tbody;
+        if (!tbody) {
+            tbody = document.querySelector("#catalogItems tbody");
+            _catGroupEls._tbody = tbody;
+        }
+        if (!tbody) return;
+        var rowsHtml = "";
+        chunk.forEach(function (p) {
+            if (_catUseGroups && !_catGroupEls[p.CATEGORIA]) {
+                _catGroupEls[p.CATEGORIA] = true;
+                rowsHtml +=
+                    '<tr><td colspan="7" style="background:var(--pale);font-weight:800;color:var(--blue);font-size:12px;padding:8px 14px;text-transform:uppercase;letter-spacing:.5px">' +
+                    p.CATEGORIA + "</td></tr>";
+            }
+            rowsHtml += listRowHTML(p);
         });
-        html += "</div>";
+        tbody.insertAdjacentHTML("beforeend", rowsHtml);
     }
 
-    el.innerHTML = html;
-    setTimeout(activateLazy, 30);
+    _catRendered += chunk.length;
+    activateLazy();
+
+    var sentinel = document.getElementById("catalogSentinel");
+    if (sentinel) sentinel.style.display = _catRendered < _catList.length ? "block" : "none";
+}
+
+// Un solo IntersectionObserver reusado entre renders — dispara el próximo
+// tramo apenas el sensor invisible del final de la lista entra en pantalla
+// (rootMargin adelantado, para que la próxima tanda ya esté lista antes de
+// que el usuario llegue a ver el borde real).
+function setupInfiniteScroll() {
+    if (!_catObserver) {
+        _catObserver = new IntersectionObserver(
+            function (entries) {
+                if (entries[0].isIntersecting) renderNextCatalogChunk();
+            },
+            { rootMargin: "600px" },
+        );
+    } else {
+        _catObserver.disconnect();
+    }
+    var sentinel = document.getElementById("catalogSentinel");
+    if (sentinel) _catObserver.observe(sentinel);
 }
 
 function cardHTML(p) {
@@ -1246,36 +1328,20 @@ function cardHTML(p) {
 
 function renderList(list, el, sortBar) {
     var useGroups = activeCat === "TODOS" && sortMode === "default";
-    var html = sortBar + '<div class="list-wrap"><table class="list-table">';
-    html +=
-        "<thead><tr><th>Img</th><th>Código</th><th>Descripción</th><th>Precio May.</th><th>Cantidad</th><th></th></tr></thead><tbody>";
-    if (useGroups) {
-        var bycat = {},
-            order = [];
-        list.forEach(function (p) {
-            if (!bycat[p.CATEGORIA]) {
-                bycat[p.CATEGORIA] = [];
-                order.push(p.CATEGORIA);
-            }
-            bycat[p.CATEGORIA].push(p);
-        });
-        order.forEach(function (cat) {
-            html +=
-                '<tr><td colspan="7" style="background:var(--pale);font-weight:800;color:var(--blue);font-size:12px;padding:8px 14px;text-transform:uppercase;letter-spacing:.5px">' +
-                cat +
-                "</td></tr>";
-            bycat[cat].forEach(function (p) {
-                html += listRowHTML(p);
-            });
-        });
-    } else {
-        list.forEach(function (p) {
-            html += listRowHTML(p);
-        });
-    }
-    html += "</tbody></table></div>";
-    el.innerHTML = html;
-    setTimeout(activateLazy, 30);
+    _catList = list;
+    _catRendered = 0;
+    _catUseGroups = useGroups;
+    _catViewMode = "list";
+    _catGroupEls = {};
+
+    el.innerHTML =
+        sortBar +
+        '<div id="catalogItems"><div class="list-wrap"><table class="list-table">' +
+        "<thead><tr><th>Img</th><th>Código</th><th>Descripción</th><th>Precio May.</th><th>Cantidad</th><th></th></tr></thead><tbody></tbody>" +
+        "</table></div></div>" +
+        '<div id="catalogSentinel" style="height:1px"></div>';
+    renderNextCatalogChunk();
+    setupInfiniteScroll();
 }
 
 function listCardHTML(p) {
