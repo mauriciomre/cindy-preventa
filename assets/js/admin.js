@@ -2731,7 +2731,7 @@ function imprimirPedido() {
         ".firma{border-top:1px solid #333;margin-top:50px;padding-top:6px;font-size:11px;color:#666}";
     html += "@media print{body{padding:10px}}";
     html += "</style></head><body>";
-    html += "<h1>Pedido #" + p.id + " — Cindy Mayorista (Preventa)</h1>";
+    html += "<h1>Pedido #" + p.id + " (Preventa)</h1>";
     html +=
         '<p style="color:#666;font-size:12px;margin-bottom:16px">Fecha: ' +
         fecha +
@@ -4201,7 +4201,7 @@ function executePrint() {
     }
 
     var html = '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">' +
-        '<title>Nota de Pedido Preventa Cindy Mayorista — ' + fecha + '</title>' +
+        '<title>Nota de Pedido Preventa — ' + fecha + '</title>' +
         '<style>' +
         'body{font-family:Arial,sans-serif;font-size:' + fontSize + 'px;color:#000;margin:0;padding:0}' +
         '.page{padding:14mm 12mm;max-width:210mm;margin:0 auto}' +
@@ -4225,7 +4225,7 @@ function executePrint() {
         '@media print{@page{size:A4 portrait;margin:10mm}body{font-size:' + fontSize + 'px}.page{padding:0;max-width:none}}' +
         '</style></head><body><div class="page">' +
         '<div class="header">' +
-        '<div><h1>CINDY MAYORISTA</h1><div style="font-size:1em;font-weight:600;color:#000;margin-top:2px">NOTA DE PEDIDO — PREVENTA</div></div>' +
+        '<div><h1>NOTA DE PEDIDO — PREVENTA</h1></div>' +
         '<div class="fecha">Fecha: ' + fecha + '<br><span style="font-size:9px;color:#000">Precios al momento de impresión</span></div>' +
         '</div>';
 
@@ -4257,7 +4257,7 @@ function executePrint() {
         html += '</tbody></table>';
     }
 
-    html += '<div class="footer">Cindy Mayorista — Bags Store SRL — Catálogo de Preventa</div>' +
+    html += '<div class="footer">Bags Store SRL — Catálogo de Preventa</div>' +
         '</div></body></html>';
 
     closePrintConfigModal();

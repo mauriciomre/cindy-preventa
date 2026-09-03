@@ -2075,7 +2075,7 @@ async function sendWA() {
     var total = pedidoJson.total || 0;
     // Armar mensaje WhatsApp
     var fecha = new Date().toLocaleDateString("es-AR");
-    var msg = "🛍️ *PEDIDO PREVENTA — CINDY MAYORISTA*\n━━━━━━━━━━━━━━━━━━━━━━\n";
+    var msg = "🛍️ *PEDIDO PREVENTA*\n━━━━━━━━━━━━━━━━━━━━━━\n";
     msg += "👤 *Cliente:* " + nombre + "\n";
     msg += "📞 *Tel:* +" + tel + "\n";
     if (clienteData.cuit_dni)
@@ -2139,7 +2139,7 @@ async function sendWA() {
         msg +=
             "\n⏳ Los ítems marcados \"A CONFIRMAR STOCK\" superan el stock de preventa cargado — quedan en lista de espera hasta confirmar disponibilidad.\n";
     msg +=
-        "━━━━━━━━━━━━━━━━━━━━━━\n_Pedido generado desde el catálogo de preventa de Cindy Mayorista_";
+        "━━━━━━━━━━━━━━━━━━━━━━\n_Pedido generado desde el catálogo de preventa_";
     window.open(
         "https://wa.me/" + WA_NUM + "?text=" + encodeURIComponent(msg),
         "_blank",
@@ -2209,7 +2209,7 @@ function printNota() {
     var fecha = new Date().toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
 
     var html = '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">' +
-        '<title>Nota de Pedido Preventa Cindy Mayorista — ' + fecha + '</title>' +
+        '<title>Nota de Pedido Preventa — ' + fecha + '</title>' +
         '<style>' +
         'body{font-family:Arial,sans-serif;font-size:11px;color:#000;margin:0;padding:0}' +
         '.page{padding:14mm 12mm;max-width:210mm;margin:0 auto}' +
@@ -2232,7 +2232,7 @@ function printNota() {
         '@media print{@page{size:A4 portrait;margin:10mm}body{font-size:10px}.page{padding:0;max-width:none}}' +
         '</style></head><body><div class="page">' +
         '<div class="header">' +
-        '<div><h1>CINDY MAYORISTA</h1><div style="font-size:11px;font-weight:600;color:#555;margin-top:2px">NOTA DE PEDIDO — PREVENTA (precios + IVA)</div></div>' +
+        '<div><h1>NOTA DE PEDIDO — PREVENTA</h1><div style="font-size:11px;font-weight:600;color:#555;margin-top:2px">Precios + IVA</div></div>' +
         '<div class="fecha">Fecha: ' + fecha + '<br><span style="font-size:9px;color:#999">Precios al momento de impresión</span></div>' +
         '</div>' +
         '<div class="cliente-grid">' +
@@ -2262,7 +2262,7 @@ function printNota() {
         html += '</tbody></table>';
     });
 
-    html += '<div class="footer">Cindy Mayorista — Bags Store SRL — Catálogo de Preventa</div>' +
+    html += '<div class="footer">Bags Store SRL — Catálogo de Preventa</div>' +
         '</div></body></html>';
 
     var win = window.open("", "_blank", "width=900,height=700");
