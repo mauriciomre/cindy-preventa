@@ -250,6 +250,12 @@
                                     <option value="con">Con foto</option>
                                     <option value="sin">Sin foto</option>
                                 </select>
+                                <select id="filtStock" onchange="filterTable()">
+                                    <option value="">Todo el stock</option>
+                                    <option value="pos">Stock positivo</option>
+                                    <option value="lte0">Stock ≤ 0</option>
+                                    <option value="neg">Stock &lt; 0</option>
+                                </select>
                             </div>
                             <div class="hdr-secundario">
                                 <button

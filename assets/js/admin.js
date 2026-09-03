@@ -36,7 +36,7 @@ var COLS = [
     { key: "may", label: "Mayorista", default: true },
     { key: "estado", label: "Estado", default: true },
     { key: "ingreso", label: "Ingresó", default: true },
-    { key: "stock", label: "Stock preventa", default: true },
+    { key: "stock", label: "Stock", default: true },
     { key: "multiplo", label: "Múltiplo", default: true },
     { key: "barras", label: "Cód. Barras", default: false },
     { key: "colores", label: "Colores", default: true },
@@ -1337,6 +1337,8 @@ function getFiltered() {
     var est = document.getElementById("filtEst").value;
     var prev = document.getElementById("filtPreventa").value;
     var foto = document.getElementById("filtFoto").value;
+    var stockFiltEl = document.getElementById("filtStock");
+    var stockFilt = stockFiltEl ? stockFiltEl.value : "";
     var base = sortedProducts || allProducts;
     return base.filter(
         (p) =>
@@ -1347,7 +1349,13 @@ function getFiltered() {
             (!cat || p.categoria === cat) &&
             (!est || p.estado === est) &&
             (!prev || (prev === "sin" ? !p.preventa_id : String(p.preventa_id) === prev)) &&
-            (!foto || (foto === "con" ? !!p.foto : !p.foto)),
+            (!foto || (foto === "con" ? !!p.foto : !p.foto)) &&
+            (!stockFilt ||
+                (stockFilt === "pos"
+                    ? p.stock_preventa > 0
+                    : stockFilt === "lte0"
+                    ? p.stock_preventa <= 0
+                    : p.stock_preventa < 0)),
     );
 }
 function filterTable() {
@@ -1403,7 +1411,7 @@ function renderTableHeader() {
     if (col("may")) h += "<th>Mayorista</th>";
     if (col("estado")) h += "<th>Estado</th>";
     if (col("ingreso")) h += "<th>Ingresó</th>";
-    if (col("stock")) h += "<th>Stock preventa</th>";
+    if (col("stock")) h += "<th>Stock</th>";
     if (col("multiplo")) h += '<th class="col-hide-1">Múltiplo</th>';
     if (col("barras")) h += '<th class="col-hide-1">Cód. Barras</th>';
     if (col("colores")) h += '<th class="col-hide-1">Colores</th>';
@@ -1595,11 +1603,9 @@ function renderTableFromList(list) {
                     "</td>";
             if (col("stock"))
                 html +=
-                    "<td>" +
-                    (p.stock_preventa > 0
-                        ? '<strong>' + p.stock_preventa + '</strong> disponibles'
-                        : '<span style="color:var(--muted);font-style:italic">Lista de espera</span>') +
-                    "</td>";
+                    "<td><strong" +
+                    (p.stock_preventa <= 0 ? ' style="color:var(--red)"' : "") +
+                    ">" + p.stock_preventa + "</strong></td>";
             if (col("multiplo"))
                 html +=
                     '<td class="col-hide-1" style="color:var(--muted);font-size:12px">×' +
@@ -2505,7 +2511,7 @@ async function openPedidoModal(id) {
     // Items
     html +=
         '<div class="table-wrap" style="margin-bottom:16px"><div class="table-scroll">' +
-        '<table style="width:100%"><thead><tr><th>Código</th><th>Descripción</th><th>Cant.</th><th>Precio</th><th>Subtotal</th><th>Stock</th><th style="text-align:center">Ingresó</th></tr></thead><tbody>';
+        '<table style="width:100%"><thead><tr><th>Código</th><th>Descripción</th><th>Cant.</th><th>Precio</th><th>Subtotal</th><th>Stock</th></tr></thead><tbody>';
     p.items.forEach(function (item) {
         html +=
             "<tr><td><code>" +
@@ -2525,9 +2531,6 @@ async function openPedidoModal(id) {
             (item.en_lista_espera == 1
                 ? '<span class="badge-agot">' + icon("clock") + ' LISTA DE ESPERA</span>'
                 : '<span class="badge-disp">' + icon("check") + ' Confirmado</span>') +
-            '</td><td style="text-align:center">' +
-            '<input type="checkbox" ' + (item.ingreso == 1 ? "checked " : "") +
-            "onchange=\"toggleIngresoItem('" + item.codigo + "',this.checked)\">" +
             "</td></tr>";
     });
     html += "</tbody></table></div></div>";
@@ -2567,29 +2570,6 @@ async function cambiarEstadoPedido() {
         loadPedidos();
         openPedidoModal(pedidoActual.id);
     } else toast("Error", "#c62828");
-}
-
-// "Ingresó" es un atributo del PRODUCTO (no del pedido) — togglearlo acá
-// actualiza productos.ingreso, y por lo tanto se refleja igual en cualquier
-// otro pedido pendiente que tenga ese mismo código. Se actualiza en memoria
-// (pedidoActual, TODOS los ítems con ese código) sin recargar todo el modal,
-// así el checkbox no salta de posición ni pierde el foco.
-async function toggleIngresoItem(codigo, checked) {
-    var res = await fetch(API + "?action=producto_ingreso", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ _user: authUser, _pass: authPass, codigo: codigo, ingreso: checked }),
-    });
-    var json = await res.json();
-    if (json.ok) {
-        if (pedidoActual) {
-            pedidoActual.items.forEach(function (it) {
-                if (it.codigo === codigo) it.ingreso = checked ? 1 : 0;
-            });
-        }
-        var prod = allProducts.find(function (p) { return p.codigo === codigo; });
-        if (prod) prod.ingreso = checked ? 1 : 0;
-    } else toast("Error al actualizar", "#c62828");
 }
 
 // Herramientas → "Marcar productos como ingresados": pega una lista de SKU
