@@ -2672,6 +2672,47 @@ async function marcarIngresoBulk() {
     }
 }
 
+// Herramientas → "¿Quién pidió este artículo?": al ir controlando mercadería
+// que llega físicamente al local artículo por artículo, muestra qué pedidos
+// pendientes incluyen ese código, para completarlos a mano.
+async function buscarPedidosPorProducto() {
+    var codigo = document.getElementById("lookupCodigo").value.trim();
+    var resultEl = document.getElementById("lookupResult");
+    if (!codigo) { resultEl.innerHTML = ""; return; }
+    resultEl.innerHTML = '<p style="color:var(--muted)">Buscando...</p>';
+    var res = await fetch(API + "?action=pedidos_por_producto&codigo=" + encodeURIComponent(codigo));
+    var json = await res.json();
+    if (!json.ok || !json.pedidos.length) {
+        resultEl.innerHTML = '<p style="color:var(--muted)">Ningún pedido pendiente incluye ese código.</p>';
+        return;
+    }
+    var html =
+        '<div class="table-wrap"><div class="table-scroll"><table><thead><tr>' +
+        "<th>#</th><th>Cliente</th><th>Cant.</th><th>Estado</th><th>Fecha</th><th></th>" +
+        "</tr></thead><tbody>";
+    json.pedidos.forEach(function (p) {
+        var fecha = new Date(p.created_at).toLocaleDateString("es-AR");
+        html +=
+            "<tr><td><strong>#" + p.pedido_id + "</strong></td>" +
+            "<td>" + esc(p.cliente_nombre) + "</td>" +
+            '<td style="text-align:center">' +
+            p.cantidad +
+            (p.colores_detalle
+                ? '<div style="font-size:10px;color:var(--muted)">' + formatColoresDetalle(p.colores_detalle) + "</div>"
+                : "") +
+            (p.en_lista_espera == 1
+                ? '<div style="font-size:10px;color:#b71c1c;font-weight:700">Lista de espera</div>'
+                : "") +
+            "</td>" +
+            "<td>" + estadoBadge(p.estado) + "</td>" +
+            '<td style="font-size:12px;color:var(--muted);white-space:nowrap">' + fecha + "</td>" +
+            '<td><button class="btn btn-edit" onclick="openPedidoModal(' + p.pedido_id + ')">Ver</button></td>' +
+            "</tr>";
+    });
+    html += "</tbody></table></div></div>";
+    resultEl.innerHTML = html;
+}
+
 async function guardarPedidoObs() {
     if (!pedidoActual) return;
     var obs = document.getElementById("pedidoObs").value;

@@ -570,6 +570,22 @@
                                 </button>
                                 <div id="ingresoBulkResult" style="font-size:13px;margin-top:10px"></div>
                             </div>
+                            <div class="config-box" data-tool-id="quien-pidio" data-keywords="quien pidio pidió cliente pedido articulo artículo control mercaderia mercadería llego llegó">
+                                <h3><span class="drag-handle tool-drag-handle"><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg></span><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> ¿Quién pidió este artículo?</h3>
+                                <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
+                                    Escaneá o tipeá el código de un artículo que va llegando al local, para ver
+                                    qué pedidos pendientes lo incluyen y completarlos a mano.
+                                </p>
+                                <div style="display:flex;gap:8px">
+                                    <input type="text" id="lookupCodigo" placeholder="Código del artículo" style="flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px"
+                                        onkeydown="if (event.key === 'Enter') buscarPedidosPorProducto();">
+                                    <button class="btn" style="padding:9px 12px" onclick="openBarcodeScanner(function(code){document.getElementById('lookupCodigo').value=code;buscarPedidosPorProducto();})" title="Escanear código de barras">
+                                        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+                                    </button>
+                                    <button class="btn" style="background:#0d6efd;color:#fff" onclick="buscarPedidosPorProducto()">Buscar</button>
+                                </div>
+                                <div id="lookupResult" style="font-size:13px;margin-top:12px"></div>
+                            </div>
                             <div class="config-box" data-tool-id="plantilla" data-keywords="descargar plantilla excel encabezados vacía">
                                 <h3><span class="drag-handle tool-drag-handle"><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg></span><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg> Descargar plantilla</h3>
                                 <p style="font-size:13px;color:var(--muted);margin-bottom:12px">

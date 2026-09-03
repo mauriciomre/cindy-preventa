@@ -1861,6 +1861,26 @@ switch ($action) {
         echo json_encode(['ok' => true, 'actualizados' => count($existentes), 'no_encontrados' => $noEncontrados]);
         break;
 
+    case 'pedidos_por_producto':
+        // "¿Quién pidió este artículo?" — al ir ingresando mercadería físico
+        // al local, artículo por artículo, sirve para ver de un vistazo qué
+        // pedidos pendientes lo incluyen y completarlos a mano. Excluye
+        // pedidos ELIMINADOS (no hay nada que completar ahí).
+        $codigo = trim($_GET['codigo'] ?? '');
+        if (!$codigo) { echo json_encode(['ok' => true, 'pedidos' => []]); break; }
+        $stmt = $db->prepare("SELECT pi.cantidad, pi.colores_detalle, pi.en_lista_espera,
+                p.id as pedido_id, p.estado, p.created_at,
+                c.nombre as cliente_nombre, c.telefono as cliente_tel
+            FROM pedido_items pi
+            JOIN pedidos p ON p.id = pi.pedido_id
+            JOIN clientes c ON c.id = p.cliente_id
+            WHERE pi.codigo = ? AND p.estado != 'ELIMINADO'
+            ORDER BY p.created_at ASC");
+        $stmt->bind_param('s', $codigo);
+        $stmt->execute();
+        echo json_encode(['ok' => true, 'pedidos' => $stmt->get_result()->fetch_all(MYSQLI_ASSOC)]);
+        break;
+
     case 'pedido_actualizar':
         $id = intval($_GET['id'] ?? 0);
         $data = json_decode(file_get_contents('php://input'), true);
