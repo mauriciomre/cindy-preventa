@@ -581,12 +581,19 @@
                             <div class="config-box" data-tool-id="marcar-ingresado" data-keywords="ingreso ingresó mercaderia mercadería llego llegó sku codigos masivo">
                                 <h3><span class="drag-handle tool-drag-handle"><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg></span><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> Marcar productos como ingresados</h3>
                                 <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
-                                    Pegá los códigos de los productos cuya mercadería ya llegó al local
-                                    (uno por línea, o separados por coma/espacio) y marcalos todos de una.
+                                    Agregá de a uno con sugerencias (evita tipeos), o pegá/escaneá varios
+                                    códigos de una vez (uno por línea, o separados por coma/espacio), y
+                                    marcalos todos de una.
                                 </p>
+                                <div style="position:relative;margin-bottom:10px">
+                                    <input type="text" id="ingresoAutoInput" placeholder="Escribí código o descripción..." autocomplete="off"
+                                        style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px"
+                                        oninput="ingresoAutoOnInput()" onkeydown="ingresoAutoOnKeydown(event)">
+                                    <div id="ingresoAutoSuggestions" class="qp-suggestions" style="display:none"></div>
+                                </div>
                                 <textarea id="ingresoSkuList" rows="4" style="width:100%;box-sizing:border-box;padding:10px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;resize:vertical" placeholder="Ej:&#10;529508&#10;529509&#10;R201-CRCA"></textarea>
                                 <div style="display:flex;gap:8px;margin-top:10px">
-                                    <button class="btn" style="padding:9px 12px" onclick="openBarcodeScanner(function(code){agregarCodigoALista('ingresoSkuList', code);})" title="Escanear código de barras">
+                                    <button class="btn" style="padding:9px 12px" onclick="openBarcodeScanner(function(code){ingresoAutoAgregarEscaneado(code);})" title="Escanear código de barras">
                                         <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
                                     </button>
                                     <button class="btn" style="background:#198754;color:#fff" onclick="previsualizarIngresoBulk()">

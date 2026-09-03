@@ -3140,6 +3140,108 @@ async function qpGenerarReporte() {
     await fetchYMostrarPedidosPorProductos(_qpCodigos.map(function (c) { return c.codigo; }));
 }
 
+// ── Autocompletado para "Marcar productos como ingresados" ─────────────────
+// Mismo criterio anti-typo que "¿Quién pidió?": el campo de a uno solo deja
+// pasar códigos que existen de verdad en el catálogo (sugerencia elegida, o
+// match exacto con Enter) — pero acá, en vez de armar una lista de chips
+// propia, el código elegido se agrega como una línea más al textarea que ya
+// existía (agregarCodigoALista()), así el resto del flujo (pegar/escanear
+// varios, vista previa con checkboxes, confirmar) sigue exactamente igual.
+var _ingresoAutoSuggestions = [];
+var _ingresoAutoActiveIndex = -1;
+
+function ingresoAutoOnInput() {
+    var q = document.getElementById("ingresoAutoInput").value.trim().toLowerCase();
+    if (!q) {
+        _ingresoAutoSuggestions = [];
+        _ingresoAutoActiveIndex = -1;
+        renderIngresoAutoSuggestions();
+        return;
+    }
+    var yaCargados = parsearListaCodigos(document.getElementById("ingresoSkuList").value);
+    _ingresoAutoSuggestions = allProducts
+        .filter(function (p) {
+            return (
+                yaCargados.indexOf(p.codigo) === -1 &&
+                (p.codigo.toLowerCase().indexOf(q) !== -1 || (p.descripcion || "").toLowerCase().indexOf(q) !== -1)
+            );
+        })
+        .slice(0, 8);
+    _ingresoAutoActiveIndex = _ingresoAutoSuggestions.length ? 0 : -1;
+    renderIngresoAutoSuggestions();
+}
+
+function renderIngresoAutoSuggestions() {
+    var box = document.getElementById("ingresoAutoSuggestions");
+    if (!_ingresoAutoSuggestions.length) {
+        box.style.display = "none";
+        box.innerHTML = "";
+        return;
+    }
+    box.innerHTML = _ingresoAutoSuggestions
+        .map(function (p, i) {
+            return (
+                '<div class="qp-suggestion-item' + (i === _ingresoAutoActiveIndex ? " active" : "") +
+                '" onmousedown="ingresoAutoSeleccionar(' + i + ')"><code>' + esc(p.codigo) + "</code><span>" +
+                esc(p.descripcion || "") + "</span></div>"
+            );
+        })
+        .join("");
+    box.style.display = "block";
+}
+
+function ingresoAutoOnKeydown(e) {
+    if (e.key === "ArrowDown") {
+        if (_ingresoAutoSuggestions.length) {
+            e.preventDefault();
+            _ingresoAutoActiveIndex = (_ingresoAutoActiveIndex + 1) % _ingresoAutoSuggestions.length;
+            renderIngresoAutoSuggestions();
+        }
+    } else if (e.key === "ArrowUp") {
+        if (_ingresoAutoSuggestions.length) {
+            e.preventDefault();
+            _ingresoAutoActiveIndex = (_ingresoAutoActiveIndex - 1 + _ingresoAutoSuggestions.length) % _ingresoAutoSuggestions.length;
+            renderIngresoAutoSuggestions();
+        }
+    } else if (e.key === "Enter") {
+        e.preventDefault();
+        if (_ingresoAutoActiveIndex >= 0 && _ingresoAutoSuggestions[_ingresoAutoActiveIndex]) {
+            ingresoAutoSeleccionar(_ingresoAutoActiveIndex);
+        } else {
+            var val = document.getElementById("ingresoAutoInput").value.trim();
+            var exact = val && allProducts.find(function (p) { return p.codigo.toLowerCase() === val.toLowerCase(); });
+            if (exact) ingresoAutoAgregar(exact.codigo);
+            else if (val) toast("Código no reconocido — elegí una sugerencia de la lista", "#c62828");
+        }
+    } else if (e.key === "Escape") {
+        _ingresoAutoSuggestions = [];
+        renderIngresoAutoSuggestions();
+    }
+}
+
+function ingresoAutoSeleccionar(i) {
+    var p = _ingresoAutoSuggestions[i];
+    if (p) ingresoAutoAgregar(p.codigo);
+}
+
+function ingresoAutoAgregar(codigo) {
+    agregarCodigoALista("ingresoSkuList", codigo);
+    var input = document.getElementById("ingresoAutoInput");
+    input.value = "";
+    _ingresoAutoSuggestions = [];
+    renderIngresoAutoSuggestions();
+    input.focus();
+}
+
+function ingresoAutoAgregarEscaneado(code) {
+    var p = allProducts.find(function (pp) { return pp.codigo.toLowerCase() === code.toLowerCase(); });
+    if (!p) {
+        toast("Código escaneado no reconocido: " + code, "#c62828");
+        return;
+    }
+    agregarCodigoALista("ingresoSkuList", p.codigo);
+}
+
 function renderLookupModal(codigosBuscados, grupos) {
     var body = document.getElementById("lookupModalBody");
     var codigosHtml = codigosBuscados.map(function (c) { return "<code>" + esc(c) + "</code>"; }).join(" ");
