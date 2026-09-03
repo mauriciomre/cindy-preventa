@@ -996,7 +996,14 @@ var prevDragSrc = null;
 function renderPreventaTable() {
     var html = "";
     allPreventas.forEach(function (pv) {
-        var count = allProducts.filter((p) => String(p.preventa_id) === String(pv.id)).length;
+        var productosPv = allProducts.filter((p) => String(p.preventa_id) === String(pv.id));
+        var count = productosPv.length;
+        // Si ya ingresaron TODOS los productos de una preventa activa, esa
+        // preventa dejó de tener sentido como tal — sus artículos ya se
+        // pueden comprar directo en la página principal, no son "preventa".
+        // Se sugiere desactivarla en vez de hacerlo solo — es una decisión
+        // de Mauricio, no algo que la app deba imponer.
+        var todoIngresado = pv.activa == 1 && count > 0 && productosPv.every(function (p) { return p.ingreso == 1; });
         var imgUrl = pv.imagen ? "../" + pv.imagen : null;
         html += '<tr draggable="true" data-prev-id="' + pv.id + '">';
         html += '<td><span class="drag-handle">' + icon("grip-vertical", {size: 16}) + '</span></td>';
@@ -1007,6 +1014,13 @@ function renderPreventaTable() {
                 : '<div class="thumb-ph">' + icon("megaphone") + '</div>') + '</td>';
         html += "<td><strong>" + esc(pv.nombre) + "</strong>" +
             (pv.detalle ? '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + esc(pv.detalle) + "</div>" : "") +
+            (todoIngresado
+                ? '<div style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">' +
+                  '<span class="badge-agot" style="background:#fff3e0;color:#e65100">' + icon("triangle-alert", { size: 12 }) +
+                  " Ya ingresaron todos — ¿desactivar?</span>" +
+                  '<button class="btn" style="padding:3px 8px;font-size:11px" onclick="togglePreventaActiva(' + pv.id + ',false)">Desactivar</button>' +
+                  "</div>"
+                : "") +
             "</td>";
         html += '<td><label class="switch"><input type="checkbox" ' + (pv.activa == 1 ? "checked" : "") +
             ' onchange="togglePreventaActiva(' + pv.id + ',this.checked)"><span class="switch-slider"></span></label></td>';
