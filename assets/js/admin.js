@@ -627,6 +627,7 @@ async function eliminarColor(id, nombre) {
 function toggleEditMode() {
     editMode = !editMode;
     sortedProducts = null;
+    _colSort = null;
     document.getElementById("btnEditMode").classList.toggle("on", editMode);
     document.getElementById("editModeBar").classList.toggle("on", editMode);
     document.getElementById("sortToolbar").style.display = editMode
@@ -1400,7 +1401,7 @@ function getFiltered() {
     var ingresoFiltEl = document.getElementById("filtIngreso");
     var ingresoFilt = ingresoFiltEl ? ingresoFiltEl.value : "";
     var base = sortedProducts || allProducts;
-    return base.filter(
+    var filtered = base.filter(
         (p) =>
             (!q ||
                 p.descripcion.toLowerCase().includes(q) ||
@@ -1418,6 +1419,7 @@ function getFiltered() {
                     : p.stock_preventa < 0)) &&
             (!ingresoFilt || (ingresoFilt === "si" ? p.ingreso == 1 : p.ingreso != 1)),
     );
+    return applyColSort(filtered);
 }
 function filterTable() {
     renderTable(getFiltered());
@@ -1483,26 +1485,89 @@ function col(key) {
     return visibleCols[key] !== false;
 }
 
+// Config de columnas ordenables (clave de COLS -> campo real del producto +
+// tipo de comparación). Solo las columnas con dato tabular tiene sentido
+// ordenar — Img, Colores, Acciones y el handle de drag quedan afuera.
+var SORTABLE_FIELDS = {
+    codigo: { field: "codigo", type: "text-num" },
+    desc: { field: "descripcion", type: "text" },
+    cat: { field: "categoria", type: "text" },
+    marca: { field: "marca", type: "text" },
+    preventa: { field: "preventa_nombre", type: "text" },
+    may: { field: "precio_mayorista", type: "number" },
+    estado: { field: "estado", type: "text" },
+    ingreso: { field: "ingreso", type: "number" },
+    stock: { field: "stock_preventa", type: "number" },
+    multiplo: { field: "multiplo", type: "number" },
+};
+var _colSort = null; // {key, dir: 'asc'|'desc'} — orden de vista, no se guarda en la base
+
+// Solo tiene sentido ordenar la vista mientras se está mirando/filtrando la
+// tabla — en Modo edición ya existe un ordenamiento distinto (drag & drop +
+// "Ordenar por" arriba) que sí persiste en la base vía reordenar(); mezclar
+// los dos sería confuso, así que el ícono de columna se oculta en ese modo.
+function toggleColSort(key) {
+    if (editMode) return;
+    if (_colSort && _colSort.key === key) {
+        _colSort.dir = _colSort.dir === "asc" ? "desc" : null;
+        if (!_colSort.dir) _colSort = null;
+    } else {
+        _colSort = { key: key, dir: "asc" };
+    }
+    filterTable();
+}
+
+function sortableTh(label, key, cls) {
+    var active = !editMode && _colSort && _colSort.key === key;
+    var dir = active ? _colSort.dir : null;
+    var iconName = dir === "asc" ? "arrow-up" : dir === "desc" ? "arrow-down" : "chevrons-up-down";
+    var btn = editMode
+        ? ""
+        : '<span class="th-sort-btn' + (active ? " active" : "") +
+          '" onclick="toggleColSort(\'' + key + '\')" title="Ordenar por ' + label + '">' +
+          icon(iconName, { size: 13 }) + "</span>";
+    return (
+        "<th" + (cls ? ' class="' + cls + '"' : "") + '><span class="th-label">' + label + btn + "</span></th>"
+    );
+}
+
 function renderTableHeader() {
     var h = "<thead><tr>";
     if (col("handle")) h += "<th></th>";
     if (col("img")) h += "<th>Img</th>";
-    if (col("codigo")) h += '<th class="sticky-col">Código</th>';
-    if (col("desc")) h += "<th>Descripción</th>";
-    if (col("cat")) h += '<th class="col-hide-3">Categoría</th>';
-    if (col("marca")) h += '<th class="col-hide-2">Marca</th>';
-    if (col("preventa")) h += '<th class="col-hide-3">Preventa</th>';
-    if (col("may")) h += "<th>Mayorista</th>";
-    if (col("estado")) h += "<th>Estado</th>";
-    if (col("ingreso")) h += "<th>Ingresó</th>";
-    if (col("stock")) h += "<th>Stock</th>";
-    if (col("multiplo")) h += '<th class="col-hide-1">Múltiplo</th>';
+    if (col("codigo")) h += sortableTh("Código", "codigo", "sticky-col");
+    if (col("desc")) h += sortableTh("Descripción", "desc");
+    if (col("cat")) h += sortableTh("Categoría", "cat", "col-hide-3");
+    if (col("marca")) h += sortableTh("Marca", "marca", "col-hide-2");
+    if (col("preventa")) h += sortableTh("Preventa", "preventa", "col-hide-3");
+    if (col("may")) h += sortableTh("Mayorista", "may");
+    if (col("estado")) h += sortableTh("Estado", "estado");
+    if (col("ingreso")) h += sortableTh("Ingresó", "ingreso");
+    if (col("stock")) h += sortableTh("Stock", "stock");
+    if (col("multiplo")) h += sortableTh("Múltiplo", "multiplo", "col-hide-1");
     if (col("barras")) h += '<th class="col-hide-1">Cód. Barras</th>';
     if (col("colores")) h += '<th class="col-hide-1">Colores</th>';
     if (col("acciones")) h += "<th>Acciones</th>";
     h += "</tr></thead>";
     document.querySelector("#mainTable thead") &&
         (document.querySelector("#mainTable thead").outerHTML = h);
+}
+
+function applyColSort(list) {
+    if (!_colSort || editMode) return list;
+    var cfg = SORTABLE_FIELDS[_colSort.key];
+    if (!cfg) return list;
+    var dir = _colSort.dir === "desc" ? -1 : 1;
+    var sorted = list.slice();
+    sorted.sort(function (a, b) {
+        var av = a[cfg.field], bv = b[cfg.field];
+        var cmp;
+        if (cfg.type === "number") cmp = (parseFloat(av) || 0) - (parseFloat(bv) || 0);
+        else if (cfg.type === "text-num") cmp = String(av || "").localeCompare(String(bv || ""), undefined, { numeric: true });
+        else cmp = String(av || "").localeCompare(String(bv || ""));
+        return cmp * dir;
+    });
+    return sorted;
 }
 
 function renderTableFromList(list) {

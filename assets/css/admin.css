@@ -1023,6 +1023,28 @@ td.editing {
     opacity: 1
 }
 
+/* Botón de ordenar por columna (estilo Excel/Sheets) — junto al título de
+   cada encabezado ordenable de la tabla de Productos. */
+.th-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px
+}
+.th-sort-btn {
+    display: inline-flex;
+    cursor: pointer;
+    opacity: .55;
+    border-radius: 4px;
+    padding: 2px
+}
+.th-sort-btn:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, .15)
+}
+.th-sort-btn.active {
+    opacity: 1
+}
+
 /* MODAL */
 .modal-bg {
     display: none;
