@@ -624,6 +624,33 @@ async function eliminarColor(id, nombre) {
 }
 
 // ── MODO EDICIÓN ──────────────────────────────────────────────────────────────
+// Autoguardado de celdas editadas inline — activado por defecto, se recuerda
+// por navegador en localStorage. Guarda la fila entera (mismo saveInline()
+// que ya usaba el botón manual por fila) apenas se sale de un campo, sin
+// esperar a "Guardar todo".
+var autoSaveEnabled = localStorage.getItem("tb_autosave") !== "0";
+
+function setAutoSave(checked) {
+    autoSaveEnabled = checked;
+    localStorage.setItem("tb_autosave", checked ? "1" : "0");
+}
+
+// Delegado una sola vez sobre #tbody (el elemento en sí no se recrea entre
+// renders, solo su innerHTML) — así sigue funcionando aunque la tabla se
+// vuelva a pintar mil veces. "change" alcanza para inputs de texto/número
+// (dispara al perder el foco si el valor cambió) y para los <select>.
+(function () {
+    var tbody = document.getElementById("tbody");
+    if (!tbody) return;
+    tbody.addEventListener("change", function (e) {
+        if (!editMode || !autoSaveEnabled) return;
+        var el = e.target;
+        if (!el.matches || !el.matches("[data-field]")) return;
+        var row = el.closest("tr[data-id]");
+        if (row) saveInline(parseInt(row.dataset.id), true);
+    });
+})();
+
 function toggleEditMode() {
     editMode = !editMode;
     sortedProducts = null;
@@ -633,6 +660,8 @@ function toggleEditMode() {
     document.getElementById("sortToolbar").style.display = editMode
         ? "flex"
         : "none";
+    var autoSaveCb = document.getElementById("autoSaveToggle");
+    if (autoSaveCb) autoSaveCb.checked = autoSaveEnabled;
     renderTable(getFiltered());
 }
 
@@ -1845,7 +1874,13 @@ async function saveAllInline() {
 }
 
 // ── INLINE SAVE ───────────────────────────────────────────────────────────────
-async function saveInline(id) {
+// quiet=true (autoguardado): no recarga ni vuelve a pintar toda la tabla —
+// eso destruiría los inputs justo cuando el usuario está tabulando entre
+// campos de la misma fila, haciéndole perder el foco a mitad de la edición.
+// En su lugar, actualiza allProducts en memoria en silencio (sin toast de
+// éxito tampoco, para no spamear un cartelito por cada campo perdido de
+// foco) y deja la fila tal cual está en pantalla.
+async function saveInline(id, quiet) {
     var p = allProducts.find((p) => p.id === id);
     if (!p) return;
     var row = document.querySelector('tr[data-id="' + id + '"]');
@@ -1860,7 +1895,7 @@ async function saveInline(id) {
         !data.categoria ||
         !data.precio_mayorista
     ) {
-        toast("Completá todos los campos", "#c62828");
+        if (!quiet) toast("Completá todos los campos", "#c62828");
         return;
     }
     var res = await fetch(API + "?action=editar&id=" + id, {
@@ -1870,9 +1905,13 @@ async function saveInline(id) {
     });
     var json = await res.json();
     if (json.ok) {
-        toast("Guardado");
-        await loadProducts();
-    } else toast("Error: " + (json.error || "desconocido"), "#c62828");
+        if (quiet) {
+            Object.assign(p, data);
+        } else {
+            toast("Guardado");
+            await loadProducts();
+        }
+    } else toast((quiet ? "Error al autoguardar: " : "Error: ") + (json.error || "desconocido"), "#c62828");
 }
 
 // ── DRAG & DROP PRODUCTOS ─────────────────────────────────────────────────────
