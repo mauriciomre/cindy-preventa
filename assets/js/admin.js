@@ -1391,6 +1391,29 @@ function formatColoresDetalle(json) {
     return partes.join(" · ");
 }
 
+// Celda "Preparado" de la impresión de pedido: si el ítem tiene variantes de
+// color, un cuadradito chico POR VARIANTE (con su cantidad) — así se puede
+// marcar a mano cada color por separado en vez de un solo cuadrado genérico
+// para toda la línea. Sin variantes, el cuadrado grande de siempre.
+function preparadoCell(item) {
+    if (item.colores_detalle) {
+        var obj;
+        try { obj = JSON.parse(item.colores_detalle); } catch (e) { obj = null; }
+        if (obj && Object.keys(obj).length) {
+            var rows = Object.keys(obj)
+                .map(function (color) {
+                    return (
+                        '<div class="prep-variante"><span class="deposit-box-sm"></span>' +
+                        esc(color) + ": " + obj[color] + "</div>"
+                    );
+                })
+                .join("");
+            return '<td style="text-align:left"><div class="prep-variantes">' + rows + "</div></td>";
+        }
+    }
+    return '<td style="text-align:center"><span class="deposit-box"></span></td>';
+}
+
 function renderTable(list) {
     renderTableFromList(list);
 }
@@ -2350,6 +2373,42 @@ function estadoBadge(est) {
     );
 }
 
+// Mismo aspecto visual que estadoBadge(), pero es un <select> real — permite
+// cambiar el estado con un clic directo desde la tabla de Pedidos, sin abrir
+// el modal. Solo para pedidos activos (ELIMINADO se maneja aparte, con
+// Restaurar) — mismas 4 opciones que ya ofrece el modal de detalle.
+function estadoBadgeSelect(p) {
+    var e = ESTADO_LABELS[p.estado] || { label: p.estado, color: "#666", bg: "#f5f5f5" };
+    var html =
+        '<select class="estado-badge-select" style="background:' + e.bg + ';color:' + e.color +
+        '" title="Cambiar estado" onchange="cambiarEstadoDesdeTabla(' + p.id + ',this)">';
+    ["PENDIENTE", "EN_PREPARACION", "FACTURADO", "ENVIADO"].forEach(function (est) {
+        html +=
+            '<option value="' + est + '"' + (p.estado === est ? " selected" : "") + ">" +
+            (ESTADO_LABELS[est] ? ESTADO_LABELS[est].label : est) + "</option>";
+    });
+    html += "</select>";
+    return html;
+}
+
+async function cambiarEstadoDesdeTabla(id, selectEl) {
+    var estado = selectEl.value;
+    var e = ESTADO_LABELS[estado];
+    // Feedback optimista: recolorear el select al toque, sin esperar la red.
+    if (e) { selectEl.style.background = e.bg; selectEl.style.color = e.color; }
+    var res = await fetch(API + "?action=pedido_estado&id=" + id, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ _user: authUser, _pass: authPass, estado: estado }),
+    });
+    var json = await res.json();
+    if (json.ok) {
+        var p = allPedidos.find(function (pp) { return pp.id == id; });
+        if (p) p.estado = estado;
+        toast("Estado actualizado");
+    } else toast("Error al actualizar estado", "#c62828");
+}
+
 function renderPedidosTable() {
     var html = "";
     allPedidos.forEach(function (p) {
@@ -2381,7 +2440,12 @@ function renderPedidosTable() {
             '<td style="font-weight:800;color:var(--blue)">' +
             fmt(p.total) +
             "</td>";
-        html += "<td>" + estadoBadge(p.estado) + "</td>";
+        html += "<td>" + (eliminado ? estadoBadge(p.estado) : estadoBadgeSelect(p)) + "</td>";
+        html +=
+            '<td class="col-hide-1" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' +
+            esc(p.observaciones || "") +
+            '">' + (p.observaciones ? esc(p.observaciones) : '<span style="color:var(--muted)">—</span>') +
+            "</td>";
         html +=
             '<td><div class="actions"><button class="btn btn-edit" onclick="openPedidoModal(' +
             p.id +
@@ -2401,7 +2465,7 @@ function renderPedidosTable() {
     });
     document.getElementById("pedidosTbody").innerHTML =
         html ||
-        '<tr><td colspan="7" style="text-align:center;color:#aaa;padding:30px">No hay pedidos</td></tr>';
+        '<tr><td colspan="8" style="text-align:center;color:#aaa;padding:30px">No hay pedidos</td></tr>';
 }
 
 async function eliminarPedido(id) {
@@ -2650,6 +2714,15 @@ function imprimirPedido() {
     html += ".price-sub{font-weight:bold;color:#e84e1b}";
     html +=
         ".deposit-box{display:inline-block;width:36px;height:26px;border:2px solid #333;vertical-align:middle}";
+    // Un cuadradito chico por variante (color) — se marca a mano cada uno por
+    // separado al preparar el pedido, en vez de un solo cuadrado genérico
+    // que no distingue cuánto de cada color ya se separó.
+    html +=
+        ".deposit-box-sm{display:inline-block;width:16px;height:16px;border:2px solid #333;flex-shrink:0;vertical-align:middle}";
+    html +=
+        ".prep-variantes{display:flex;flex-direction:column;gap:4px;align-items:flex-start}";
+    html +=
+        ".prep-variante{display:flex;align-items:center;gap:5px;white-space:nowrap;font-size:10px}";
     html +=
         ".total{text-align:right;font-size:16px;font-weight:bold;color:#e84e1b;margin-top:8px}";
     html +=
@@ -2693,7 +2766,7 @@ function imprimirPedido() {
         var h = "<table><thead><tr>";
         h += '<th>Código</th><th>Descripción</th><th style="text-align:center">Cant.</th>';
         h += '<th style="text-align:left">Precio / Subtotal</th>';
-        h += '<th style="text-align:center;width:70px">Preparado</th>';
+        h += '<th style="text-align:center;min-width:70px">Preparado</th>';
         h += "</tr></thead><tbody>";
         items.forEach(function (item) {
             h += "<tr>";
@@ -2713,8 +2786,7 @@ function imprimirPedido() {
                 '</span><br><span class="price-sub">' +
                 fmt(item.subtotal) +
                 "</span></td>";
-            h +=
-                '<td style="text-align:center"><span class="deposit-box"></span></td>';
+            h += preparadoCell(item);
             h += "</tr>";
         });
         h += "</tbody></table>";
