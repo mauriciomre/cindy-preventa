@@ -1005,6 +1005,24 @@ td.editing {
     background: var(--pale) !important
 }
 
+/* Barra de carga global — indicio de que hay una request en curso, en
+   cualquier sección o botón del admin (ver el wrapper de fetch en admin.js) */
+#globalLoadingBar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 3px;
+    width: 0%;
+    background: var(--blue);
+    z-index: 9999;
+    opacity: 0;
+    transition: width .3s ease, opacity .2s ease;
+    pointer-events: none
+}
+#globalLoadingBar.on {
+    opacity: 1
+}
+
 /* MODAL */
 .modal-bg {
     display: none;

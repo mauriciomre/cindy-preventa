@@ -1,5 +1,61 @@
 var API = "../api.php";
 var UPLOAD = "../upload.php";
+
+// ── Barra de carga global ────────────────────────────────────────────────────
+// Envuelve el fetch nativo una sola vez acá, así CUALQUIER llamada a la API
+// (entrar a una sección, tocar un botón, guardar algo) muestra un indicio
+// visual de "está cargando" sin tener que agregar loading state a mano en
+// cada función — antes no había ninguno, en ningún lado del admin.
+(function () {
+    var activeRequests = 0;
+    var bar = null;
+    var hideTimeout = null;
+
+    function ensureBar() {
+        if (bar) return bar;
+        bar = document.createElement("div");
+        bar.id = "globalLoadingBar";
+        document.body.appendChild(bar);
+        return bar;
+    }
+
+    function showBar() {
+        var b = ensureBar();
+        clearTimeout(hideTimeout);
+        b.classList.add("on");
+        b.style.transition = "none";
+        b.style.width = "0%";
+        // Forzar reflow para que el próximo cambio de width sí anime, aunque
+        // la barra ya estuviera en 0% de una carga anterior.
+        void b.offsetWidth;
+        b.style.transition = "";
+        requestAnimationFrame(function () {
+            b.style.width = "75%";
+        });
+    }
+
+    function hideBar() {
+        if (!bar) return;
+        bar.style.width = "100%";
+        hideTimeout = setTimeout(function () {
+            bar.classList.remove("on");
+            bar.style.width = "0%";
+        }, 250);
+    }
+
+    var origFetch = window.fetch;
+    window.fetch = function () {
+        activeRequests++;
+        if (activeRequests === 1) showBar();
+        var result = origFetch.apply(this, arguments);
+        var finish = function () {
+            activeRequests = Math.max(0, activeRequests - 1);
+            if (activeRequests === 0) hideBar();
+        };
+        result.then(finish, finish);
+        return result;
+    };
+})();
 var authUser = "",
     authPass = "";
 var allProducts = [],
@@ -1341,6 +1397,8 @@ function getFiltered() {
     var foto = document.getElementById("filtFoto").value;
     var stockFiltEl = document.getElementById("filtStock");
     var stockFilt = stockFiltEl ? stockFiltEl.value : "";
+    var ingresoFiltEl = document.getElementById("filtIngreso");
+    var ingresoFilt = ingresoFiltEl ? ingresoFiltEl.value : "";
     var base = sortedProducts || allProducts;
     return base.filter(
         (p) =>
@@ -1357,7 +1415,8 @@ function getFiltered() {
                     ? p.stock_preventa > 0
                     : stockFilt === "lte0"
                     ? p.stock_preventa <= 0
-                    : p.stock_preventa < 0)),
+                    : p.stock_preventa < 0)) &&
+            (!ingresoFilt || (ingresoFilt === "si" ? p.ingreso == 1 : p.ingreso != 1)),
     );
 }
 function filterTable() {
