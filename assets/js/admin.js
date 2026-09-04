@@ -401,6 +401,19 @@ function showSection(s, btn) {
 }
 
 // ── CONFIGURACIÓN ─────────────────────────────────────────────────────────────
+function showCfgTab(name, btn) {
+    document.querySelectorAll(".cfg-tab-panel").forEach(function (p) {
+        p.style.display = "none";
+    });
+    document.getElementById(
+        "cfgTab" + name.charAt(0).toUpperCase() + name.slice(1),
+    ).style.display = "";
+    document.querySelectorAll(".cfg-tab").forEach(function (t) {
+        t.classList.remove("on");
+    });
+    if (btn) btn.classList.add("on");
+}
+
 async function loadConfig() {
     var res = await fetch(API + "?action=config_get");
     var cfg = await res.json();

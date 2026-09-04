@@ -646,11 +646,26 @@
 
                     <!-- CONFIGURACIÓN -->
                     <div class="wrap section" id="secConfiguracion">
-                        <h2 style="font-size:16px;font-weight:800;color:var(--blue);margin-bottom:12px">Configuración</h2>
-                        <input type="search" class="tools-search" placeholder="Buscar configuración…"
-                            oninput="filterTools(this,'configuracionGrid')">
-                        <div class="tools-grid" id="configuracionGrid">
-                            <div class="config-box" data-keywords="transportes envío flota correo logística">
+                        <h2 style="font-size:16px;font-weight:800;color:var(--blue);margin-bottom:16px">Configuración</h2>
+
+                        <div class="cfg-tabs">
+                            <button class="cfg-tab on" data-cfgtab="transportes" onclick="showCfgTab('transportes', this)">
+                                <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>
+                                Transportes
+                            </button>
+                            <button class="cfg-tab" data-cfgtab="notificaciones" onclick="showCfgTab('notificaciones', this)">
+                                <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+                                Notificaciones
+                            </button>
+                            <button class="cfg-tab" data-cfgtab="seguridad" onclick="showCfgTab('seguridad', this)">
+                                <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                Seguridad
+                            </button>
+                        </div>
+
+                        <!-- TAB: TRANSPORTES -->
+                        <div class="cfg-tab-panel" id="cfgTabTransportes">
+                            <div class="config-box" style="max-width:600px">
                                 <h3><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg> Transportes</h3>
                                 <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
                                     Lista de transportes disponibles para los
@@ -682,7 +697,11 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="config-box" data-keywords="whatsapp número teléfono pedidos contacto">
+                        </div>
+
+                        <!-- TAB: NOTIFICACIONES -->
+                        <div class="cfg-tab-panel" id="cfgTabNotificaciones" style="display:none">
+                            <div class="config-box" style="max-width:600px;margin-bottom:16px">
                                 <h3><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg> WhatsApp</h3>
                                 <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
                                     Número completo con código de país, sin espacios
@@ -693,14 +712,14 @@
                                     <button class="btn btn-primary" onclick="saveWA()">Guardar</button>
                                 </div>
                             </div>
-                            <div class="config-box" data-keywords="ultramsg whatsapp automático notificación aviso pedido instance token conexión">
+                            <div class="config-box" style="max-width:600px">
                                 <h3><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"/></svg> WhatsApp — UltraMsg</h3>
                                 <p style="font-size:13px;color:var(--muted);margin-bottom:16px">
                                     Avisa automáticamente por WhatsApp (al número configurado arriba) apenas se crea un pedido
                                     nuevo, sin depender de que el cliente lo mande a mano.
                                 </p>
 
-                                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+                                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
                                     <span style="font-size:12px;font-weight:700;letter-spacing:.03em;color:var(--muted);text-transform:uppercase">Estado de conexión</span>
                                     <button class="btn" id="btnVerificarUltra" onclick="verificarUltraMsg()" style="font-size:13px;padding:6px 14px;background:#fff;border:1.5px solid var(--border);color:var(--ink);display:inline-flex;align-items:center;gap:6px">
                                         <svg class="icon" id="iconVerificarUltra" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
@@ -725,7 +744,11 @@
                                 <p style="font-size:12px;color:var(--muted);margin:-6px 0 12px">Panel de UltraMsg → tu instancia → API → Credentials.</p>
                                 <button class="btn btn-primary" onclick="saveUltraMsg()">Guardar</button>
                             </div>
-                            <div class="config-box" data-keywords="contraseña password seguridad cambiar acceso clave">
+                        </div>
+
+                        <!-- TAB: SEGURIDAD -->
+                        <div class="cfg-tab-panel" id="cfgTabSeguridad" style="display:none">
+                            <div class="config-box" style="max-width:480px">
                                 <h3><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Cambiar contraseña</h3>
                                 <div class="field" style="margin-top: 12px">
                                     <label>Contraseña actual</label>

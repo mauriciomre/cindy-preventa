@@ -1612,20 +1612,43 @@ td.editing {
     margin-top: 4px;
 }
 
-/* Configuración: Transportes puede crecer mucho (tabla dinámica) — no estirar
-   las cards vecinas (WhatsApp, Cambiar contraseña) a su misma altura */
-#configuracionGrid .config-box {
-    height: auto;
+/* Configuración: en vez de acomodar cards de alturas muy distintas en un
+   grid (nunca se veía prolijo con solo 4 cards), quedan agrupadas por tema
+   en pestañas — una sola columna de cards por pestaña, sin problema de
+   alineación entre cards de distinto alto. */
+.cfg-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    border-bottom: 1.5px solid var(--border);
 }
-
-/* Con minmax(280px,1fr) heredado de Herramientas, dentro del .wrap de 1200px
-   máx solo entran 3 columnas — la 4ta card queda sola en una segunda fila,
-   con mucho espacio vacío al lado (se nota más acá porque hoy son
-   exactamente 4 cards). Las cards de Configuración son más simples/angostas
-   que las de Herramientas (sin tablas ni textareas grandes), así que un
-   mínimo de columna más chico entran las 4 en una sola fila sin problema. */
-#configuracionGrid {
-    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+.cfg-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    background: none;
+    border: none;
+    border-bottom: 2.5px solid transparent;
+    padding: 10px 4px;
+    margin-bottom: -1.5px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--muted);
+    cursor: pointer;
+}
+.cfg-tab + .cfg-tab {
+    margin-left: 14px;
+}
+.cfg-tab:hover {
+    color: var(--ink);
+}
+.cfg-tab.on {
+    color: var(--blue);
+    border-bottom-color: var(--blue);
+}
+.cfg-tab-panel .config-box {
+    margin-bottom: 16px;
 }
 
 /* Buscador de herramientas */
