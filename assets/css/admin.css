@@ -1610,23 +1610,20 @@ td.editing {
     margin-top: 4px;
 }
 
-/* Configuración: a diferencia de Herramientas (cards de alto parecido), acá
-   conviven cards muy cortas (WhatsApp) con otras bastante más largas
-   (UltraMsg, Cambiar contraseña) — un grid en filas deja huecos feos debajo
-   de las cortas cuando la de al lado es mucho más alta. Layout tipo mosaico
-   (columnas que acomodan por altura real, como Pinterest) en vez de grid. */
-#configuracionGrid {
-    display: block;
-    column-width: 300px;
-    column-gap: 16px;
-}
+/* Configuración: Transportes puede crecer mucho (tabla dinámica) — no estirar
+   las cards vecinas (WhatsApp, Cambiar contraseña) a su misma altura */
 #configuracionGrid .config-box {
-    display: inline-block;
-    width: 100%;
     height: auto;
-    break-inside: avoid;
-    margin-bottom: 16px;
-    vertical-align: top;
+}
+
+/* Con minmax(280px,1fr) heredado de Herramientas, dentro del .wrap de 1200px
+   máx solo entran 3 columnas — la 4ta card queda sola en una segunda fila,
+   con mucho espacio vacío al lado (se nota más acá porque hoy son
+   exactamente 4 cards). Las cards de Configuración son más simples/angostas
+   que las de Herramientas (sin tablas ni textareas grandes), así que un
+   mínimo de columna más chico entran las 4 en una sola fila sin problema. */
+#configuracionGrid {
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
 }
 
 /* Buscador de herramientas */
