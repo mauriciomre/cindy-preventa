@@ -791,8 +791,14 @@ switch ($action) {
         $stock = intval($data['stock_preventa'] ?? 0);
         $preventaId = isset($data['preventa_id']) && $data['preventa_id'] !== '' ? intval($data['preventa_id']) : null;
         $ingreso = !empty($data['ingreso']) ? 1 : 0;
+        // Si el stock queda en 0 (o menos), pasa a AGOTADO solo — aunque el
+        // admin haya dejado el selector en "Disponible" al editar solo el
+        // stock desde la tabla. Nunca al revés: cargar stock no reactiva un
+        // producto que el admin pausó a mano a propósito.
+        $estado = $data['estado'];
+        if ($stock <= 0) $estado = 'AGOTADO';
         $stmt = $db->prepare("UPDATE productos SET codigo=?,descripcion=?,categoria=?,marca=?,precio_mayorista=?,foto=?,estado=?,orden=?,multiplo=?,codigo_barras=?,stock_preventa=?,preventa_id=?,ingreso=?,updated_at=NOW() WHERE id=?");
-        $stmt->bind_param('ssssdssiisiiii', $data['codigo'], $data['descripcion'], $data['categoria'], $marca, $data['precio_mayorista'], $data['foto'], $data['estado'], $orden, $multiplo, $codigoBarras, $stock, $preventaId, $ingreso, $id);
+        $stmt->bind_param('ssssdssiisiiii', $data['codigo'], $data['descripcion'], $data['categoria'], $marca, $data['precio_mayorista'], $data['foto'], $estado, $orden, $multiplo, $codigoBarras, $stock, $preventaId, $ingreso, $id);
         if ($stmt->execute()) {
             if (isset($data['colores'])) {
                 $delStmt = $db->prepare("DELETE FROM producto_colores WHERE producto_id=?");
@@ -1766,7 +1772,14 @@ switch ($action) {
                 if ($prodRow) {
                     $stockActual = intval($prodRow['stock_preventa']);
                     if ($stockActual >= $cantidad) {
-                        $upd = $db->prepare("UPDATE productos SET stock_preventa = stock_preventa - ? WHERE codigo=?");
+                        // Se agota justo con este pedido: pasa a AGOTADO solo
+                        // (deja de mostrarse/poder pedirse) en vez de quedar
+                        // "disponible" con 0 unidades cargadas.
+                        if ($stockActual - $cantidad <= 0) {
+                            $upd = $db->prepare("UPDATE productos SET stock_preventa = stock_preventa - ?, estado='AGOTADO' WHERE codigo=?");
+                        } else {
+                            $upd = $db->prepare("UPDATE productos SET stock_preventa = stock_preventa - ? WHERE codigo=?");
+                        }
                         $upd->bind_param('is', $cantidad, $codigo);
                         $upd->execute();
                     } else {

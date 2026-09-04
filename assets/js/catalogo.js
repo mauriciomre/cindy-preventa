@@ -2078,6 +2078,43 @@ async function mostrarPreviewPedido() {
             );
             return;
         }
+
+        // Alguien más pudo haber comprado en el medio y bajar el stock
+        // (sin agotarlo del todo) — recortar la cantidad pedida al stock
+        // real en vez de dejar pasar una cantidad que ya no está disponible.
+        var reducidos = [];
+        Object.keys(cart).forEach(function (code) {
+            var fresh = freshProds.find(function (p) {
+                return p.codigo === code;
+            });
+            var stockFresco = fresh ? parseInt(fresh.stock_preventa) || 0 : 0;
+            if (stockFresco > 0 && cart[code].qty > stockFresco) {
+                var multiplo = getMultiplo(code);
+                var nuevaQty = Math.max(
+                    multiplo,
+                    Math.floor(stockFresco / multiplo) * multiplo || stockFresco,
+                );
+                reducidos.push(
+                    "• " + cart[code].p.DESCRIPCION + " (Cód: " + code + "): " +
+                        cart[code].qty + " → " + nuevaQty,
+                );
+                cart[code].qty = nuevaQty;
+                var qEl = document.getElementById("qn_" + sid(code));
+                if (qEl) qEl.value = nuevaQty;
+            }
+        });
+        if (reducidos.length > 0) {
+            saveCart();
+            updateCart();
+            btn.disabled = false;
+            btn.innerHTML = icon("arrow-right") + " Continuar";
+            alert(
+                "⚠️ El stock de estos artículos bajó mientras armabas el pedido, se ajustó la cantidad:\n\n" +
+                    reducidos.join("\n") +
+                    "\n\nRevisá el pedido y tocá \"Continuar\" de nuevo.",
+            );
+            return;
+        }
     } catch (e) {}
 
     // Armar items (el servidor recalcula stock/lista de espera de forma
