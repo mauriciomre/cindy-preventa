@@ -1866,7 +1866,10 @@ function telCompleto() {
 }
 
 var telTimeout = null;
-function onTelChange() {
+function onTelChange(el) {
+    if (el && el.id === "cCaract" && el.value.length >= el.maxLength) {
+        document.getElementById("cNum").focus();
+    }
     clienteId = null;
     document.getElementById("clienteForm").style.display = "none";
     clearTimeout(telTimeout);
