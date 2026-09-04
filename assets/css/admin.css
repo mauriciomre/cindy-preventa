@@ -1437,12 +1437,14 @@ td.editing {
 /* CATEGORIES */
 .cat-inline {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     margin-bottom: 16px
 }
 
 .cat-inline input {
     flex: 1;
+    min-width: 140px;
     padding: 9px 13px;
     border: 1.5px solid var(--border);
     border-radius: 8px;
@@ -1645,8 +1647,13 @@ td.editing {
 
 .config-row {
     display: flex;
+    flex-wrap: wrap;
     gap: 10px;
     align-items: center
+}
+
+.config-row input {
+    min-width: 140px;
 }
 
 .config-row input {
