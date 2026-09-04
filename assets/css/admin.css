@@ -1610,10 +1610,23 @@ td.editing {
     margin-top: 4px;
 }
 
-/* Configuración: Transportes puede crecer mucho (tabla dinámica) — no estirar
-   las cards vecinas (WhatsApp, Cambiar contraseña) a su misma altura */
+/* Configuración: a diferencia de Herramientas (cards de alto parecido), acá
+   conviven cards muy cortas (WhatsApp) con otras bastante más largas
+   (UltraMsg, Cambiar contraseña) — un grid en filas deja huecos feos debajo
+   de las cortas cuando la de al lado es mucho más alta. Layout tipo mosaico
+   (columnas que acomodan por altura real, como Pinterest) en vez de grid. */
+#configuracionGrid {
+    display: block;
+    column-width: 300px;
+    column-gap: 16px;
+}
 #configuracionGrid .config-box {
+    display: inline-block;
+    width: 100%;
     height: auto;
+    break-inside: avoid;
+    margin-bottom: 16px;
+    vertical-align: top;
 }
 
 /* Buscador de herramientas */
