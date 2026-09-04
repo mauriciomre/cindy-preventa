@@ -484,6 +484,14 @@ function setupDB($db) {
     if ($colCheck && $colCheck->num_rows === 0) $db->query("ALTER TABLE clientes ADD COLUMN eliminado TINYINT DEFAULT 0");
     $db->query("ALTER TABLE pedidos MODIFY COLUMN estado ENUM('PENDIENTE','EN_PREPARACION','FACTURADO','ENVIADO','ELIMINADO') NOT NULL DEFAULT 'PENDIENTE'");
 
+    // Token random (no secuencial, a diferencia del id autoincremental) para
+    // el link público de solo lectura (pedido.php) — así se puede compartir
+    // sin exponer el patrón de IDs ni depender de sesión de admin.
+    $colCheck = $db->query("SHOW COLUMNS FROM pedidos LIKE 'token_publico'");
+    if ($colCheck && $colCheck->num_rows === 0) {
+        $db->query("ALTER TABLE pedidos ADD COLUMN token_publico VARCHAR(64) DEFAULT NULL, ADD UNIQUE KEY uq_token_publico (token_publico)");
+    }
+
     $db->query("CREATE TABLE IF NOT EXISTS pedido_items (
         id INT AUTO_INCREMENT PRIMARY KEY,
         pedido_id INT NOT NULL,
@@ -559,6 +567,86 @@ function normalizarTel($tel) {
     if (substr($tel, 0, 1) === '0') $tel = substr($tel, 1);
     if (strlen($tel) > 10 && substr($tel, 3, 2) === '15') $tel = substr($tel, 0, 3) . substr($tel, 5);
     return '54' . $tel;
+}
+
+// ── Aviso automático de pedido nuevo por WhatsApp (UltraMsg) ────────────────
+// Reemplaza la dependencia de que el cliente abra su propio WhatsApp y toque
+// enviar (wa.me) — el aviso a Cindy ahora lo dispara el servidor. Best-effort:
+// si falla (sin credenciales, red caída, etc.) nunca debe romper la creación
+// del pedido — se llama siempre envuelto en try/catch desde pedido_crear.
+function enviarUltraMsg($db, $to, $body) {
+    $cfg = $db->query("SELECT clave, valor FROM config WHERE clave IN ('ultramsg_instance','ultramsg_token')");
+    $creds = [];
+    while ($row = $cfg->fetch_assoc()) $creds[$row['clave']] = $row['valor'];
+    if (empty($creds['ultramsg_instance']) || empty($creds['ultramsg_token'])) {
+        return ['ok' => false, 'error' => 'UltraMsg no configurado'];
+    }
+    $endpoint = 'https://api.ultramsg.com/' . $creds['ultramsg_instance'] . '/messages/chat';
+    $payload = http_build_query(['token' => $creds['ultramsg_token'], 'to' => $to, 'body' => $body]);
+    $ctx = stream_context_create(['http' => [
+        'method' => 'POST',
+        'header' => "Content-Type: application/x-www-form-urlencoded\r\n",
+        'content' => $payload,
+        'timeout' => 15,
+        'ignore_errors' => true,
+    ]]);
+    $resp = @file_get_contents($endpoint, false, $ctx);
+    if ($resp === false) return ['ok' => false, 'error' => 'Sin respuesta de UltraMsg'];
+    $json = json_decode($resp, true);
+    if (isset($json['sent']) && ($json['sent'] === 'true' || $json['sent'] === true)) return ['ok' => true];
+    return ['ok' => false, 'error' => $resp];
+}
+
+// Porta a PHP el formato de mensaje que antes se armaba en catalogo.js
+// (sendWA) para poder mandarlo server-side. Mismo formato de emojis/secciones
+// que ya conocen Cindy y sus clientes — no cambiar el orden sin avisar.
+function armarMensajeWA($clienteData, $transporte, $obs, $itemsProcesados, $total, $urlPublica) {
+    $fecha = date('d/m/Y');
+    $msg = "🛍️ *PEDIDO PREVENTA*\n━━━━━━━━━━━━━━━━━━━━━━\n";
+    $msg .= "👤 *Cliente:* " . $clienteData['nombre'] . "\n";
+    $msg .= "📞 *Tel:* +" . $clienteData['telefono'] . "\n";
+    if (!empty($clienteData['cuit_dni'])) $msg .= "🪪 *CUIT/DNI:* " . $clienteData['cuit_dni'] . "\n";
+    if (!empty($clienteData['domicilio'])) {
+        $msg .= "📍 *Envío:* " . $clienteData['domicilio'] . ", " . ($clienteData['localidad'] ?? '') .
+            " (" . ($clienteData['cp'] ?? '') . ") " . ($clienteData['provincia'] ?? '') . "\n";
+    }
+    if (!empty($transporte)) $msg .= "🚚 *Transporte:* " . $transporte . "\n";
+    if (!empty($obs)) $msg .= "📝 *Notas:* " . $obs . "\n";
+    $msg .= "📅 *Fecha:* " . $fecha . "\n━━━━━━━━━━━━━━━━━━━━━━\n\n";
+
+    $grupos = []; $orden = [];
+    foreach ($itemsProcesados as $item) {
+        $g = $item['preventa_nombre'] ?: 'Catálogo general';
+        if (!isset($grupos[$g])) { $grupos[$g] = []; $orden[] = $g; }
+        $grupos[$g][] = $item;
+    }
+    $hayListaEspera = false;
+    foreach ($orden as $nombreGrupo) {
+        $msg .= "🏷️ *" . $nombreGrupo . "*\n";
+        foreach ($grupos[$nombreGrupo] as $item) {
+            $esperaTag = $item['en_lista_espera'] ? " ⏳ *A CONFIRMAR STOCK*" : "";
+            if ($item['en_lista_espera']) $hayListaEspera = true;
+            $coloresTxt = "";
+            if (!empty($item['colores_detalle'])) {
+                $cobj = json_decode($item['colores_detalle'], true);
+                if (is_array($cobj)) {
+                    $partes = [];
+                    foreach ($cobj as $k => $v) $partes[] = $k . ': ' . $v;
+                    $coloresTxt = "\n  " . implode(' · ', $partes);
+                }
+            }
+            $msg .= "• *" . $item['descripcion'] . "*\n  Cód: " . $item['codigo'] .
+                "  |  Cant: " . $item['cantidad'] . "  |  $" . number_format($item['subtotal'], 0, ',', '.') .
+                " + IVA" . $esperaTag . $coloresTxt . "\n\n";
+        }
+    }
+    $msg .= "━━━━━━━━━━━━━━━━━━━━━━\n*TOTAL: $" . number_format($total, 0, ',', '.') . " + IVA*\n";
+    if ($hayListaEspera) {
+        $msg .= "\n⏳ Los ítems marcados \"A CONFIRMAR STOCK\" superan el stock de preventa cargado — quedan en lista de espera hasta confirmar disponibilidad.\n";
+    }
+    $msg .= "━━━━━━━━━━━━━━━━━━━━━━\n_Pedido generado desde el catálogo de preventa_";
+    if (!empty($urlPublica)) $msg .= "\n🔗 Ver detalle: " . $urlPublica;
+    return $msg;
 }
 
 $action = $_GET['action'] ?? '';
@@ -1484,6 +1572,19 @@ switch ($action) {
         echo json_encode(['ok' => true]);
         break;
 
+    // Variante autenticada de config_get: a diferencia del público (whitelist
+    // fija a 'whatsapp'), esta devuelve todo lo guardado en config — la usa
+    // el admin para mostrar valores ya guardados de UltraMsg, que nunca deben
+    // quedar expuestos por el endpoint público.
+    case 'config_get_admin':
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $r = $db->query("SELECT clave, valor FROM config");
+        $cfg = [];
+        while ($row = $r->fetch_assoc()) $cfg[$row['clave']] = $row['valor'];
+        echo json_encode($cfg);
+        break;
+
     // ── TRANSPORTES ───────────────────────────────────────────────────────────
     case 'transportes':
         $r = $db->query("SELECT * FROM transportes WHERE activo=1 ORDER BY orden, nombre");
@@ -1694,8 +1795,9 @@ switch ($action) {
                 ];
             }
 
-            $stmt = $db->prepare("INSERT INTO pedidos (cliente_id,estado,total,observaciones) VALUES (?,?,?,?)");
-            $stmt->bind_param('isds', $cliente_id, $estado, $totalReal, $obs);
+            $tokenPublico = bin2hex(random_bytes(16));
+            $stmt = $db->prepare("INSERT INTO pedidos (cliente_id,estado,total,observaciones,token_publico) VALUES (?,?,?,?,?)");
+            $stmt->bind_param('isdss', $cliente_id, $estado, $totalReal, $obs, $tokenPublico);
             $stmt->execute();
             $pedido_id = $db->insert_id;
 
@@ -1712,7 +1814,29 @@ switch ($action) {
             $db->commit();
             $tieneListaEspera = false;
             foreach ($itemsProcesados as $it) if ($it['en_lista_espera']) { $tieneListaEspera = true; break; }
-            echo json_encode(['ok' => true, 'id' => $pedido_id, 'total' => $totalReal, 'items' => $itemsProcesados, 'tiene_lista_espera' => $tieneListaEspera]);
+
+            $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+            $basePath = rtrim(str_replace('api.php', '', $_SERVER['SCRIPT_NAME'] ?? ''), '/');
+            $urlPublica = $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? '') . $basePath . '/pedido.php?t=' . $tokenPublico;
+
+            // Aviso a Cindy: best-effort, nunca debe romper la creación del
+            // pedido (credenciales de UltraMsg sin configurar, red caída,
+            // etc. quedan solo en el log, no llegan a la respuesta del cliente).
+            try {
+                $cliente = $db->query("SELECT nombre, telefono, cuit_dni, domicilio, localidad, cp, provincia, transporte FROM clientes WHERE id=" . intval($cliente_id))->fetch_assoc();
+                if ($cliente) {
+                    $msgWA = armarMensajeWA($cliente, $cliente['transporte'] ?? '', $obs, $itemsProcesados, $totalReal, $urlPublica);
+                    $cfgWA = $db->query("SELECT valor FROM config WHERE clave='whatsapp'")->fetch_assoc();
+                    if (!empty($cfgWA['valor'])) {
+                        $resultWA = enviarUltraMsg($db, $cfgWA['valor'], $msgWA);
+                        if (!$resultWA['ok']) error_log('Aviso UltraMsg de pedido #' . $pedido_id . ' no se envió: ' . ($resultWA['error'] ?? ''));
+                    }
+                }
+            } catch (Exception $eWA) {
+                error_log('Aviso UltraMsg de pedido #' . $pedido_id . ' falló: ' . $eWA->getMessage());
+            }
+
+            echo json_encode(['ok' => true, 'id' => $pedido_id, 'total' => $totalReal, 'items' => $itemsProcesados, 'tiene_lista_espera' => $tieneListaEspera, 'token_publico' => $tokenPublico, 'url_publica' => $urlPublica]);
         } catch (Exception $e) {
             $db->rollback();
             http_response_code(400);
@@ -1807,6 +1931,30 @@ switch ($action) {
             LEFT JOIN productos pr ON pr.codigo = pi.codigo
             WHERE pi.pedido_id=$id")->fetch_all(MYSQLI_ASSOC);
         $pedido['historial'] = $db->query("SELECT * FROM pedido_estados WHERE pedido_id=$id ORDER BY created_at ASC")->fetch_all(MYSQLI_ASSOC);
+        echo json_encode($pedido);
+        break;
+
+    // Reemplazo deliberado, para acceso público, del patrón inseguro de
+    // pedido_detalle (que busca por id autoincremental sin checkAuth — ver
+    // nota en el vault). Este busca SIEMPRE por token random, nunca por id,
+    // y nunca devuelve PII (teléfono/CUIT/domicilio/email/localidad/
+    // provincia/transporte) — solo lo necesario para que un tercero (ej. el
+    // revendedor a quien el cliente le reenvía el link) vea el pedido.
+    case 'pedido_publico':
+        $token = trim($_GET['t'] ?? '');
+        if (!$token) { http_response_code(400); die(json_encode(['error' => 'Token requerido'])); }
+        $stmt = $db->prepare("SELECT p.id, p.estado, p.total, p.created_at, c.nombre as cliente_nombre
+            FROM pedidos p JOIN clientes c ON p.cliente_id=c.id WHERE p.token_publico=?");
+        $stmt->bind_param('s', $token);
+        $stmt->execute();
+        $pedido = $stmt->get_result()->fetch_assoc();
+        if (!$pedido) { http_response_code(404); die(json_encode(['error' => 'No encontrado'])); }
+        $idInterno = $pedido['id'];
+        unset($pedido['id']);
+        $itemsStmt = $db->prepare("SELECT codigo, descripcion, cantidad, precio_unitario, subtotal, en_lista_espera, preventa_nombre, colores_detalle FROM pedido_items WHERE pedido_id=?");
+        $itemsStmt->bind_param('i', $idInterno);
+        $itemsStmt->execute();
+        $pedido['items'] = $itemsStmt->get_result()->fetch_all(MYSQLI_ASSOC);
         echo json_encode($pedido);
         break;
 

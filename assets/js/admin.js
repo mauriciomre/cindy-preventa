@@ -405,6 +405,18 @@ async function loadConfig() {
     var res = await fetch(API + "?action=config_get");
     var cfg = await res.json();
     if (cfg.whatsapp) document.getElementById("cfgWA").value = cfg.whatsapp;
+    // UltraMsg nunca se expone por config_get (público) — se lee de vuelta
+    // con la variante autenticada, para no filtrar la credencial a cualquiera.
+    var resAdmin = await fetch(API + "?action=config_get_admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ _user: authUser, _pass: authPass }),
+    });
+    if (resAdmin.ok) {
+        var cfgAdmin = await resAdmin.json();
+        if (cfgAdmin.ultramsg_instance) document.getElementById("cfgUltraInstance").value = cfgAdmin.ultramsg_instance;
+        if (cfgAdmin.ultramsg_token) document.getElementById("cfgUltraToken").value = cfgAdmin.ultramsg_token;
+    }
 }
 async function saveWA() {
     var val = document.getElementById("cfgWA").value.trim();
@@ -424,6 +436,27 @@ async function saveWA() {
     });
     var json = await res.json();
     if (json.ok) toast("Número de WhatsApp actualizado");
+    else toast("Error al guardar", "#c62828");
+}
+async function saveUltraMsg() {
+    var instance = document.getElementById("cfgUltraInstance").value.trim();
+    var token = document.getElementById("cfgUltraToken").value.trim();
+    if (!instance || !token) {
+        toast("Completá instance y token", "#c62828");
+        return;
+    }
+    var r1 = await fetch(API + "?action=config_set", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ _user: authUser, _pass: authPass, clave: "ultramsg_instance", valor: instance }),
+    });
+    var r2 = await fetch(API + "?action=config_set", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ _user: authUser, _pass: authPass, clave: "ultramsg_token", valor: token }),
+    });
+    var j1 = await r1.json(), j2 = await r2.json();
+    if (j1.ok && j2.ok) toast("Credenciales de UltraMsg actualizadas");
     else toast("Error al guardar", "#c62828");
 }
 async function savePassword() {

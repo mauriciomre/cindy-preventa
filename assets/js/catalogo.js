@@ -1,5 +1,4 @@
 var API_URL = "api.php";
-var WA_NUM = "5493534140385";
 var products = [],
     cart = {},
     activeCat = "TODOS",
@@ -38,15 +37,6 @@ function loadCart() {
     }
 }
 loadCart();
-
-fetch(API_URL + "?action=config_get")
-    .then(function (r) {
-        return r.json();
-    })
-    .then(function (cfg) {
-        if (cfg.whatsapp) WA_NUM = cfg.whatsapp;
-    })
-    .catch(function () {});
 
 // Fade suave (ver .loaded en catalogo.css): el listener de "load" se
 // engancha ANTES de asignar el src, así una imagen ya cacheada (que puede
@@ -1974,7 +1964,11 @@ function onTransporteChange() {
         sel === "OTRO" ? "block" : "none";
 }
 
-async function sendWA() {
+// Datos validados en mostrarPreviewPedido(), reusados por confirmarPedido()
+// al tocar "Confirmar pedido" dentro del modal de vista previa.
+var _previewData = null;
+
+async function mostrarPreviewPedido() {
     var keys = Object.keys(cart);
     if (!keys.length) {
         alert("Agregá al menos un producto.");
@@ -2035,9 +2029,8 @@ async function sendWA() {
         .getElementById("cNotas")
         .value.trim()
         .toUpperCase();
-    var btn = document.querySelector(".wa");
+    var btn = document.getElementById("btnContinuarPedido");
     btn.disabled = true;
-    btn.style.background = "#1a9e52";
     btn.innerHTML =
         '<span style="display:inline-block;animation:spin .6s linear infinite;margin-right:8px">' + icon("loader-circle") + '</span> Verificando stock...';
 
@@ -2077,8 +2070,7 @@ async function sendWA() {
             saveCart();
             updateCart();
             btn.disabled = false;
-            btn.style.background = "";
-            btn.innerHTML = icon("send") + " Confirmar y enviar pedido";
+            btn.innerHTML = icon("arrow-right") + " Continuar";
             alert(
                 "⚠️ Los siguientes artículos se agotaron y fueron quitados de tu pedido:\n\n" +
                     agotados.join("\n") +
@@ -2088,30 +2080,15 @@ async function sendWA() {
         }
     } catch (e) {}
 
-    btn.innerHTML =
-        '<span style="display:inline-block;animation:spin .6s linear infinite;margin-right:8px">' + icon("loader-circle") + '</span> Procesando...';
-    // Guardar cliente en BD
-    var cRes = await fetch(API_URL + "?action=cliente_guardar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(clienteData),
-    });
-    var cJson = await cRes.json();
-    if (!cJson.ok) {
-        alert("Error al guardar datos del cliente");
-        btn.disabled = false;
-        btn.style.background = "";
-        btn.innerHTML = icon("send") + " Confirmar y enviar pedido";
-        return;
-    }
-    clienteId = cJson.id;
     // Armar items (el servidor recalcula stock/lista de espera de forma
     // atómica al crear el pedido — acá solo mandamos lo que el cliente eligió)
     var itemsEnviar = [];
+    var totalPreview = 0;
     Object.keys(cart).forEach(function (code) {
         var item = cart[code];
         var precio = parseFloat(item.p.PRECIO_MAYORISTA) || 0;
         var sub = Math.round(precio * item.qty);
+        totalPreview += sub;
         itemsEnviar.push({
             codigo: item.p.CODIGO,
             descripcion: item.p.DESCRIPCION,
@@ -2121,102 +2098,107 @@ async function sendWA() {
             colores: item.colores || null,
         });
     });
-    // Guardar pedido en BD — la respuesta trae el total real y qué ítems
-    // quedaron en lista de espera por stock insuficiente al confirmar
+
+    _previewData = { clienteData, notasPedido, itemsEnviar, nombre };
+
+    var html = "";
+    itemsEnviar.forEach(function (item) {
+        html +=
+            '<div class="preview-item"><div><div class="pi-desc">' +
+            item.descripcion +
+            '</div><div class="pi-cod">Cód: ' +
+            item.codigo +
+            "  |  Cant: " +
+            item.cantidad +
+            '</div></div><div class="pi-sub">' +
+            fmt(item.subtotal) +
+            " + IVA</div></div>";
+    });
+    html +=
+        '<div class="preview-total"><span>Total</span><span>' +
+        fmt(totalPreview) +
+        " + IVA</span></div>";
+    html += '<div class="preview-datos">' + clienteData.nombre + " · +" + tel;
+    if (clienteData.domicilio)
+        html += " · " + clienteData.domicilio + ", " + (clienteData.localidad || "");
+    html += "</div>";
+    document.getElementById("previewModalBody").innerHTML = html;
+    document.getElementById("previewModal").classList.add("open");
+
+    btn.disabled = false;
+    btn.innerHTML = icon("arrow-right") + " Continuar";
+}
+
+function closePreviewPedido() {
+    document.getElementById("previewModal").classList.remove("open");
+}
+
+async function confirmarPedido() {
+    if (!_previewData) return;
+    var btn = document.getElementById("btnConfirmarPedido");
+    btn.disabled = true;
+    btn.innerHTML =
+        '<span style="display:inline-block;animation:spin .6s linear infinite;margin-right:8px">' + icon("loader-circle") + '</span> Procesando...';
+
+    // Guardar cliente en BD
+    var cRes = await fetch(API_URL + "?action=cliente_guardar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(_previewData.clienteData),
+    });
+    var cJson = await cRes.json();
+    if (!cJson.ok) {
+        alert("Error al guardar datos del cliente");
+        btn.disabled = false;
+        btn.innerHTML = icon("check") + " Confirmar pedido";
+        return;
+    }
+    clienteId = cJson.id;
+
+    // Guardar pedido en BD — la respuesta trae el total real, qué ítems
+    // quedaron en lista de espera, y el link público para compartir. El
+    // aviso a Cindy ya se dispara solo, del lado del servidor (UltraMsg).
     var pedidoRes = await fetch(API_URL + "?action=pedido_crear", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
             cliente_id: clienteId,
-            items: itemsEnviar,
-            observaciones: notasPedido,
+            items: _previewData.itemsEnviar,
+            observaciones: _previewData.notasPedido,
         }),
     });
     var pedidoJson = await pedidoRes.json();
     if (!pedidoJson.ok) {
         alert("Error al crear el pedido: " + (pedidoJson.error || ""));
         btn.disabled = false;
-        btn.style.background = "";
-        btn.innerHTML = icon("send") + " Confirmar y enviar pedido";
+        btn.innerHTML = icon("check") + " Confirmar pedido";
         return;
     }
-    var itemsFinal = pedidoJson.items || itemsEnviar;
     var total = pedidoJson.total || 0;
-    // Armar mensaje WhatsApp
-    var fecha = new Date().toLocaleDateString("es-AR");
-    var msg = "🛍️ *PEDIDO PREVENTA*\n━━━━━━━━━━━━━━━━━━━━━━\n";
-    msg += "👤 *Cliente:* " + nombre + "\n";
-    msg += "📞 *Tel:* +" + tel + "\n";
-    if (clienteData.cuit_dni)
-        msg += "🪪 *CUIT/DNI:* " + clienteData.cuit_dni + "\n";
-    if (clienteData.domicilio)
-        msg +=
-            "📍 *Envío:* " +
-            clienteData.domicilio +
-            ", " +
-            (clienteData.localidad || "") +
-            " (" +
-            (clienteData.cp || "") +
-            ") " +
-            (clienteData.provincia || "") +
-            "\n";
-    if (transporte) msg += "🚚 *Transporte:* " + transporte + "\n";
-    if (clienteData.notas) msg += "📝 *Notas:* " + clienteData.notas + "\n";
-    msg += "📅 *Fecha:* " + fecha + "\n━━━━━━━━━━━━━━━━━━━━━━\n\n";
-    var hayListaEspera = false;
-    // Agrupar por preventa (snapshot tomado por el backend al crear el
-    // pedido) para que quede claro de qué campaña es cada ítem, sobre todo
-    // cuando el pedido mezcla artículos de más de una preventa.
-    var gruposWA = {}, ordenWA = [];
-    itemsFinal.forEach(function (item) {
-        var g = item.preventa_nombre || "Catálogo general";
-        if (!gruposWA[g]) { gruposWA[g] = []; ordenWA.push(g); }
-        gruposWA[g].push(item);
-    });
-    ordenWA.forEach(function (nombreGrupo) {
-        msg += "🏷️ *" + nombreGrupo + "*\n";
-        gruposWA[nombreGrupo].forEach(function (item) {
-            var esperaTag = item.en_lista_espera == 1 ? " ⏳ *A CONFIRMAR STOCK*" : "";
-            if (item.en_lista_espera == 1) hayListaEspera = true;
-            var coloresTxt = "";
-            if (item.colores_detalle) {
-                try {
-                    var cobj = JSON.parse(item.colores_detalle);
-                    coloresTxt = "\n  " + Object.keys(cobj).map(function (k) { return k + ": " + cobj[k]; }).join(" · ");
-                } catch (e) {}
-            }
-            msg +=
-                "• *" +
-                item.descripcion +
-                "*\n  Cód: " +
-                item.codigo +
-                "  |  Cant: " +
-                item.cantidad +
-                "  |  " +
-                fmt(item.subtotal) +
-                " + IVA" +
-                esperaTag +
-                coloresTxt +
-                "\n\n";
-        });
-    });
-    msg +=
-        "━━━━━━━━━━━━━━━━━━━━━━\n*TOTAL: " +
-        fmt(total) +
-        " + IVA*\n";
-    if (hayListaEspera)
-        msg +=
-            "\n⏳ Los ítems marcados \"A CONFIRMAR STOCK\" superan el stock de preventa cargado — quedan en lista de espera hasta confirmar disponibilidad.\n";
-    msg +=
-        "━━━━━━━━━━━━━━━━━━━━━━\n_Pedido generado desde el catálogo de preventa_";
-    window.open(
-        "https://wa.me/" + WA_NUM + "?text=" + encodeURIComponent(msg),
-        "_blank",
-    );
-    // Botón queda en estado enviado
-    btn.style.background = "#2e7d32";
-    btn.innerHTML = icon("circle-check-big") + " Pedido enviado";
-    btn.disabled = true;
+
+    // Compartir el link público del pedido con quien el cliente quiera
+    // (Flavio, etc.) — Web Share API si el navegador la soporta, si no
+    // copiar el link al portapapeles.
+    if (pedidoJson.url_publica) {
+        var shareData = {
+            title: "Pedido",
+            text: "Pedido de " + _previewData.nombre + " — " + fmt(total) + " + IVA",
+            url: pedidoJson.url_publica,
+        };
+        if (navigator.share) {
+            navigator.share(shareData).catch(function () {});
+        } else if (navigator.clipboard) {
+            navigator.clipboard
+                .writeText(pedidoJson.url_publica)
+                .then(function () {
+                    toastCarrito("🔗 Link del pedido copiado al portapapeles", "#2e7d32");
+                })
+                .catch(function () {});
+        }
+    }
+
+    // Botón queda en estado confirmado
+    btn.innerHTML = icon("circle-check-big") + " Pedido confirmado";
     // Limpiar carrito y resetear cards
     cart = {};
     saveCart();
@@ -2250,12 +2232,12 @@ async function sendWA() {
                 ab.classList.remove("on");
             }
         });
-    // Rehabilitar botón después de 3 segundos para nuevos pedidos
+    _previewData = null;
     setTimeout(function () {
+        closePreviewPedido();
         btn.disabled = false;
-        btn.style.background = "";
-        btn.innerHTML = icon("send") + " Confirmar y enviar pedido";
-    }, 3000);
+        btn.innerHTML = icon("check") + " Confirmar pedido";
+    }, 1500);
 }
 
 start();

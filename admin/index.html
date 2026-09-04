@@ -693,6 +693,22 @@
                                     <button class="btn btn-primary" onclick="saveWA()">Guardar</button>
                                 </div>
                             </div>
+                            <div class="config-box" data-keywords="ultramsg whatsapp automático notificación aviso pedido instance token">
+                                <h3><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"/></svg> Notificaciones automáticas (UltraMsg)</h3>
+                                <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
+                                    Credenciales para avisar automáticamente por WhatsApp (al número configurado arriba)
+                                    apenas se crea un pedido nuevo, sin depender de que el cliente lo mande a mano.
+                                </p>
+                                <div class="field">
+                                    <label>Instance ID</label>
+                                    <input type="text" id="cfgUltraInstance" placeholder="instance136480" />
+                                </div>
+                                <div class="field">
+                                    <label>Token</label>
+                                    <input type="text" id="cfgUltraToken" placeholder="Token de la API de UltraMsg" />
+                                </div>
+                                <button class="btn btn-primary" onclick="saveUltraMsg()">Guardar</button>
+                            </div>
                             <div class="config-box" data-keywords="contraseña password seguridad cambiar acceso clave">
                                 <h3><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Cambiar contraseña</h3>
                                 <div class="field" style="margin-top: 12px">
