@@ -1591,6 +1591,30 @@ switch ($action) {
         echo json_encode($cfg);
         break;
 
+    // Botón "Verificar" del box de UltraMsg en Configuración — mismo patrón
+    // ya usado en gestor_tareas (GET .../instance/status?token=...).
+    case 'config_ultramsg_status':
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $cfg = $db->query("SELECT clave, valor FROM config WHERE clave IN ('ultramsg_instance','ultramsg_token')");
+        $creds = [];
+        while ($row = $cfg->fetch_assoc()) $creds[$row['clave']] = $row['valor'];
+        if (empty($creds['ultramsg_instance']) || empty($creds['ultramsg_token'])) {
+            echo json_encode(['connected' => false, 'status' => 'not_configured']);
+            break;
+        }
+        $url = 'https://api.ultramsg.com/' . $creds['ultramsg_instance'] . '/instance/status?token=' . urlencode($creds['ultramsg_token']);
+        $ctx = stream_context_create(['http' => ['timeout' => 15, 'ignore_errors' => true]]);
+        $resp = @file_get_contents($url, false, $ctx);
+        if ($resp === false) { echo json_encode(['connected' => false, 'status' => 'error', 'error' => 'Sin respuesta de UltraMsg']); break; }
+        $json = json_decode($resp, true);
+        $status = $json['instance_data']['status']
+            ?? $json['status']['accountStatus']['status']
+            ?? $json['accountStatus']['status']
+            ?? 'unknown';
+        echo json_encode(['connected' => $status === 'authenticated', 'status' => $status]);
+        break;
+
     // ── TRANSPORTES ───────────────────────────────────────────────────────────
     case 'transportes':
         $r = $db->query("SELECT * FROM transportes WHERE activo=1 ORDER BY orden, nombre");

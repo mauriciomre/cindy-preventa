@@ -459,6 +459,40 @@ async function saveUltraMsg() {
     if (j1.ok && j2.ok) toast("Credenciales de UltraMsg actualizadas");
     else toast("Error al guardar", "#c62828");
 }
+
+// Mismo patrón que ya usa gestor_tareas: GET .../instance/status?token=...,
+// "connected" = status === "authenticated". Acá, un solo botón "Verificar"
+// dispara la consulta (sin polling automático, a diferencia de la vinculación
+// por QR de Baileys en gestor_tareas — UltraMsg no necesita escanear nada acá).
+async function verificarUltraMsg() {
+    var btn = document.getElementById("btnVerificarUltra");
+    var icon = document.getElementById("iconVerificarUltra");
+    var wrap = document.getElementById("ultraStatusWrap");
+    btn.disabled = true;
+    icon.style.animation = "spin .6s linear infinite";
+    wrap.innerHTML = '<p style="font-size:13px;color:var(--muted);margin:0">Verificando…</p>';
+    try {
+        var res = await fetch(API + "?action=config_ultramsg_status", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ _user: authUser, _pass: authPass }),
+        });
+        var data = await res.json();
+        if (data.status === "not_configured") {
+            wrap.innerHTML = '<p style="font-size:13px;color:var(--muted);margin:0">Todavía no guardaste las credenciales de abajo.</p>';
+        } else if (data.connected) {
+            wrap.innerHTML = '<span class="badge-disp">● Conectado</span>';
+        } else {
+            wrap.innerHTML =
+                '<span class="badge-agot">● Desconectado — ' + (data.status || data.error || "") + '</span>' +
+                '<p style="font-size:12px;color:var(--muted);margin:8px 0 0">Ingresá al panel de UltraMsg → tu instancia → escaneá el código QR con el celular vinculado.</p>';
+        }
+    } catch (e) {
+        wrap.innerHTML = '<span class="badge-agot">● Error al verificar</span>';
+    }
+    btn.disabled = false;
+    icon.style.animation = "";
+}
 async function savePassword() {
     var actual = document.getElementById("cfgPassActual").value.trim();
     var nueva = document.getElementById("cfgPassNueva").value.trim();

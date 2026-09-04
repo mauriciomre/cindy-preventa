@@ -1,3 +1,7 @@
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
 :root {
     --blue: #e84e1b;
     --blue2: #c53f14;
