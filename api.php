@@ -538,6 +538,19 @@ function setupDB($db) {
         estado VARCHAR(50) NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // Cartel de opinión tras el primer pedido del cliente (catálogo público).
+    // Un cliente puede opinar más de una vez en teoría (nada lo bloquea acá,
+    // el límite real de "una sola vez" lo pone el localStorage del lado del
+    // cliente) — pedido_id queda como referencia de contexto, no como llave.
+    $db->query("CREATE TABLE IF NOT EXISTS opiniones (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        cliente_id INT NOT NULL,
+        pedido_id INT NOT NULL,
+        estrellas TINYINT NOT NULL,
+        comentario TEXT DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
 
 // Resuelve el nombre de preventa (texto libre de la planilla) contra una
@@ -1873,7 +1886,13 @@ switch ($action) {
                 error_log('Aviso UltraMsg de pedido #' . $pedido_id . ' falló: ' . $eWA->getMessage());
             }
 
-            echo json_encode(['ok' => true, 'id' => $pedido_id, 'total' => $totalReal, 'items' => $itemsProcesados, 'tiene_lista_espera' => $tieneListaEspera, 'token_publico' => $tokenPublico, 'url_publica' => $urlPublica]);
+            // Para el cartel de opinión del catálogo público: es "primer
+            // pedido" si, contando este que se acaba de crear, el cliente
+            // tiene un solo pedido no eliminado en total.
+            $cntPedidos = $db->query("SELECT COUNT(*) as n FROM pedidos WHERE cliente_id=" . intval($cliente_id) . " AND estado != 'ELIMINADO'")->fetch_assoc();
+            $esPrimerPedido = intval($cntPedidos['n'] ?? 0) === 1;
+
+            echo json_encode(['ok' => true, 'id' => $pedido_id, 'total' => $totalReal, 'items' => $itemsProcesados, 'tiene_lista_espera' => $tieneListaEspera, 'token_publico' => $tokenPublico, 'url_publica' => $urlPublica, 'es_primer_pedido' => $esPrimerPedido]);
         } catch (Exception $e) {
             $db->rollback();
             http_response_code(400);
@@ -1993,6 +2012,32 @@ switch ($action) {
         $itemsStmt->execute();
         $pedido['items'] = $itemsStmt->get_result()->fetch_all(MYSQLI_ASSOC);
         echo json_encode($pedido);
+        break;
+
+    // Cartel de opinión (público, catálogo) — sin checkAuth a propósito, lo
+    // manda el cliente justo después de confirmar su primer pedido.
+    case 'opinion_crear':
+        $data = json_decode(file_get_contents('php://input'), true);
+        $clienteIdOp = intval($data['cliente_id'] ?? 0);
+        $pedidoIdOp = intval($data['pedido_id'] ?? 0);
+        $estrellas = intval($data['estrellas'] ?? 0);
+        $comentario = trim($data['comentario'] ?? '');
+        if (!$clienteIdOp || !$pedidoIdOp || $estrellas < 1 || $estrellas > 5) {
+            http_response_code(400);
+            die(json_encode(['error' => 'Datos incompletos']));
+        }
+        $stmt = $db->prepare("INSERT INTO opiniones (cliente_id, pedido_id, estrellas, comentario) VALUES (?,?,?,?)");
+        $stmt->bind_param('iiis', $clienteIdOp, $pedidoIdOp, $estrellas, $comentario);
+        $stmt->execute();
+        echo json_encode(['ok' => true]);
+        break;
+
+    // Listado de opiniones para el admin.
+    case 'opiniones':
+        $r = $db->query("SELECT o.id, o.estrellas, o.comentario, o.created_at, c.nombre as cliente_nombre, c.telefono as cliente_tel
+            FROM opiniones o JOIN clientes c ON o.cliente_id=c.id
+            ORDER BY o.created_at DESC");
+        echo json_encode($r->fetch_all(MYSQLI_ASSOC));
         break;
 
     case 'pedido_estado':

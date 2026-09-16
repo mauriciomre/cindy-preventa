@@ -2168,6 +2168,12 @@ async function mostrarPreviewPedido() {
 
 function closePreviewPedido() {
     document.getElementById("previewModal").classList.remove("open");
+    // Por si se cerró desde el cartel de opinión (que oculta esta fila y
+    // cambia el título para mostrar sus propios botones) — vuelve a su
+    // estado normal para el próximo pedido.
+    document.getElementById("previewModalActions").style.display = "";
+    document.getElementById("previewModalTitle").innerHTML =
+        '<svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg> Revisá tu pedido';
 }
 
 async function confirmarPedido() {
@@ -2270,11 +2276,100 @@ async function confirmarPedido() {
             }
         });
     _previewData = null;
-    setTimeout(function () {
-        closePreviewPedido();
-        btn.disabled = false;
-        btn.innerHTML = icon("check") + " Confirmar pedido";
-    }, 1500);
+    var pedidoIdActual = pedidoJson.id;
+    var mostrarOpinion = pedidoJson.es_primer_pedido && !opinionYaMostrada();
+    setTimeout(
+        function () {
+            if (mostrarOpinion) mostrarCartelOpinion(pedidoIdActual);
+            else closePreviewPedido();
+            btn.disabled = false;
+            btn.innerHTML = icon("check") + " Confirmar pedido";
+        },
+        mostrarOpinion ? 900 : 1500,
+    );
+}
+
+// ── Cartel de opinión (solo en el primer pedido de cada cliente) ────────────
+// Se muestra una única vez por navegador, la haya respondido o no — el
+// criterio de "primer pedido" es del servidor (pedido_crear ya lo calcula),
+// pero una vez mostrado acá no vuelve a aparecer aunque el cliente haga
+// más pedidos, ni aunque el servidor lo siga marcando como primero (no
+// debería pasar, pero localStorage manda si alguna vez pasa).
+var _opinionStars = 0;
+
+function opinionYaMostrada() {
+    try {
+        return localStorage.getItem("tb_opinion_shown") === "1";
+    } catch (e) {
+        return false;
+    }
+}
+
+function marcarOpinionMostrada() {
+    try {
+        localStorage.setItem("tb_opinion_shown", "1");
+    } catch (e) {}
+}
+
+function mostrarCartelOpinion(pedidoId) {
+    _opinionStars = 0;
+    document.getElementById("previewModalActions").style.display = "none";
+    document.getElementById("previewModalTitle").innerHTML =
+        icon("star") + " ¡Gracias por tu pedido!";
+    var estrellasHtml = [1, 2, 3, 4, 5]
+        .map(function (n) {
+            return (
+                '<button type="button" class="opinion-star" data-n="' + n +
+                '" onclick="setOpinionStars(' + n + ')">' + icon("star") + "</button>"
+            );
+        })
+        .join("");
+    document.getElementById("previewModalBody").innerHTML =
+        '<div style="text-align:center;color:var(--muted);font-size:0.9em">Esto es mejor que cargar tu pedido en Excel. Tu opinión nos ayuda a mejorar.</div>' +
+        '<div class="opinion-stars" id="opinionStars">' + estrellasHtml + "</div>" +
+        '<textarea class="opinion-comment" id="opinionComment" placeholder="Contanos qué te pareció (opcional)"></textarea>' +
+        '<div style="display:flex;gap:8px;margin-top:14px">' +
+        '<button class="continue-btn" onclick="omitirOpinion()" style="flex:1">Omitir</button>' +
+        '<button class="wa" id="btnEnviarOpinion" onclick="enviarOpinion(' + pedidoId + ')" style="flex:1">Enviar opinión</button>' +
+        "</div>";
+}
+
+function setOpinionStars(n) {
+    _opinionStars = n;
+    document.querySelectorAll("#opinionStars .opinion-star").forEach(function (b) {
+        b.classList.toggle("on", parseInt(b.dataset.n) <= n);
+    });
+}
+
+function omitirOpinion() {
+    marcarOpinionMostrada();
+    closePreviewPedido();
+}
+
+async function enviarOpinion(pedidoId) {
+    if (_opinionStars < 1) {
+        toastCarrito("Elegí al menos una estrella", "#c62828");
+        return;
+    }
+    var btn = document.getElementById("btnEnviarOpinion");
+    btn.disabled = true;
+    btn.innerHTML = icon("circle-check-big") + " Enviando...";
+    var comentario = document.getElementById("opinionComment").value.trim();
+    try {
+        await fetch(API_URL + "?action=opinion_crear", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                cliente_id: clienteId,
+                pedido_id: pedidoId,
+                estrellas: _opinionStars,
+                comentario: comentario,
+            }),
+        });
+    } catch (e) {}
+    marcarOpinionMostrada();
+    toastCarrito("¡Gracias por tu opinión!", "#2e7d32");
+    closePreviewPedido();
 }
 
 start();

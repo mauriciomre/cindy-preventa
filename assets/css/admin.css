@@ -1499,6 +1499,16 @@ td.editing {
     }
 }
 
+/* OPINIONES: estrellas en la tabla del admin */
+.star-on {
+    color: var(--blue);
+    fill: var(--blue)
+}
+
+.star-off {
+    color: var(--border)
+}
+
 /* TOAST */
 .toast {
     position: fixed;

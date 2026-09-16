@@ -399,6 +399,7 @@ function showSection(s, btn) {
     if (s === "colores") renderColoresTable();
     if (s === "pedidos") loadPedidos();
     if (s === "clientes") loadClientes();
+    if (s === "opiniones") loadOpiniones();
     if (window.innerWidth <= 860) closeSidebarMobile();
 }
 
@@ -3691,6 +3692,32 @@ function applyClientColModal() {
 
 function ccol(key) {
     return visibleClientCols[key] !== false;
+}
+
+// ── OPINIONES (cartel post-primer-pedido del catálogo público) ──────────────
+async function loadOpiniones() {
+    var tbody = document.getElementById("opinionesTbody");
+    var res = await fetch(API + "?action=opiniones");
+    var opiniones = await res.json();
+    if (!opiniones.length) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted)">Todavía no hay opiniones.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = opiniones
+        .map(function (o) {
+            var estrellasHtml = "";
+            for (var i = 1; i <= 5; i++) {
+                estrellasHtml += icon("star", { size: 14, class: i <= o.estrellas ? "star-on" : "star-off" });
+            }
+            var fecha = new Date(o.created_at).toLocaleDateString("es-AR");
+            return (
+                "<tr><td>" + esc(o.cliente_nombre) +
+                '</td><td style="white-space:nowrap">' + estrellasHtml +
+                "</td><td>" + (o.comentario ? esc(o.comentario) : '<span style="color:var(--muted)">—</span>') +
+                "</td><td>" + fecha + "</td></tr>"
+            );
+        })
+        .join("");
 }
 
 async function loadClientes() {
