@@ -181,6 +181,7 @@ async function doLogin() {
             applyToolsOrder();
             initToolsDragDrop();
             renderQpChips();
+            initFiltrosPanel();
         } else {
             document.getElementById("lerr").textContent =
                 "Usuario o contraseña incorrectos";
@@ -226,6 +227,7 @@ async function tryAutoLogin() {
             applyToolsOrder();
             initToolsDragDrop();
             renderQpChips();
+            initFiltrosPanel();
         } else {
             localStorage.removeItem("tb_admin_user");
             localStorage.removeItem("tb_admin_pass");
@@ -730,6 +732,44 @@ function setAutoSave(checked) {
         if (row) saveInline(parseInt(row.dataset.id), true);
     });
 })();
+
+// ── Panel de filtros de Productos (colapsable) ──────────────────────────────
+// Empieza cerrado siempre (no solo en pantallas chicas) — con 6 selects
+// juntos, mantenerlos siempre visibles era lo que más empujaba la tabla
+// hacia abajo. Se recuerda abierto/cerrado por navegador, no por usuario.
+var FILTROS_PANEL_KEY = "tb_filtros_open";
+
+function toggleFiltrosPanel() {
+    var panel = document.getElementById("hdrFiltros");
+    if (!panel) return;
+    var open = panel.style.display !== "none";
+    panel.style.display = open ? "none" : "flex";
+    try { localStorage.setItem(FILTROS_PANEL_KEY, open ? "0" : "1"); } catch (e) {}
+}
+
+function initFiltrosPanel() {
+    var panel = document.getElementById("hdrFiltros");
+    if (!panel) return;
+    var wasOpen = false;
+    try { wasOpen = localStorage.getItem(FILTROS_PANEL_KEY) === "1"; } catch (e) {}
+    panel.style.display = wasOpen ? "flex" : "none";
+}
+
+function updateFiltrosBadge() {
+    var badge = document.getElementById("filtrosBadge");
+    if (!badge) return;
+    var ids = ["filtCat", "filtEst", "filtPreventa", "filtFoto", "filtStock", "filtIngreso"];
+    var activos = ids.filter(function (id) {
+        var el = document.getElementById(id);
+        return el && el.value !== "";
+    }).length;
+    if (activos > 0) {
+        badge.textContent = activos;
+        badge.style.display = "flex";
+    } else {
+        badge.style.display = "none";
+    }
+}
 
 function toggleEditMode() {
     editMode = !editMode;
@@ -1545,6 +1585,7 @@ function getFiltered() {
     return applyColSort(filtered);
 }
 function filterTable() {
+    updateFiltrosBadge();
     renderTable(getFiltered());
 }
 function fmt(v) {

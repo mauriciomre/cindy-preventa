@@ -444,22 +444,15 @@ header {
     min-width: 0
 }
 
-.toolbar .hdr-filtros {
+.toolbar .hdr-secundario {
     order: 2;
     display: flex;
     gap: 8px;
     flex-wrap: wrap
 }
 
-.toolbar .hdr-secundario {
-    order: 3;
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap
-}
-
 .toolbar .hdr-principal {
-    order: 4;
+    order: 3;
     margin-left: auto
 }
 
@@ -473,20 +466,58 @@ header {
         order: 2
     }
 
-    .toolbar .hdr-filtros {
-        order: 3;
-        flex-basis: 100%
-    }
-
     .toolbar .hdr-buscador {
-        order: 4;
+        order: 3;
         flex-basis: 100%
     }
 }
 
-/* Texto de botón que se acorta a una palabra en pantallas muy chicas — ambos
-   textos quedan en el DOM, decide CSS cuál se ve (mejor para accesibilidad
-   que armar el string en JS). */
+/* Panel de filtros: ya no vive adentro de .toolbar (era lo que más alto
+   ocupaba, con 6 selects siempre visibles) — pasa a un panel aparte,
+   colapsado por default, que se despliega con el botón "Filtros"
+   (toggleFiltrosPanel() en admin.js). */
+.hdr-filtros {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    background: var(--pale);
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 14px;
+}
+
+.hdr-filtros select {
+    padding: 9px 13px;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    outline: none;
+    background: #fff;
+}
+
+/* Badge con la cantidad de filtros activos, sobre el botón "Filtros" */
+.filtros-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    background: var(--blue);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    min-width: 16px;
+    height: 16px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+    line-height: 1;
+}
+
+/* Texto de botón que se acorta/oculta según ancho — ambos textos quedan en
+   el DOM (o el ícono queda solo, con title como tooltip), decide CSS cuál
+   se ve, mejor para accesibilidad que armar el string en JS. */
 .btn-txt-corta {
     display: none
 }
@@ -498,6 +529,19 @@ header {
 
     .btn-txt-corta {
         display: inline
+    }
+}
+
+/* Tablet/notebook: "Filtros"/"Columnas"/"Modo edición" quedan solo con el
+   ícono (+ title como tooltip) — en ese rango de ancho el texto de los tres
+   juntos obliga a la fila a envolver, sumando alto antes de llegar a la
+   tabla. En mobile angosto ya quedan apilados por .hdr-secundario, así que
+   no hace falta el texto tampoco. */
+@media (max-width: 1100px) {
+    #btnToggleFiltros .btn-txt-larga,
+    .toolbar .hdr-secundario .btn .btn-txt-larga,
+    .toolbar .hdr-secundario .btn-toggle .btn-txt-larga {
+        display: none
     }
 }
 
@@ -1412,6 +1456,30 @@ td.editing {
 .stats.compact .stat-l {
     font-size: 10px;
     margin-top: 0
+}
+
+/* Tablet/notebook: arrancan ya compactas (mismo estilo que .compact al
+   scrollear), no solo después de scrollear — en ese rango de ancho la
+   tabla quedaba muy abajo con las 4 cards a tamaño completo desde el
+   primer render. */
+@media (max-width: 1100px) {
+    .stats {
+        gap: 8px;
+        margin-bottom: 10px
+    }
+
+    .stats .stat {
+        padding: 6px 14px
+    }
+
+    .stats .stat-n {
+        font-size: 16px
+    }
+
+    .stats .stat-l {
+        font-size: 10px;
+        margin-top: 0
+    }
 }
 
 /* TOAST */
