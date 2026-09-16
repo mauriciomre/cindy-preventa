@@ -444,15 +444,26 @@ header {
     min-width: 0
 }
 
-.toolbar .hdr-secundario {
+/* .hdr-filtros dentro de .toolbar: otras secciones (Clientes, etc.) todavía
+   usan este patrón inline (filtro chico, no un panel colapsable) — se
+   mantiene igual que siempre. El panel colapsable nuevo de Productos usa un
+   id propio (#hdrFiltros, ver más abajo) precisamente para no pisar esto. */
+.toolbar .hdr-filtros {
     order: 2;
     display: flex;
     gap: 8px;
     flex-wrap: wrap
 }
 
-.toolbar .hdr-principal {
+.toolbar .hdr-secundario {
     order: 3;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap
+}
+
+.toolbar .hdr-principal {
+    order: 4;
     margin-left: auto
 }
 
@@ -466,17 +477,23 @@ header {
         order: 2
     }
 
-    .toolbar .hdr-buscador {
+    .toolbar .hdr-filtros {
         order: 3;
+        flex-basis: 100%
+    }
+
+    .toolbar .hdr-buscador {
+        order: 4;
         flex-basis: 100%
     }
 }
 
-/* Panel de filtros: ya no vive adentro de .toolbar (era lo que más alto
-   ocupaba, con 6 selects siempre visibles) — pasa a un panel aparte,
-   colapsado por default, que se despliega con el botón "Filtros"
-   (toggleFiltrosPanel() en admin.js). */
-.hdr-filtros {
+/* Panel de filtros de Productos: ya no vive adentro de .toolbar (era lo que
+   más alto ocupaba ahí, con 6 selects siempre visibles) — pasa a un panel
+   aparte, colapsado por default, que se despliega con el botón "Filtros"
+   (toggleFiltrosPanel() en admin.js). Id propio a propósito, para no afectar
+   el .hdr-filtros inline que siguen usando otras secciones (ver arriba). */
+#hdrFiltros {
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
@@ -487,7 +504,7 @@ header {
     margin-bottom: 14px;
 }
 
-.hdr-filtros select {
+#hdrFiltros select {
     padding: 9px 13px;
     border: 1.5px solid var(--border);
     border-radius: 8px;
