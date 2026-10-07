@@ -594,6 +594,42 @@ function resolver_preventa_id($db, $nombre) {
     return $row ? intval($row['id']) : null;
 }
 
+// Borra un producto y su imagen del disco. Devuelve [borrado(bool), imagen_borrada(bool)].
+// La imagen solo se borra si ningún OTRO producto apunta al mismo archivo.
+function eliminar_producto_y_foto($db, $id) {
+    $stmtFoto = $db->prepare("SELECT foto, codigo FROM productos WHERE id=?");
+    $stmtFoto->bind_param('i', $id);
+    $stmtFoto->execute();
+    $prod = $stmtFoto->get_result()->fetch_assoc();
+    if (!$prod) return [false, false];
+    $stmt = $db->prepare("DELETE FROM productos WHERE id=?");
+    $stmt->bind_param('i', $id);
+    $stmt->execute();
+    $borrado = $stmt->affected_rows > 0;
+    $imgBorrada = false;
+    $imgPath = null;
+    $fotoRel = null;
+    if (!empty($prod['foto']) && strpos($prod['foto'], 'http') === false) {
+        $fotoRel = $prod['foto'];
+        $imgPath = __DIR__ . '/' . $fotoRel;
+    } else {
+        $codigo = str_replace('/', '_', $prod['codigo'] ?? '');
+        $imgPath = __DIR__ . '/imgs/' . $codigo . '.jpeg';
+    }
+    if ($imgPath && file_exists($imgPath)) {
+        $compartida = false;
+        if ($fotoRel !== null) {
+            $chk = $db->prepare("SELECT COUNT(*) AS n FROM productos WHERE foto=?");
+            $chk->bind_param('s', $fotoRel);
+            $chk->execute();
+            $compartida = intval($chk->get_result()->fetch_assoc()['n']) > 0;
+        }
+        // @: si el servidor no deja borrar el archivo, no se rompe la respuesta JSON.
+        if (!$compartida) { $imgBorrada = @unlink($imgPath); }
+    }
+    return [$borrado, $imgBorrada];
+}
+
 // Mantiene alineados productos.ingreso (marca) y productos.ingreso_id (a qué
 // tanda pertenece): lo desmarcado sale de su ingreso, lo marcado sin ingreso
 // entra en UNO nuevo (todos los de la misma operación juntos) y los ingresos
@@ -897,26 +933,25 @@ switch ($action) {
         $data = json_decode(file_get_contents('php://input'), true);
         checkAuth($data);
         $id = intval($_GET['id'] ?? 0);
-        $stmtFoto = $db->prepare("SELECT foto, codigo FROM productos WHERE id=?");
-        $stmtFoto->bind_param('i', $id);
-        $stmtFoto->execute();
-        $prod = $stmtFoto->get_result()->fetch_assoc();
-        $stmt = $db->prepare("DELETE FROM productos WHERE id=?");
-        $stmt->bind_param('i', $id);
-        $stmt->execute();
+        list($borrado, $imgBorrada) = eliminar_producto_y_foto($db, $id);
         sincronizar_ingresos($db, 'manual', null);
-        $deleted_img = false;
-        if ($prod) {
-            $imgPath = null;
-            if (!empty($prod['foto']) && strpos($prod['foto'], 'http') === false) {
-                $imgPath = __DIR__ . '/' . $prod['foto'];
-            } else {
-                $codigo = str_replace('/', '_', $prod['codigo'] ?? '');
-                $imgPath = __DIR__ . '/imgs/' . $codigo . '.jpeg';
-            }
-            if ($imgPath && file_exists($imgPath)) { unlink($imgPath); $deleted_img = true; }
+        echo json_encode(['ok' => true, 'affected' => $borrado ? 1 : 0, 'deleted_img' => $imgBorrada]);
+        break;
+
+    case 'productos_bulk_eliminar':
+        // Elimina varios productos (y sus imágenes) de una. No se puede deshacer.
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $ids = array_values(array_unique(array_filter(array_map('intval', $data['ids'] ?? []))));
+        if (!$ids) { http_response_code(400); die(json_encode(['error' => 'Datos incompletos'])); }
+        $n = 0; $imgs = 0;
+        foreach ($ids as $id) {
+            list($borrado, $imgBorrada) = eliminar_producto_y_foto($db, $id);
+            if ($borrado) $n++;
+            if ($imgBorrada) $imgs++;
         }
-        echo json_encode(['ok' => true, 'affected' => $stmt->affected_rows, 'deleted_img' => $deleted_img]);
+        sincronizar_ingresos($db, 'manual', null);
+        echo json_encode(['ok' => true, 'eliminados' => $n, 'imagenes_borradas' => $imgs]);
         break;
 
     case 'reordenar':

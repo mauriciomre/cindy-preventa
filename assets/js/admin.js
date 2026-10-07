@@ -2067,6 +2067,25 @@ async function bulkDeshacer() {
     if (campo === "ingreso") loadIngresos();
 }
 
+async function bulkEliminar() {
+    var ids = Array.from(selIds);
+    if (!ids.length) return;
+    if (!confirm("¿Eliminar " + ids.length + " producto(s) y sus imágenes?\n\nNo se puede deshacer. Los pedidos que ya los incluyen no se tocan (guardan su propia copia del detalle).")) return;
+    if (ids.length >= 10 && !confirm("Vas a eliminar " + ids.length + " productos de una vez. ¿Seguro?")) return;
+    var res = await fetch(API + "?action=productos_bulk_eliminar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ _user: authUser, _pass: authPass, ids: ids }),
+    });
+    var json = await res.json();
+    if (!json.ok) return toast("Error: " + (json.error || "desconocido"), "#c62828");
+    toast("Se eliminaron " + json.eliminados + " producto(s) y " + json.imagenes_borradas + " imagen(es)");
+    selIds.clear();
+    bulkCerrarUndo();
+    await loadProducts();
+    loadIngresos();
+}
+
 function bulkCerrarUndo() {
     _bulkUndo = null;
     document.getElementById("bulkUndoBar").style.display = "none";
