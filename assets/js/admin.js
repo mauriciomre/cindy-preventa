@@ -2843,32 +2843,9 @@ async function openPedidoModal(id) {
         });
         html += "</div>";
     }
-    // Items
-    html +=
-        '<div class="table-wrap" style="margin-bottom:16px"><div class="table-scroll">' +
-        '<table style="width:100%"><thead><tr><th>Código</th><th>Descripción</th><th>Cant.</th><th>Precio</th><th>Subtotal</th><th>Stock</th></tr></thead><tbody>';
-    p.items.forEach(function (item) {
-        html +=
-            "<tr><td><code>" +
-            item.codigo +
-            "</code></td><td>" +
-            item.descripcion +
-            (item.colores_detalle
-                ? '<div style="font-size:11px;color:var(--muted)">' + formatColoresDetalle(item.colores_detalle) + "</div>"
-                : "") +
-            '</td><td style="text-align:center">' +
-            item.cantidad +
-            "</td><td>" +
-            fmt(item.precio_unitario) +
-            '</td><td style="font-weight:700">' +
-            fmt(item.subtotal) +
-            "</td><td>" +
-            (item.en_lista_espera == 1
-                ? '<span class="badge-agot">' + icon("clock") + ' LISTA DE ESPERA</span>'
-                : '<span class="badge-disp">' + icon("check") + ' Confirmado</span>') +
-            "</td></tr>";
-    });
-    html += "</tbody></table></div></div>";
+    // Items (resumen de armado + tabla): se pinta aparte para poder refrescarlo
+    // al tildar Ingresó/Armado sin perder lo que se esté escribiendo abajo.
+    html += '<div id="pedidoItemsWrap"></div>';
     html +=
         '<div style="text-align:right;font-size:18px;font-weight:800;color:var(--blue);margin-bottom:16px">TOTAL: ' +
         fmt(p.total) +
@@ -2883,8 +2860,131 @@ async function openPedidoModal(id) {
         (p.observaciones || "") +
         "</textarea></div>";
     document.getElementById("pedidoModalBody").innerHTML = html;
+    renderPedidoItems();
     document.getElementById("pedidoModalBg").classList.add("open");
 }
+// ── ARMADO de pedidos ─────────────────────────────────────────────────────────
+// Un ítem está en uno de tres estados: "pendiente" (el producto todavía no
+// ingresó), "para_armar" (ingresó y no se puso en el pedido) o "armado".
+function estadoItemPedido(it) {
+    if (it.armado == 1) return "armado";
+    return it.ingreso == 1 ? "para_armar" : "pendiente";
+}
+
+function resumenArmadoPedido(items) {
+    var r = { armado: 0, para_armar: 0, pendiente: 0, total: items.length };
+    items.forEach(function (it) { r[estadoItemPedido(it)]++; });
+    return r;
+}
+
+function renderPedidoItems() {
+    var p = pedidoActual;
+    var wrap = document.getElementById("pedidoItemsWrap");
+    if (!p || !wrap) return;
+    var r = resumenArmadoPedido(p.items);
+    var html =
+        '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px 14px;margin-bottom:10px;padding:10px 12px;background:#f8f9fb;border-radius:8px;font-size:13px">' +
+        "<strong>Armado: " + r.armado + " de " + r.total + "</strong>" +
+        '<span style="color:#2e7d32">Para armar: <strong>' + r.para_armar + "</strong></span>" +
+        '<span style="color:#b71c1c">Falta ingresar: <strong>' + r.pendiente + "</strong></span>";
+    if (r.para_armar > 0) {
+        html += '<button class="btn" style="margin-left:auto;padding:5px 10px;font-size:12px" onclick="armarTodoIngresado()">Marcar todo lo ingresado como armado</button>';
+    }
+    html += "</div>";
+    if (r.total > 0 && r.armado === r.total) {
+        html +=
+            '<div style="margin-bottom:10px;padding:10px 12px;background:#e8f5e9;color:#1b5e20;border-radius:8px;font-size:13px;font-weight:700">' +
+            icon("circle-check-big") + " Pedido completo, listo para facturar</div>";
+    }
+    html +=
+        '<div class="table-wrap" style="margin-bottom:16px"><div class="table-scroll">' +
+        '<table class="pedido-items-table" style="width:100%"><thead><tr><th>Código</th><th>Descripción</th><th>Cant.</th><th class="col-hide-1">Precio</th><th class="col-hide-1">Subtotal</th>' +
+        '<th style="text-align:center"><span class="th-full">Ingresó</span><span class="th-short">Ingr.</span></th><th style="text-align:center"><span class="th-full">Armado</span><span class="th-short">Arm.</span></th></tr></thead><tbody>';
+    p.items.forEach(function (item) {
+        var est = estadoItemPedido(item);
+        html +=
+            '<tr style="' + (est === "armado" ? "opacity:.65" : "") + '"><td><code>' + esc(item.codigo) + "</code></td><td>" +
+            esc(item.descripcion) +
+            (item.colores_detalle
+                ? '<div style="font-size:11px;color:var(--muted)">' + formatColoresDetalle(item.colores_detalle) + "</div>"
+                : "") +
+            (item.en_lista_espera == 1 ? '<div><span class="badge-agot">' + icon("clock") + " LISTA DE ESPERA</span></div>" : "") +
+            '</td><td style="text-align:center">' + item.cantidad +
+            '</td><td class="col-hide-1">' + fmt(item.precio_unitario) +
+            '</td><td class="col-hide-1" style="font-weight:700">' + fmt(item.subtotal) +
+            '</td><td style="text-align:center"><input type="checkbox" ' + (item.ingreso == 1 ? "checked " : "") +
+            "onchange=\"toggleItemIngreso('" + esc(item.codigo).replace(/'/g, "\\'") + "',this.checked)\" title=\"Ingresó (vale para todos los pedidos con este artículo)\"></td>" +
+            '<td style="text-align:center"><input type="checkbox" ' + (item.armado == 1 ? "checked " : "") +
+            (item.ingreso == 1 || item.armado == 1 ? "" : "disabled ") +
+            'onchange="toggleItemArmado(' + item.id + ',this.checked)" title="Armado: ya está puesto en el pedido"></td></tr>';
+    });
+    html += "</tbody></table></div></div>";
+    wrap.innerHTML = html;
+    var btn = document.getElementById("btnImprimirNuevos");
+    if (btn) {
+        btn.disabled = r.para_armar === 0;
+        btn.querySelector(".n-nuevos").textContent = r.para_armar;
+    }
+}
+
+async function toggleItemIngreso(codigo, checked) {
+    if (!pedidoActual) return;
+    var json = await ingresoApi("producto_ingreso", { codigo: codigo, ingreso: checked });
+    if (!json.ok) {
+        toast("Error", "#c62828");
+        return renderPedidoItems();
+    }
+    pedidoActual.items.forEach(function (it) {
+        if (it.codigo === codigo) it.ingreso = checked ? 1 : 0;
+    });
+    renderPedidoItems();
+    loadProducts();
+    loadIngresos();
+}
+
+async function toggleItemArmado(itemId, checked) {
+    if (!pedidoActual) return;
+    var json = await ingresoApi("pedido_items_armado", { item_ids: [itemId], armado: checked });
+    if (!json.ok) {
+        toast("Error", "#c62828");
+        return renderPedidoItems();
+    }
+    pedidoActual.items.forEach(function (it) {
+        if (it.id == itemId) it.armado = checked ? 1 : 0;
+    });
+    renderPedidoItems();
+    loadIngresos();
+}
+
+async function armarTodoIngresado() {
+    if (!pedidoActual) return;
+    var r = resumenArmadoPedido(pedidoActual.items);
+    if (!confirm("¿Marcar como armados los " + r.para_armar + " ítem(s) ya ingresados de este pedido?\n\nUsalo para pedidos que ya venías armando antes de existir esta marca.")) return;
+    var json = await ingresoApi("pedido_armar_ingresados", { pedido_id: pedidoActual.id });
+    if (!json.ok) return toast("Error", "#c62828");
+    pedidoActual.items.forEach(function (it) {
+        if (it.ingreso == 1) it.armado = 1;
+    });
+    renderPedidoItems();
+    loadIngresos();
+    toast("Marcados como armados");
+}
+
+// Después de imprimir una hoja de armado: pregunta si de verdad se armó (el
+// papel puede haber salido mal) y recién ahí marca los ítems como armados.
+async function confirmarArmadoImpreso(itemIds) {
+    if (!itemIds.length) return false;
+    if (!confirm("¿Marcar como armados los " + itemIds.length + " ítem(s) que acabás de imprimir?\n\nSi la impresión salió mal o todavía no los armaste, tocá Cancelar: se pueden volver a imprimir.")) return false;
+    var json = await ingresoApi("pedido_items_armado", { item_ids: itemIds, armado: true });
+    if (!json.ok) {
+        toast("Error al marcar como armados", "#c62828");
+        return false;
+    }
+    toast("✔ " + itemIds.length + " ítem(s) marcado(s) como armados");
+    loadIngresos();
+    return true;
+}
+
 function closePedidoModal() {
     document.getElementById("pedidoModalBg").classList.remove("open");
     pedidoActual = null;
@@ -3063,12 +3163,19 @@ async function loadIngresos() {
     renderIngresos();
 }
 
+function avanceArmadoHtml(i) {
+    var n = parseInt(i.n_items, 10) || 0, a = parseInt(i.n_armados, 10) || 0;
+    if (!n) return '<span style="color:var(--muted)">—</span>';
+    var color = a === n ? "#2e7d32" : a === 0 ? "#b71c1c" : "#e65100";
+    return '<span style="color:' + color + ';font-weight:700">' + a + " / " + n + "</span>";
+}
+
 function renderIngresos() {
     var tb = document.getElementById("ingresosTbody");
     if (!tb) return;
     if (!allIngresos.length) {
         tb.innerHTML =
-            '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">' +
+            '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">' +
             "Todavía no hay ingresos. Tocá <strong>Nuevo ingreso</strong> para cargar el primero.</td></tr>";
         return;
     }
@@ -3085,6 +3192,7 @@ function renderIngresos() {
                 '<td style="text-align:center;font-weight:700">' + i.n_articulos + "</td>" +
                 '<td class="col-hide-1" style="text-align:center">' + i.n_pedidos + "</td>" +
                 '<td class="col-hide-2" style="text-align:center">' + i.n_unidades + "</td>" +
+                '<td style="text-align:center;white-space:nowrap">' + avanceArmadoHtml(i) + "</td>" +
                 '<td><button class="btn btn-edit" onclick="openIngresoDetalle(' + i.id + ')">Ver</button></td></tr>'
             );
         })
@@ -3119,6 +3227,11 @@ function renderIngresoDetalle() {
         '<p style="font-size:13px;color:var(--muted);margin-bottom:12px">' +
         f.toLocaleString("es-AR") + " · " + ingresoOrigenBadge(i.origen) + " · " +
         d.productos.length + " artículo(s)</p>";
+    var ing = allIngresos.find(function (x) { return x.id == i.id; });
+    if (ing) {
+        html += '<p style="font-size:13px;margin-bottom:12px">Armado: ' + avanceArmadoHtml(ing) +
+            ' <span style="color:var(--muted)">ítems de pedidos</span></p>';
+    }
     html +=
         '<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">' +
         '<input type="text" id="ingresoDetNota" maxlength="255" value="' + esc(i.nota || "") +
@@ -3219,6 +3332,14 @@ async function deshacerIngreso() {
 
 // Los modales no se apilan (comparten z-index): se cierra el detalle antes de
 // abrir el reporte de pedidos.
+async function imprimirArmadoDeIngreso() {
+    if (!_ingresoActual) return;
+    var codigos = _ingresoActual.productos.map(function (p) { return p.codigo; });
+    if (!codigos.length) return toast("Este ingreso no tiene artículos", "#e65100");
+    _lookupReportData = await cargarPedidosPorProductos(codigos);
+    imprimirLookupReport(true);
+}
+
 function verPedidosDeIngreso() {
     if (!_ingresoActual) return;
     var codigos = _ingresoActual.productos.map(function (p) { return p.codigo; });
@@ -3232,8 +3353,7 @@ function verPedidosDeIngreso() {
 // reporte, dos disparadores distintos.
 var _lookupReportData = null; // {codigosBuscados, grupos} — lo usa Imprimir
 
-async function fetchYMostrarPedidosPorProductos(codigos) {
-    if (!codigos || !codigos.length) return;
+async function cargarPedidosPorProductos(codigos) {
     var res = await fetch(API + "?action=pedidos_por_productos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -3258,9 +3378,13 @@ async function fetchYMostrarPedidosPorProductos(codigos) {
         }
         porPedido[it.pedido_id].items.push(it);
     });
-    var grupos = ordenPedidos.map(function (id) { return porPedido[id]; });
-    _lookupReportData = { codigosBuscados: codigos, grupos: grupos };
-    renderLookupModal(codigos, grupos);
+    return { codigosBuscados: codigos, grupos: ordenPedidos.map(function (id) { return porPedido[id]; }) };
+}
+
+async function fetchYMostrarPedidosPorProductos(codigos) {
+    if (!codigos || !codigos.length) return;
+    _lookupReportData = await cargarPedidosPorProductos(codigos);
+    renderLookupModal(_lookupReportData.codigosBuscados, _lookupReportData.grupos);
     document.getElementById("lookupModalBg").classList.add("open");
 }
 
@@ -3562,18 +3686,26 @@ function renderLookupModal(codigosBuscados, grupos) {
                 '<p style="font-size:12px;background:#fff8e1;padding:6px 10px;border-radius:6px;margin-bottom:8px"><strong>Obs:</strong> ' +
                 esc(g.observaciones) + "</p>";
         }
-        html += '<div class="table-wrap"><div class="table-scroll"><table><thead><tr><th>Código</th><th>Descripción</th><th style="text-align:center">Cant.</th><th></th></tr></thead><tbody>';
+        html += '<div class="table-wrap"><div class="table-scroll"><table><thead><tr><th>Código</th><th>Descripción</th><th style="text-align:center">Cant.</th><th>Estado</th><th style="text-align:center">Armado</th></tr></thead><tbody>';
         g.items.forEach(function (it) {
+            var est = estadoItemPedido(it);
+            var badge = {
+                armado: '<span style="font-size:11px;color:#777;font-weight:700">Armado</span>',
+                para_armar: '<span style="font-size:11px;color:#2e7d32;font-weight:700">Para armar</span>',
+                pendiente: '<span style="font-size:11px;color:#b71c1c;font-weight:700">Falta ingresar</span>',
+            }[est];
             html +=
-                "<tr><td><code>" + esc(it.codigo) + "</code></td><td>" + esc(it.descripcion || "") +
+                '<tr style="' + (est === "armado" ? "opacity:.6" : "") + '"><td><code>' + esc(it.codigo) + "</code></td><td>" + esc(it.descripcion || "") +
                 (it.colores_detalle
                     ? '<div style="font-size:10px;color:var(--muted)">' + formatColoresDetalle(it.colores_detalle) + "</div>"
                     : "") +
-                '</td><td style="text-align:center">' + it.cantidad + "</td><td>" +
+                '</td><td style="text-align:center">' + it.cantidad + "</td><td>" + badge +
                 (it.en_lista_espera == 1
-                    ? '<span style="font-size:10px;color:#b71c1c;font-weight:700">Lista de espera</span>'
+                    ? ' <span style="font-size:10px;color:#b71c1c;font-weight:700">· Lista de espera</span>'
                     : "") +
-                "</td></tr>";
+                '</td><td style="text-align:center"><input type="checkbox" ' + (it.armado == 1 ? "checked " : "") +
+                (it.ingreso == 1 || it.armado == 1 ? "" : "disabled ") +
+                'onchange="toggleLookupArmado(' + it.item_id + ',this.checked)"></td></tr>';
         });
         html += "</tbody></table></div></div>";
         html += '<div style="margin-top:8px"><button class="btn btn-edit" onclick="verPedidoDesdeLookup(' + g.pedido_id + ')">Ver pedido completo</button></div>';
@@ -3594,13 +3726,44 @@ function verPedidoDesdeLookup(id) {
     openPedidoModal(id);
 }
 
-function imprimirLookupReport() {
+async function toggleLookupArmado(itemId, checked) {
+    var json = await ingresoApi("pedido_items_armado", { item_ids: [itemId], armado: checked });
+    if (!json.ok) return toast("Error", "#c62828");
+    if (_lookupReportData) {
+        _lookupReportData.grupos.forEach(function (g) {
+            g.items.forEach(function (it) {
+                if (it.item_id == itemId) it.armado = checked ? 1 : 0;
+            });
+        });
+        renderLookupModal(_lookupReportData.codigosBuscados, _lookupReportData.grupos);
+    }
+    loadIngresos();
+}
+
+// forzarSoloIngresados: la hoja de armado de un Ingreso siempre lleva solo lo
+// ingresado y sin armar; el reporte de "¿Quién pidió?" respeta el tilde del modal.
+function imprimirLookupReport(forzarSoloIngresados) {
     if (!_lookupReportData) return;
     var codigosBuscados = _lookupReportData.codigosBuscados;
-    var grupos = _lookupReportData.grupos;
+    var tilde = document.getElementById("lookupSoloIngresados");
+    var solo = forzarSoloIngresados === true || !tilde || tilde.checked;
+    var omitidosArmados = 0, omitidosSinIngresar = 0;
+    var grupos = [];
+    _lookupReportData.grupos.forEach(function (g) {
+        var items = g.items.filter(function (it) {
+            if (it.armado == 1) { omitidosArmados++; return false; }
+            if (solo && it.ingreso != 1) { omitidosSinIngresar++; return false; }
+            return true;
+        });
+        if (items.length) grupos.push(Object.assign({}, g, { items: items }));
+    });
+    if (!grupos.length) {
+        toast("No hay nada para imprimir: todo está armado" + (solo ? " o todavía no ingresó" : ""), "#e65100");
+        return;
+    }
     var fecha = new Date().toLocaleString("es-AR");
     var html =
-        '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Reporte de pedidos por artículo</title><style>' +
+        '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Hoja de armado</title><style>' +
         "body{font-family:Arial,sans-serif;padding:20px;font-size:12px;color:#000}" +
         "h1{font-size:16px;margin-bottom:4px}" +
         "table{width:100%;border-collapse:collapse;margin:8px 0 14px}" +
@@ -3609,12 +3772,16 @@ function imprimirLookupReport() {
         ".pedido-box{border:1px solid #999;border-radius:6px;padding:10px;margin-bottom:12px;page-break-inside:avoid}" +
         ".pedido-head{display:flex;justify-content:space-between;font-weight:bold;margin-bottom:6px}" +
         ".obs{background:#fff8e1;padding:5px 8px;border-radius:4px;margin-bottom:6px}" +
+        ".box{display:inline-block;width:16px;height:16px;border:2px solid #333;vertical-align:middle}" +
         "@media print{@page{size:A4 portrait;margin:12mm}}" +
         "</style></head><body>";
-    html += "<h1>Reporte: pedidos que incluyen estos artículos</h1>";
-    html += '<p style="color:#555;margin-bottom:10px">Generado: ' + fecha + " — Códigos: " + codigosBuscados.join(", ") + "</p>";
-    if (!grupos.length) {
-        html += "<p>Ningún pedido pendiente incluye estos códigos.</p>";
+    html += "<h1>Hoja de armado: pedidos que incluyen estos artículos</h1>";
+    html += '<p style="color:#555;margin-bottom:6px">Generado: ' + fecha + " — Códigos: " + codigosBuscados.join(", ") + "</p>";
+    if (omitidosArmados || omitidosSinIngresar) {
+        html += '<p style="color:#555;margin-bottom:10px">No se incluyen: ' +
+            (omitidosArmados ? omitidosArmados + " ítem(s) ya armado(s)" : "") +
+            (omitidosArmados && omitidosSinIngresar ? " y " : "") +
+            (omitidosSinIngresar ? omitidosSinIngresar + " sin ingresar" : "") + ".</p>";
     }
     grupos.forEach(function (g) {
         var fechaPedido = new Date(g.created_at).toLocaleString("es-AR");
@@ -3624,12 +3791,14 @@ function imprimirLookupReport() {
             (g.cliente_tel ? " — +" + g.cliente_tel : "") + "</span><span>" +
             (ESTADO_LABELS[g.estado] ? ESTADO_LABELS[g.estado].label : g.estado) + " — " + fechaPedido + "</span></div>";
         if (g.observaciones) html += '<div class="obs"><strong>Obs:</strong> ' + esc(g.observaciones) + "</div>";
-        html += "<table><thead><tr><th>Código</th><th>Descripción</th><th>Cant.</th><th>Estado ítem</th></tr></thead><tbody>";
+        html += "<table><thead><tr><th>Código</th><th>Descripción</th><th>Cant.</th><th>Estado ítem</th><th style=\"text-align:center\">Armado</th></tr></thead><tbody>";
         g.items.forEach(function (it) {
             html +=
                 "<tr><td>" + esc(it.codigo) + "</td><td>" + esc(it.descripcion || "") +
                 (it.colores_detalle ? " — " + formatColoresDetalle(it.colores_detalle) : "") + "</td><td>" +
-                it.cantidad + "</td><td>" + (it.en_lista_espera == 1 ? "Lista de espera" : "Confirmado") + "</td></tr>";
+                it.cantidad + "</td><td>" +
+                (it.ingreso == 1 ? "Para armar" : "Falta ingresar") + (it.en_lista_espera == 1 ? " · Lista de espera" : "") +
+                '</td><td style="text-align:center"><span class="box"></span></td></tr>';
         });
         html += "</tbody></table></div>";
     });
@@ -3638,6 +3807,25 @@ function imprimirLookupReport() {
     w.document.write(html);
     w.document.close();
     w.print();
+    var paraArmar = [];
+    grupos.forEach(function (g) {
+        g.items.forEach(function (it) { if (it.ingreso == 1) paraArmar.push(it); });
+    });
+    if (paraArmar.length) {
+        setTimeout(async function () {
+            var ok = await confirmarArmadoImpreso(paraArmar.map(function (it) { return it.item_id; }));
+            if (!ok) return;
+            _lookupReportData.grupos.forEach(function (g) {
+                g.items.forEach(function (it) {
+                    if (paraArmar.some(function (x) { return x.item_id == it.item_id; })) it.armado = 1;
+                });
+            });
+            if (document.getElementById("lookupModalBg").classList.contains("open")) {
+                renderLookupModal(_lookupReportData.codigosBuscados, _lookupReportData.grupos);
+            }
+            if (_ingresoActual) openIngresoDetalle(_ingresoActual.ingreso.id);
+        }, 300);
+    }
 }
 
 async function guardarPedidoObs() {
@@ -3662,9 +3850,16 @@ async function guardarPedidoObs() {
     else toast("Error", "#c62828");
 }
 
-function imprimirPedido() {
+// soloNuevos=true: hoja de ENTREGA PARCIAL con lo ingresado y todavía sin armar.
+function imprimirPedido(soloNuevos) {
     if (!pedidoActual) return;
     var p = pedidoActual;
+    var paraArmar = p.items.filter(function (i) { return estadoItemPedido(i) === "para_armar"; });
+    if (soloNuevos && !paraArmar.length) {
+        toast("No hay ítems ingresados sin armar", "#e65100");
+        return;
+    }
+    var itemsImp = soloNuevos ? paraArmar : p.items;
     var fecha = new Date(p.created_at).toLocaleString("es-AR");
     var html = "<html><head><title>Pedido #" + p.id + "</title><style>";
     html += "body{font-family:Arial,sans-serif;padding:20px;font-size:13px}";
@@ -3699,7 +3894,7 @@ function imprimirPedido() {
         ".firma{border-top:1px solid #333;margin-top:50px;padding-top:6px;font-size:11px;color:#666}";
     html += "@media print{body{padding:10px}}";
     html += "</style></head><body>";
-    html += "<h1>Pedido #" + p.id + " (Preventa)</h1>";
+    html += "<h1>Pedido #" + p.id + " (Preventa)" + (soloNuevos ? " — ENTREGA PARCIAL" : "") + "</h1>";
     html +=
         '<p style="color:#666;font-size:12px;margin-bottom:16px">Fecha: ' +
         fecha +
@@ -3722,7 +3917,7 @@ function imprimirPedido() {
     // Agrupar los ítems por preventa (snapshot tomado al crear el pedido —
     // no cambia aunque después se reasigne o borre la preventa del producto).
     var grupos = {}, orden = [];
-    p.items.forEach(function (item) {
+    itemsImp.forEach(function (item) {
         var g = item.preventa_nombre || "Sin preventa";
         if (!grupos[g]) { grupos[g] = []; orden.push(g); }
         grupos[g].push(item);
@@ -3763,27 +3958,43 @@ function imprimirPedido() {
 
     orden.forEach(function (nombreGrupo) {
         html += '<h3 style="font-size:13px;color:#e84e1b;margin:16px 0 6px 0;text-transform:uppercase">' + esc(nombreGrupo) + '</h3>';
-        // Dentro de cada preventa, separar lo que ya ingresó al local de lo
-        // que todavía se está esperando — así se prepara primero lo que hay.
-        var pendientes = grupos[nombreGrupo].filter(function (i) { return i.ingreso != 1; });
-        var ingresados = grupos[nombreGrupo].filter(function (i) { return i.ingreso == 1; });
+        if (soloNuevos) {
+            html += tablaItems(grupos[nombreGrupo]);
+            return;
+        }
+        // Dentro de cada preventa: lo que falta ingresar, lo que ya ingresó y
+        // se puede armar, y lo que ya se armó (gris) — así se prepara primero lo que hay.
+        var pendientes = grupos[nombreGrupo].filter(function (i) { return estadoItemPedido(i) === "pendiente"; });
+        var ingresados = grupos[nombreGrupo].filter(function (i) { return estadoItemPedido(i) === "para_armar"; });
+        var armados = grupos[nombreGrupo].filter(function (i) { return estadoItemPedido(i) === "armado"; });
         if (pendientes.length) {
             html += '<h4 style="font-size:11px;color:#b71c1c;margin:8px 0 4px 0;text-transform:uppercase">Pendiente de ingreso</h4>';
             html += tablaItems(pendientes);
         }
         if (ingresados.length) {
-            html += '<h4 style="font-size:11px;color:#2e7d32;margin:8px 0 4px 0;text-transform:uppercase">Ya ingresó</h4>';
+            html += '<h4 style="font-size:11px;color:#2e7d32;margin:8px 0 4px 0;text-transform:uppercase">Ya ingresó — para armar</h4>';
             html += tablaItems(ingresados);
         }
+        if (armados.length) {
+            html += '<h4 style="font-size:11px;color:#777;margin:8px 0 4px 0;text-transform:uppercase">Ya armado</h4>';
+            html += '<div style="opacity:.55">' + tablaItems(armados) + "</div>";
+        }
     });
-    html +=
-        '<div class="total">TOTAL: ' +
-        fmt(p.total) +
-        " — " +
-        p.items.length +
-        " código" +
-        (p.items.length !== 1 ? "s" : "") +
-        " diferentes</div>";
+    if (soloNuevos) {
+        var subEntrega = itemsImp.reduce(function (a, it) { return a + (parseFloat(it.subtotal) || 0); }, 0);
+        var r2 = resumenArmadoPedido(p.items);
+        html +=
+            '<div class="total">SUBTOTAL DE ESTA ENTREGA: ' + fmt(subEntrega) + " — " + itemsImp.length +
+            " código" + (itemsImp.length !== 1 ? "s" : "") + "</div>";
+        html += '<div style="text-align:right;font-size:13px;color:#555;margin-top:4px">Total del pedido: ' + fmt(p.total) + "</div>";
+        html +=
+            '<div style="margin-top:10px;padding:8px 10px;background:#f5f5f5;border-radius:6px;font-size:12px;color:#444">' +
+            "Ya armado: " + r2.armado + " ítem(s) · Falta ingresar: " + r2.pendiente + " ítem(s) · En esta entrega: " + itemsImp.length + " ítem(s)</div>";
+    } else {
+        html +=
+            '<div class="total">TOTAL: ' + fmt(p.total) + " — " + p.items.length +
+            " código" + (p.items.length !== 1 ? "s" : "") + " diferentes</div>";
+    }
     if (p.observaciones)
         html +=
             '<div style="margin-top:12px;padding:10px;background:#fffde7;border-radius:6px;font-size:12px"><strong>Observaciones:</strong> ' +
@@ -3796,6 +4007,15 @@ function imprimirPedido() {
     w.document.write(html);
     w.document.close();
     w.print();
+    if (soloNuevos) {
+        var idsImpresos = itemsImp.map(function (it) { return it.id; });
+        setTimeout(async function () {
+            if (await confirmarArmadoImpreso(idsImpresos)) {
+                itemsImp.forEach(function (it) { it.armado = 1; });
+                renderPedidoItems();
+            }
+        }, 300);
+    }
 }
 
 // ── CLIENTES ──────────────────────────────────────────────────────────────────

@@ -1786,3 +1786,15 @@ td.editing {
 .config-row input:focus {
     border-color: var(--blue)
 }
+
+/* Tabla de ítems del pedido (con columnas Ingresó/Armado): en celular las
+   etiquetas se acortan y se compacta el relleno para que entren las dos
+   casillas sin tener que scrollear de costado. */
+.pedido-items-table .th-short { display: none }
+
+@media (max-width: 640px) {
+    .pedido-items-table .th-full { display: none }
+    .pedido-items-table .th-short { display: inline }
+    .pedido-items-table th,
+    .pedido-items-table td { padding: 8px 6px }
+}

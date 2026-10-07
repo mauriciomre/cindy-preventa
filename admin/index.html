@@ -953,6 +953,7 @@
                                             <th style="text-align:center">Artículos</th>
                                             <th class="col-hide-1" style="text-align:center">Pedidos</th>
                                             <th class="col-hide-2" style="text-align:center">Unidades pedidas</th>
+                                            <th style="text-align:center">Armado</th>
                                             <th>Acciones</th>
                                         </tr>
                                     </thead>
@@ -1101,7 +1102,7 @@
                         <div class="modal" style="width: min(700px, 95vw); max-width: 700px">
                             <h2 id="pedidoModalTitle">Pedido #</h2>
                             <div id="pedidoModalBody"></div>
-                            <div class="modal-foot">
+                            <div class="modal-foot" style="flex-wrap: wrap">
                                 <button
                                     class="btn"
                                     style="background: #eee"
@@ -1112,9 +1113,17 @@
                                 <button
                                     class="btn"
                                     style="background: #1565c0; color: #fff"
-                                    onclick="imprimirPedido()"
+                                    onclick="imprimirPedido(false)"
                                 >
-                                    <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg> Imprimir
+                                    <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg> Imprimir completo
+                                </button>
+                                <button
+                                    class="btn"
+                                    id="btnImprimirNuevos"
+                                    style="background: #198754; color: #fff"
+                                    onclick="imprimirPedido(true)"
+                                >
+                                    <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg> Imprimir ingresados nuevos (<span class="n-nuevos">0</span>)
                                 </button>
                                 <button
                                     class="btn btn-primary"
@@ -1149,6 +1158,7 @@
                                 <button class="btn" style="background:#eee" onclick="closeIngresoDetalle()">Cerrar</button>
                                 <button class="btn" style="background:#c62828;color:#fff" onclick="deshacerIngreso()">Deshacer ingreso</button>
                                 <button class="btn" style="background:#1565c0;color:#fff" onclick="verPedidosDeIngreso()">¿Quién pidió estos artículos?</button>
+                                <button class="btn" style="background:#198754;color:#fff" onclick="imprimirArmadoDeIngreso()"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg> Imprimir hoja de armado</button>
                             </div>
                         </div>
                     </div>
@@ -1158,7 +1168,10 @@
                         <div class="modal" style="width: min(900px, 95vw); max-width: 900px">
                             <h2>¿Quién pidió estos artículos?</h2>
                             <div id="lookupModalBody"></div>
-                            <div class="modal-foot">
+                            <div class="modal-foot" style="flex-wrap: wrap">
+                                <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-right:auto;cursor:pointer">
+                                    <input type="checkbox" id="lookupSoloIngresados" checked> Imprimir solo ingresados sin armar
+                                </label>
                                 <button class="btn" style="background: #eee" onclick="closeLookupModal()">Cerrar</button>
                                 <button class="btn" style="background: #1565c0; color: #fff" onclick="imprimirLookupReport()">
                                     <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg> Imprimir

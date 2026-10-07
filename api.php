@@ -552,6 +552,13 @@ function setupDB($db) {
         $db->query("ALTER TABLE pedido_items ADD COLUMN ingreso TINYINT(1) NOT NULL DEFAULT 0");
     }
 
+    // "Armado": este ítem ya se puso físicamente en el pedido. Se marca a mano
+    // (o al confirmar una impresión de armado) y guarda en qué ingreso se armó.
+    $colCheck = $db->query("SHOW COLUMNS FROM pedido_items LIKE 'armado'");
+    if ($colCheck && $colCheck->num_rows === 0) {
+        $db->query("ALTER TABLE pedido_items ADD COLUMN armado TINYINT(1) NOT NULL DEFAULT 0, ADD COLUMN armado_at DATETIME DEFAULT NULL, ADD COLUMN armado_ingreso_id INT DEFAULT NULL");
+    }
+
     $db->query("CREATE TABLE IF NOT EXISTS pedido_estados (
         id INT AUTO_INCREMENT PRIMARY KEY,
         pedido_id INT NOT NULL,
@@ -2153,7 +2160,15 @@ switch ($action) {
                 (SELECT COALESCE(SUM(pi.cantidad), 0) FROM pedido_items pi
                     JOIN pedidos pe ON pe.id = pi.pedido_id
                     JOIN productos p ON p.codigo = pi.codigo
-                    WHERE p.ingreso_id = i.id AND pe.estado != 'ELIMINADO') AS n_unidades
+                    WHERE p.ingreso_id = i.id AND pe.estado != 'ELIMINADO') AS n_unidades,
+                (SELECT COUNT(*) FROM pedido_items pi
+                    JOIN pedidos pe ON pe.id = pi.pedido_id
+                    JOIN productos p ON p.codigo = pi.codigo
+                    WHERE p.ingreso_id = i.id AND pe.estado != 'ELIMINADO') AS n_items,
+                (SELECT COUNT(*) FROM pedido_items pi
+                    JOIN pedidos pe ON pe.id = pi.pedido_id
+                    JOIN productos p ON p.codigo = pi.codigo
+                    WHERE p.ingreso_id = i.id AND pe.estado != 'ELIMINADO' AND pi.armado = 1) AS n_armados
             FROM ingresos i ORDER BY i.created_at DESC, i.id DESC");
         echo json_encode(['ok' => true, 'ingresos' => $r->fetch_all(MYSQLI_ASSOC)]);
         break;
@@ -2242,6 +2257,38 @@ switch ($action) {
         echo json_encode(['ok' => true]);
         break;
 
+    // ── ARMADO (ítems ya puestos en el pedido) ──────────────────────────────
+    case 'pedido_items_armado':
+        // Marca/desmarca "armado" para una lista de ítems de pedido. Al marcar
+        // guarda el ingreso ACTUAL del producto (en qué tanda se armó).
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $ids = array_values(array_unique(array_filter(array_map('intval', $data['item_ids'] ?? []))));
+        $armado = !empty($data['armado']) ? 1 : 0;
+        if (!$ids) { echo json_encode(['ok' => true, 'actualizados' => 0]); break; }
+        $in = implode(',', $ids);
+        if ($armado) {
+            $db->query("UPDATE pedido_items pi LEFT JOIN productos pr ON pr.codigo = pi.codigo
+                SET pi.armado=1, pi.armado_at=NOW(), pi.armado_ingreso_id=pr.ingreso_id
+                WHERE pi.id IN ($in)");
+        } else {
+            $db->query("UPDATE pedido_items SET armado=0, armado_at=NULL, armado_ingreso_id=NULL WHERE id IN ($in)");
+        }
+        echo json_encode(['ok' => true, 'actualizados' => count($ids)]);
+        break;
+
+    case 'pedido_armar_ingresados':
+        // Marca como armado TODO lo ya ingresado de un pedido (carga inicial de
+        // pedidos que se venían armando antes de existir esta marca).
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $pid = intval($data['pedido_id'] ?? 0);
+        $db->query("UPDATE pedido_items pi JOIN productos pr ON pr.codigo = pi.codigo
+            SET pi.armado=1, pi.armado_at=NOW(), pi.armado_ingreso_id=pr.ingreso_id
+            WHERE pi.pedido_id=$pid AND pi.armado=0 AND pr.ingreso=1");
+        echo json_encode(['ok' => true, 'actualizados' => $db->affected_rows]);
+        break;
+
     case 'pedidos_por_productos':
         // "¿Quién pidió estos artículos?" — al ir ingresando mercadería física
         // al local, sirve para ver de un vistazo qué pedidos pendientes
@@ -2255,12 +2302,14 @@ switch ($action) {
         if (!$codigos) { echo json_encode(['ok' => true, 'items' => []]); break; }
         $placeholders = implode(',', array_fill(0, count($codigos), '?'));
         $types = str_repeat('s', count($codigos));
-        $stmt = $db->prepare("SELECT pi.codigo, pi.descripcion, pi.cantidad, pi.colores_detalle, pi.en_lista_espera,
+        $stmt = $db->prepare("SELECT pi.id as item_id, pi.codigo, pi.descripcion, pi.cantidad, pi.colores_detalle, pi.en_lista_espera,
+                pi.armado, COALESCE(pr.ingreso, 0) as ingreso,
                 p.id as pedido_id, p.estado, p.created_at, p.observaciones,
                 c.nombre as cliente_nombre, c.telefono as cliente_tel
             FROM pedido_items pi
             JOIN pedidos p ON p.id = pi.pedido_id
             JOIN clientes c ON c.id = p.cliente_id
+            LEFT JOIN productos pr ON pr.codigo = pi.codigo
             WHERE pi.codigo IN ($placeholders) AND p.estado != 'ELIMINADO'
             ORDER BY p.created_at ASC");
         $stmt->bind_param($types, ...$codigos);
