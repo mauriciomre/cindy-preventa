@@ -3,6 +3,7 @@ var products = [],
     cart = {},
     activeCat = "TODOS",
     activePreventa = "TODAS",
+    activeMarca = "TODAS",
     query = "",
     viewMode = "grid",
     sortMode = "default";
@@ -478,6 +479,7 @@ function setPreventa(id) {
     clearHighlight();
     activePreventa = id;
     activeCat = "TODOS";
+    activeMarca = "TODAS";
     renderPreventaSelector();
     renderTabs();
     renderProds();
@@ -680,6 +682,71 @@ function doSearchEnter(e) {
     }
 }
 
+// ── FILTRO POR MARCA (panel lateral, solo escritorio) ─────────────────────────
+// Convive con las pestañas de categoría: las marcas y sus cantidades se calculan
+// sobre lo que queda con la preventa, la categoría y la búsqueda actuales.
+var SIN_MARCA = "Sin marca";
+var _marcasLista = [];
+
+function marcaKey(p) {
+    return (p.MARCA || "").trim() || SIN_MARCA;
+}
+
+function renderMarcas() {
+    var layout = document.getElementById("catLayout");
+    var side = document.getElementById("marcaSide");
+    if (!layout || !side) return;
+    var cuenta = {};
+    productsInPreventa().forEach(function (p) {
+        var catOk = activeCat === "TODOS" || p.CATEGORIA === activeCat;
+        var srchOk =
+            !query ||
+            (p.DESCRIPCION || "").toLowerCase().indexOf(query) >= 0 ||
+            (p.CODIGO || "").toLowerCase().indexOf(query) >= 0 ||
+            (p.CODIGO_BARRAS || "").toLowerCase().indexOf(query) >= 0;
+        if (!catOk || !srchOk) return;
+        var k = marcaKey(p);
+        cuenta[k] = (cuenta[k] || 0) + 1;
+    });
+    _marcasLista = Object.keys(cuenta).sort(function (a, b) {
+        if (a === SIN_MARCA) return 1;
+        if (b === SIN_MARCA) return -1;
+        return a.localeCompare(b);
+    });
+    // Si la marca elegida ya no existe en este recorte, se vuelve a "Todas".
+    if (activeMarca !== "TODAS" && !cuenta[activeMarca]) activeMarca = "TODAS";
+    var total = _marcasLista.reduce(function (s, k) { return s + cuenta[k]; }, 0);
+    // Con una sola marca no hay nada que filtrar: no se muestra el panel.
+    var mostrar = _marcasLista.length >= 2;
+    layout.classList.toggle("has-marcas", mostrar);
+    if (!mostrar) {
+        side.innerHTML = "";
+        return;
+    }
+    var hdr = document.querySelector("header");
+    if (hdr) side.style.top = hdr.offsetHeight + 12 + "px";
+    side.innerHTML =
+        "<h3>Marca</h3>" +
+        '<button type="button" class="marca-item' + (activeMarca === "TODAS" ? " on" : "") +
+        '" onclick="setMarca(-1)"><span>Todas</span><span class="n">' + total + "</span></button>" +
+        _marcasLista
+            .map(function (k, i) {
+                return (
+                    '<button type="button" class="marca-item' + (k === activeMarca ? " on" : "") +
+                    '" onclick="setMarca(' + i + ')"><span>' +
+                    String(k).replace(/&/g, "&amp;").replace(/</g, "&lt;") +
+                    '</span><span class="n">' + cuenta[k] + "</span></button>"
+                );
+            })
+            .join("");
+}
+
+function setMarca(i) {
+    clearHighlight();
+    activeMarca = i < 0 ? "TODAS" : _marcasLista[i];
+    renderProds();
+}
+
 function getVisible() {
     var list = productsInPreventa().filter(function (p) {
         var catOk = activeCat === "TODOS" || p.CATEGORIA === activeCat;
@@ -688,7 +755,9 @@ function getVisible() {
             (p.DESCRIPCION || "").toLowerCase().indexOf(query) >= 0 ||
             (p.CODIGO || "").toLowerCase().indexOf(query) >= 0 ||
             (p.CODIGO_BARRAS || "").toLowerCase().indexOf(query) >= 0;
-        return catOk && srchOk;
+        // El panel de marcas solo existe en pantallas anchas: abajo de 1100 px no se filtra.
+        var marcaOk = activeMarca === "TODAS" || window.innerWidth < 1100 || marcaKey(p) === activeMarca;
+        return catOk && srchOk && marcaOk;
     });
 
     // Ordenamiento
@@ -1022,6 +1091,7 @@ function snapToMultiplo(qty, multiplo, code) {
 }
 
 function renderProds() {
+    renderMarcas();
     var list = getVisible();
     var el = document.getElementById("prods");
     if (!list.length) {

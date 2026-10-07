@@ -2133,3 +2133,82 @@ header {
 .install-steps { list-style: none; margin: 0; padding: 14px 16px 18px; display: flex; flex-direction: column; gap: 12px }
 .install-steps li { display: flex; align-items: center; gap: 12px; font-size: 14px; line-height: 1.35 }
 .install-step-ic { flex-shrink: 0; width: 36px; height: 36px; border-radius: 10px; background: var(--pale); color: var(--blue); display: flex; align-items: center; justify-content: center }
+
+
+/* Filtro por marca: panel lateral solo en pantallas anchas (en celular y
+   tablet el catálogo sigue igual, sin panel) */
+.marca-side { display: none }
+
+@media (min-width: 1100px) {
+    .cat-layout.has-marcas {
+        display: flex;
+        align-items: flex-start;
+        max-width: 1440px;
+        margin: 0 auto;
+        padding-left: 16px
+    }
+
+    .cat-layout.has-marcas .body {
+        flex: 1;
+        min-width: 0;
+        max-width: none;
+        margin: 0
+    }
+
+    .cat-layout.has-marcas .marca-side {
+        display: block;
+        flex: none;
+        width: 210px;
+        position: sticky;
+        top: 140px;
+        margin-top: 16px;
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px 8px;
+        max-height: calc(100vh - 170px);
+        overflow-y: auto
+    }
+}
+
+.marca-side h3 {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 0 10px 8px
+}
+
+.marca-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 10px;
+    border: none;
+    background: none;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+    cursor: pointer;
+    text-align: left
+}
+
+.marca-item:hover {
+    background: var(--pale)
+}
+
+.marca-item.on {
+    background: var(--blue);
+    color: #fff
+}
+
+.marca-item .n {
+    font-size: 12px;
+    font-weight: 600;
+    opacity: .7
+}
