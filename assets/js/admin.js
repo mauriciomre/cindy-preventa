@@ -82,6 +82,7 @@ var toolsDragSrc = null;
 
 // Columnas visibles — persistidas en localStorage
 var COLS = [
+    { key: "sel", label: "Selección", default: true },
     { key: "handle", label: "Orden", default: true },
     { key: "img", label: "Imagen", default: true },
     { key: "codigo", label: "Código", default: true },
@@ -1668,6 +1669,7 @@ function sortableTh(label, key, cls) {
 
 function renderTableHeader() {
     var h = "<thead><tr>";
+    if (col("sel")) h += '<th class="sel-cell"><input type="checkbox" id="selAll" title="Seleccionar todos los productos filtrados" onchange="selTodos(this.checked)"></th>';
     if (col("handle")) h += "<th></th>";
     if (col("img")) h += "<th>Img</th>";
     if (col("codigo")) h += sortableTh("Código", "codigo", "sticky-col");
@@ -1722,7 +1724,9 @@ function renderTableFromList(list) {
             p.id +
             '" data-orden="' +
             (p.orden || 0) +
-            '">';
+            '"' + (selIds.has(p.id) ? ' class="sel-row"' : "") + ">";
+        if (col("sel"))
+            html += '<td class="sel-cell"><input type="checkbox" class="sel-check" ' + (selIds.has(p.id) ? "checked " : "") + 'onchange="selToggle(' + p.id + ',this.checked)"></td>';
         if (col("handle"))
             html +=
                 "<td>" +
@@ -1936,6 +1940,136 @@ function renderTableFromList(list) {
         html ||
         '<tr><td colspan="11" style="text-align:center;color:#aaa;padding:30px">No hay productos</td></tr>';
     if (editMode) initDragDrop();
+    actualizarBarraSeleccion();
+}
+
+// ── SELECCIÓN MASIVA (tabla de Productos) ─────────────────────────────────────
+// Tildás productos (o el tilde del encabezado para todos los filtrados), elegís
+// QUÉ cambiar y el valor nuevo, y se aplica de una. Se puede deshacer.
+var selIds = new Set();
+var _bulkUndo = null; // { campo, anteriores, n }
+
+function selToggle(id, on) {
+    if (on) selIds.add(id);
+    else selIds.delete(id);
+    var tr = document.querySelector('#tbody tr[data-id="' + id + '"]');
+    if (tr) tr.classList.toggle("sel-row", on);
+    actualizarBarraSeleccion();
+}
+
+function selTodos(on) {
+    getFiltered().forEach(function (p) {
+        if (on) selIds.add(p.id);
+        else selIds.delete(p.id);
+    });
+    document.querySelectorAll("#tbody .sel-check").forEach(function (el) {
+        el.checked = on;
+        var tr = el.closest("tr");
+        if (tr) tr.classList.toggle("sel-row", on);
+    });
+    actualizarBarraSeleccion();
+}
+
+function selLimpiar() {
+    selIds.clear();
+    document.querySelectorAll("#tbody .sel-check").forEach(function (el) {
+        el.checked = false;
+        var tr = el.closest("tr");
+        if (tr) tr.classList.remove("sel-row");
+    });
+    actualizarBarraSeleccion();
+}
+
+function actualizarBarraSeleccion() {
+    var bar = document.getElementById("bulkBar");
+    if (!bar) return;
+    // Solo cuentan los que siguen existiendo (si se borró alguno, se descarta).
+    var vivos = new Set(allProducts.map(function (p) { return p.id; }));
+    selIds.forEach(function (id) { if (!vivos.has(id)) selIds.delete(id); });
+    document.getElementById("bulkCount").textContent = selIds.size;
+    var antes = bar.style.display;
+    bar.style.display = selIds.size ? "flex" : "none";
+    if (antes === "none" && selIds.size) bulkRenderValor();
+    var all = document.getElementById("selAll");
+    if (all) {
+        var filtrados = getFiltered();
+        var n = filtrados.filter(function (p) { return selIds.has(p.id); }).length;
+        all.checked = filtrados.length > 0 && n === filtrados.length;
+        all.indeterminate = n > 0 && n < filtrados.length;
+    }
+}
+
+function bulkRenderValor() {
+    var campo = document.getElementById("bulkCampo").value;
+    var w = document.getElementById("bulkValorWrap");
+    var html = "";
+    if (campo === "preventa_id") {
+        html = '<select id="bulkValor"><option value="">— Sin preventa —</option>' +
+            allPreventas.map(function (pv) {
+                return '<option value="' + pv.id + '">' + esc(pv.nombre) + (pv.activa ? "" : " (inactiva)") + "</option>";
+            }).join("") + "</select>";
+    } else if (campo === "categoria") {
+        html = '<select id="bulkValor">' + allCats.map(function (c) {
+            return '<option value="' + esc(c.nombre) + '">' + esc(c.nombre) + "</option>";
+        }).join("") + "</select>";
+    } else if (campo === "estado") {
+        html = '<select id="bulkValor"><option>DISPONIBLE</option><option>AGOTADO</option></select>';
+    } else if (campo === "ingreso") {
+        html = '<select id="bulkValor"><option value="1">Sí, ingresó</option><option value="0">No ingresó</option></select>';
+    } else if (campo === "multiplo") {
+        html = '<input type="number" id="bulkValor" min="1" value="1" style="width:80px">';
+    } else {
+        html = '<input type="text" id="bulkValor" placeholder="Marca (vacío = sin marca)" style="width:200px">';
+    }
+    w.innerHTML = html;
+}
+
+var BULK_LABELS = { preventa_id: "Preventa", categoria: "Categoría", marca: "Marca", estado: "Estado", ingreso: "Ingresó", multiplo: "Múltiplo" };
+
+async function bulkAplicar() {
+    var ids = Array.from(selIds);
+    if (!ids.length) return;
+    var campo = document.getElementById("bulkCampo").value;
+    var el = document.getElementById("bulkValor");
+    var valor = el.value;
+    var texto = el.tagName === "SELECT" ? el.options[el.selectedIndex].text : valor || "(vacío)";
+    if (!confirm("¿Cambiar " + BULK_LABELS[campo] + " a «" + texto + "» en " + ids.length + " producto(s)?\n\nDespués vas a poder deshacerlo.")) return;
+    var res = await fetch(API + "?action=productos_bulk_editar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ _user: authUser, _pass: authPass, ids: ids, campo: campo, valor: valor }),
+    });
+    var json = await res.json();
+    if (!json.ok) return toast("Error: " + (json.error || "desconocido"), "#c62828");
+    _bulkUndo = { campo: campo, anteriores: json.anteriores, n: json.actualizados };
+    var msg = "Se cambió " + BULK_LABELS[campo] + " en " + json.actualizados + " producto(s).";
+    if (json.omitidos) msg += " " + json.omitidos + " sin stock quedaron AGOTADO.";
+    document.getElementById("bulkUndoMsg").textContent = msg;
+    document.getElementById("bulkUndoBar").style.display = "flex";
+    selIds.clear();
+    await loadProducts();
+    if (campo === "ingreso") loadIngresos();
+}
+
+async function bulkDeshacer() {
+    if (!_bulkUndo) return;
+    var res = await fetch(API + "?action=productos_bulk_restaurar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ _user: authUser, _pass: authPass, campo: _bulkUndo.campo, anteriores: _bulkUndo.anteriores }),
+    });
+    var json = await res.json();
+    if (!json.ok) return toast("No se pudo deshacer", "#c62828");
+    toast("Cambio deshecho en " + json.restaurados + " producto(s)");
+    var campo = _bulkUndo.campo;
+    bulkCerrarUndo();
+    await loadProducts();
+    if (campo === "ingreso") loadIngresos();
+}
+
+function bulkCerrarUndo() {
+    _bulkUndo = null;
+    document.getElementById("bulkUndoBar").style.display = "none";
 }
 
 // ── GUARDAR TODO ──────────────────────────────────────────────────────────────

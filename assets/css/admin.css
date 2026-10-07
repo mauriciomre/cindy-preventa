@@ -1818,3 +1818,47 @@ td.editing {
 #ingresoDetalleBody .table-scroll {
     max-height: 38vh
 }
+
+
+/* Selección masiva en Productos */
+.bulk-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 10px;
+    padding: 10px 14px;
+    margin-bottom: 10px;
+    background: var(--pale);
+    border: 1.5px solid var(--blue);
+    border-radius: 10px;
+    font-size: 13px
+}
+
+.bulk-bar select,
+.bulk-bar input[type="text"],
+.bulk-bar input[type="number"] {
+    padding: 7px 10px;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: inherit;
+    background: #fff
+}
+
+.bulk-bar.bulk-undo {
+    background: #e8f5e9;
+    border-color: #2e7d32
+}
+
+.bulk-count {
+    font-size: 13px
+}
+
+#mainTable .sel-cell {
+    width: 34px;
+    text-align: center
+}
+
+#mainTable tr.sel-row td {
+    background: var(--pale)
+}

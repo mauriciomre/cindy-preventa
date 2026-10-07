@@ -424,6 +424,25 @@
                                 <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg> Guardar todo
                             </button>
                         </div>
+                        <div id="bulkBar" class="bulk-bar" style="display:none">
+                            <span class="bulk-count"><strong id="bulkCount">0</strong> seleccionado(s)</span>
+                            <select id="bulkCampo" onchange="bulkRenderValor()">
+                                <option value="preventa_id">Preventa</option>
+                                <option value="categoria">Categoría</option>
+                                <option value="marca">Marca</option>
+                                <option value="estado">Estado</option>
+                                <option value="ingreso">Ingresó</option>
+                                <option value="multiplo">Múltiplo</option>
+                            </select>
+                            <span id="bulkValorWrap"></span>
+                            <button class="btn btn-primary" onclick="bulkAplicar()">Aplicar</button>
+                            <button class="btn" onclick="selLimpiar()">Limpiar selección</button>
+                        </div>
+                        <div id="bulkUndoBar" class="bulk-bar bulk-undo" style="display:none">
+                            <span id="bulkUndoMsg"></span>
+                            <button class="btn" onclick="bulkDeshacer()">Deshacer</button>
+                            <button class="btn" onclick="bulkCerrarUndo()" aria-label="Cerrar">Cerrar</button>
+                        </div>
                         <div class="table-wrap">
                             <div class="table-scroll">
                                 <table id="mainTable">

@@ -2289,6 +2289,101 @@ switch ($action) {
         echo json_encode(['ok' => true, 'actualizados' => $db->affected_rows]);
         break;
 
+    // ── EDICIÓN EN BLOQUE de productos (selección en la tabla del admin) ──────
+    case 'productos_bulk_editar':
+        // Aplica UN cambio (campo + valor) a varios productos y devuelve los
+        // valores anteriores, para poder deshacerlo con productos_bulk_restaurar.
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $ids = array_values(array_unique(array_filter(array_map('intval', $data['ids'] ?? []))));
+        $campo = $data['campo'] ?? '';
+        $valor = $data['valor'] ?? '';
+        $columnas = ['preventa_id' => 'preventa_id', 'categoria' => 'categoria', 'marca' => 'marca', 'estado' => 'estado', 'ingreso' => 'ingreso', 'multiplo' => 'multiplo'];
+        if (!$ids || !isset($columnas[$campo])) { http_response_code(400); die(json_encode(['error' => 'Datos incompletos'])); }
+        $colSql = $columnas[$campo];
+        $in = implode(',', $ids);
+        $anteriores = $db->query("SELECT id, $colSql AS valor FROM productos WHERE id IN ($in)")->fetch_all(MYSQLI_ASSOC);
+        $omitidos = 0;
+        switch ($campo) {
+            case 'preventa_id':
+                if ($valor === '' || $valor === null) {
+                    $db->query("UPDATE productos SET preventa_id=NULL, updated_at=NOW() WHERE id IN ($in)");
+                } else {
+                    $pv = intval($valor);
+                    $ex = $db->query("SELECT id FROM preventas WHERE id=$pv")->fetch_assoc();
+                    if (!$ex) { http_response_code(400); die(json_encode(['error' => 'Esa preventa no existe'])); }
+                    $db->query("UPDATE productos SET preventa_id=$pv, updated_at=NOW() WHERE id IN ($in)");
+                }
+                break;
+            case 'categoria':
+                $stmt = $db->prepare("SELECT nombre FROM categorias WHERE nombre=?");
+                $stmt->bind_param('s', $valor);
+                $stmt->execute();
+                if (!$stmt->get_result()->fetch_assoc()) { http_response_code(400); die(json_encode(['error' => 'Esa categoría no existe'])); }
+                $stmt = $db->prepare("UPDATE productos SET categoria=?, updated_at=NOW() WHERE id IN ($in)");
+                $stmt->bind_param('s', $valor);
+                $stmt->execute();
+                break;
+            case 'marca':
+                $m = trim((string)$valor);
+                if ($m === '') {
+                    $db->query("UPDATE productos SET marca=NULL, updated_at=NOW() WHERE id IN ($in)");
+                } else {
+                    $stmt = $db->prepare("UPDATE productos SET marca=?, updated_at=NOW() WHERE id IN ($in)");
+                    $stmt->bind_param('s', $m);
+                    $stmt->execute();
+                }
+                break;
+            case 'estado':
+                if (!in_array($valor, ['DISPONIBLE', 'AGOTADO'], true)) { http_response_code(400); die(json_encode(['error' => 'Estado inválido'])); }
+                if ($valor === 'DISPONIBLE') {
+                    // Igual que al editar un producto: sin stock no puede quedar disponible.
+                    $r = $db->query("SELECT COUNT(*) AS n FROM productos WHERE id IN ($in) AND stock_preventa <= 0")->fetch_assoc();
+                    $omitidos = intval($r['n']);
+                    $db->query("UPDATE productos SET estado=IF(stock_preventa<=0,'AGOTADO','DISPONIBLE'), updated_at=NOW() WHERE id IN ($in)");
+                } else {
+                    $db->query("UPDATE productos SET estado='AGOTADO', updated_at=NOW() WHERE id IN ($in)");
+                }
+                break;
+            case 'ingreso':
+                $v = !empty($valor) && $valor !== '0' ? 1 : 0;
+                $db->query("UPDATE productos SET ingreso=$v, updated_at=NOW() WHERE id IN ($in)");
+                sincronizar_ingresos($db, 'manual', 'Edición en bloque');
+                break;
+            case 'multiplo':
+                $mu = max(1, intval($valor));
+                $db->query("UPDATE productos SET multiplo=$mu, updated_at=NOW() WHERE id IN ($in)");
+                break;
+        }
+        echo json_encode(['ok' => true, 'actualizados' => count($anteriores), 'omitidos' => $omitidos, 'anteriores' => $anteriores]);
+        break;
+
+    case 'productos_bulk_restaurar':
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $campo = $data['campo'] ?? '';
+        $columnas = ['preventa_id', 'categoria', 'marca', 'estado', 'ingreso', 'multiplo'];
+        if (!in_array($campo, $columnas, true)) { http_response_code(400); die(json_encode(['error' => 'Campo inválido'])); }
+        $n = 0;
+        foreach (($data['anteriores'] ?? []) as $a) {
+            $id = intval($a['id'] ?? 0);
+            if (!$id) continue;
+            $v = $a['valor'] ?? null;
+            if ($v === null) {
+                $db->query("UPDATE productos SET $campo=NULL WHERE id=$id");
+            } elseif (in_array($campo, ['preventa_id', 'ingreso', 'multiplo'], true)) {
+                $db->query("UPDATE productos SET $campo=" . intval($v) . " WHERE id=$id");
+            } else {
+                $stmt = $db->prepare("UPDATE productos SET $campo=? WHERE id=?");
+                $stmt->bind_param('si', $v, $id);
+                $stmt->execute();
+            }
+            $n++;
+        }
+        if ($campo === 'ingreso') sincronizar_ingresos($db, 'manual', 'Edición en bloque');
+        echo json_encode(['ok' => true, 'restaurados' => $n]);
+        break;
+
     case 'pedidos_por_productos':
         // "¿Quién pidió estos artículos?" — al ir ingresando mercadería física
         // al local, sirve para ver de un vistazo qué pedidos pendientes
