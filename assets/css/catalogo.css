@@ -24,7 +24,10 @@
 
 html {
     -webkit-text-size-adjust: 100%;
-    text-size-adjust: 100%
+    text-size-adjust: 100%;
+    /* Safari de iPhone: si algo sobresale unos px del ancho, achica toda la
+       página para que entre (se ve como un hueco blanco a la derecha). */
+    overflow-x: hidden
 }
 
 body {
@@ -72,6 +75,21 @@ header {
     margin-bottom: 10px;
     gap: 10px;
     padding: 12px 20px 0
+}
+
+/* El logo (SVG de 180 px fijos) tiene que poder achicarse en pantallas
+   angostas en vez de empujar los botones de la derecha fuera de la pantalla. */
+.brand {
+    min-width: 0
+}
+
+.brand svg {
+    max-width: 100%;
+    height: auto
+}
+
+.h-right {
+    flex-shrink: 0
 }
 
 .brand {
