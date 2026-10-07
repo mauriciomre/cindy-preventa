@@ -269,26 +269,6 @@ document.addEventListener("keydown", function (e) {
     if (e.key === "Escape") closeSidebarMobile();
 });
 
-// Achica los tiles de stats (Productos/Disponibles/Agotados/Categorías) al
-// scrollear buscando un producto, para ganar espacio vertical real para la
-// tabla. Desde que la tabla tiene su propio panel de scroll acotado (ver
-// tablas-admin-responsive.md, técnica 2b) el scroll real pasa ahí adentro,
-// no en la página — por eso se escucha el scroll de ESE contenedor
-// (localizado a partir de #tbody) y no el de window.
-document.addEventListener("DOMContentLoaded", function () {
-    var scrollBox = document.getElementById("tbody");
-    scrollBox = scrollBox && scrollBox.closest(".table-scroll");
-    if (!scrollBox) return;
-    scrollBox.addEventListener(
-        "scroll",
-        function () {
-            var stats = document.querySelector(".stats");
-            if (stats) stats.classList.toggle("compact", scrollBox.scrollTop > 24);
-        },
-        { passive: true },
-    );
-});
-
 // ── FAVORITOS ─────────────────────────────────────────────────────────────────
 var ALL_SECTIONS = [
     { key: "productos", label: "Productos", icon: "clipboard-list" },
@@ -1541,18 +1521,7 @@ document.addEventListener("click", function (e) {
 async function loadProducts() {
     var res = await fetch(API + "?action=productos&_user=" + encodeURIComponent(authUser) + "&_pass=" + encodeURIComponent(authPass));
     allProducts = await res.json();
-    renderStats();
     renderTable(getFiltered());
-}
-function renderStats() {
-    document.getElementById("stTotal").textContent = allProducts.length;
-    document.getElementById("stDisp").textContent = allProducts.filter(
-        (p) => p.estado === "DISPONIBLE",
-    ).length;
-    document.getElementById("stAgot").textContent = allProducts.filter(
-        (p) => p.estado === "AGOTADO",
-    ).length;
-    document.getElementById("stCats").textContent = allCats.length;
 }
 function getFiltered() {
     var q = document.getElementById("srch").value.toLowerCase();
