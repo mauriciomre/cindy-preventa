@@ -405,6 +405,26 @@ function setupDB($db) {
         $db->query("ALTER TABLE productos ADD COLUMN ingreso TINYINT(1) NOT NULL DEFAULT 0");
     }
 
+    // Registro de INGRESOS: cada tanda de mercadería que llega queda como un
+    // ingreso con su fecha y sus artículos (productos.ingreso_id). La marca
+    // productos.ingreso sigue siendo la fuente de verdad para el resto de la
+    // app (filtros, Excel, impresión); sincronizar_ingresos() mantiene los
+    // dos lados alineados después de cualquier cambio.
+    $db->query("CREATE TABLE IF NOT EXISTS ingresos (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        origen VARCHAR(20) NOT NULL DEFAULT 'manual',
+        nota VARCHAR(255) DEFAULT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) CHARACTER SET utf8mb4");
+    $colCheck = $db->query("SHOW COLUMNS FROM productos LIKE 'ingreso_id'");
+    if ($colCheck && $colCheck->num_rows === 0) {
+        $db->query("ALTER TABLE productos ADD COLUMN ingreso_id INT DEFAULT NULL");
+        $db->query("ALTER TABLE productos ADD INDEX idx_ingreso_id (ingreso_id)");
+        // Lo que ya estaba marcado antes de existir el registro va a un único
+        // "Ingreso histórico" para que nada quede sin tanda.
+        sincronizar_ingresos($db, 'historico', 'Ingreso histórico (anterior al registro de ingresos)');
+    }
+
     $db->query("CREATE TABLE IF NOT EXISTS import_snapshots (
         id INT AUTO_INCREMENT PRIMARY KEY,
         import_id VARCHAR(50) NOT NULL,
@@ -565,6 +585,26 @@ function resolver_preventa_id($db, $nombre) {
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
     return $row ? intval($row['id']) : null;
+}
+
+// Mantiene alineados productos.ingreso (marca) y productos.ingreso_id (a qué
+// tanda pertenece): lo desmarcado sale de su ingreso, lo marcado sin ingreso
+// entra en UNO nuevo (todos los de la misma operación juntos) y los ingresos
+// que quedan vacíos se borran. Devuelve el id del ingreso nuevo, si se creó.
+function sincronizar_ingresos($db, $origen = 'manual', $nota = null) {
+    $db->query("UPDATE productos SET ingreso_id=NULL WHERE ingreso=0 AND ingreso_id IS NOT NULL");
+    $r = $db->query("SELECT COUNT(*) AS n FROM productos WHERE ingreso=1 AND ingreso_id IS NULL");
+    $row = $r ? $r->fetch_assoc() : null;
+    $nuevoId = null;
+    if ($row && intval($row['n']) > 0) {
+        $stmt = $db->prepare("INSERT INTO ingresos (origen, nota) VALUES (?, ?)");
+        $stmt->bind_param('ss', $origen, $nota);
+        $stmt->execute();
+        $nuevoId = $db->insert_id;
+        $db->query("UPDATE productos SET ingreso_id=" . intval($nuevoId) . " WHERE ingreso=1 AND ingreso_id IS NULL");
+    }
+    $db->query("DELETE FROM ingresos WHERE id NOT IN (SELECT DISTINCT ingreso_id FROM productos WHERE ingreso_id IS NOT NULL)");
+    return $nuevoId;
 }
 
 // Interpreta la columna INGRESO de un Excel: "SI"/"SÍ"/"S"/"YES"/"1"/"TRUE"
@@ -785,6 +825,7 @@ switch ($action) {
                 $cs->bind_param('ii', $newId, $cid);
                 $cs->execute();
             }
+            if ($ingreso) sincronizar_ingresos($db, 'manual', null);
             echo json_encode(['ok' => true, 'id' => $newId]);
         } else { http_response_code(400); echo json_encode(['error' => $db->error]); }
         break;
@@ -824,6 +865,7 @@ switch ($action) {
                     $cs->execute();
                 }
             }
+            sincronizar_ingresos($db, 'manual', null);
             echo json_encode(['ok' => true]);
         } else { http_response_code(400); echo json_encode(['error' => $db->error]); }
         break;
@@ -855,6 +897,7 @@ switch ($action) {
         $stmt = $db->prepare("DELETE FROM productos WHERE id=?");
         $stmt->bind_param('i', $id);
         $stmt->execute();
+        sincronizar_ingresos($db, 'manual', null);
         $deleted_img = false;
         if ($prod) {
             $imgPath = null;
@@ -1016,6 +1059,7 @@ switch ($action) {
                 else $errors[] = ['codigo' => $codigo, 'motivo' => $db->error];
             }
         }
+        sincronizar_ingresos($db, 'excel', 'Importación de Excel ' . $import_id);
         echo json_encode(['ok' => true, 'imported' => $imported, 'updated' => $updated, 'errors' => $errors, 'import_id' => $import_id]);
         break;
 
@@ -1097,6 +1141,7 @@ switch ($action) {
             $delSnap->execute();
             $delSnap->close();
 
+            sincronizar_ingresos($db, 'manual', null);
             echo json_encode(['ok' => true, 'restored' => $restored, 'errors' => $errors]);
         } catch (Exception $e) {
             http_response_code(500);
@@ -2064,6 +2109,7 @@ switch ($action) {
         $stmt = $db->prepare("UPDATE productos SET ingreso=? WHERE codigo=?");
         $stmt->bind_param('is', $ingreso, $codigo);
         $stmt->execute();
+        sincronizar_ingresos($db, 'manual', null);
         echo json_encode(['ok' => true]);
         break;
 
@@ -2080,6 +2126,8 @@ switch ($action) {
         $stmt = $db->prepare("UPDATE productos SET ingreso=? WHERE codigo IN ($placeholders)");
         $stmt->bind_param('i' . $types, $ingreso, ...$codigos);
         $stmt->execute();
+        $notaIngreso = trim($data['nota'] ?? '');
+        $ingresoId = sincronizar_ingresos($db, 'carga', $notaIngreso !== '' ? mb_substr($notaIngreso, 0, 255) : null);
         // No se usa affected_rows: MySQL no cuenta una fila como "afectada"
         // si el valor ya era el mismo, y acá interesa saber cuántos códigos
         // matchearon de verdad, no cuántos cambiaron.
@@ -2088,7 +2136,110 @@ switch ($action) {
         $stmt2->execute();
         $existentes = array_column($stmt2->get_result()->fetch_all(MYSQLI_ASSOC), 'codigo');
         $noEncontrados = array_values(array_diff($codigos, $existentes));
-        echo json_encode(['ok' => true, 'actualizados' => count($existentes), 'no_encontrados' => $noEncontrados]);
+        echo json_encode(['ok' => true, 'actualizados' => count($existentes), 'no_encontrados' => $noEncontrados, 'ingreso_id' => $ingresoId]);
+        break;
+
+    // ── INGRESOS (tandas de mercadería que llegan) ─────────────────────────
+    case 'ingresos':
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        sincronizar_ingresos($db, 'manual', null); // autocorrige cualquier marca suelta
+        $r = $db->query("SELECT i.id, i.origen, i.nota, i.created_at,
+                (SELECT COUNT(*) FROM productos p WHERE p.ingreso_id = i.id) AS n_articulos,
+                (SELECT COUNT(DISTINCT pi.pedido_id) FROM pedido_items pi
+                    JOIN pedidos pe ON pe.id = pi.pedido_id
+                    JOIN productos p ON p.codigo = pi.codigo
+                    WHERE p.ingreso_id = i.id AND pe.estado != 'ELIMINADO') AS n_pedidos,
+                (SELECT COALESCE(SUM(pi.cantidad), 0) FROM pedido_items pi
+                    JOIN pedidos pe ON pe.id = pi.pedido_id
+                    JOIN productos p ON p.codigo = pi.codigo
+                    WHERE p.ingreso_id = i.id AND pe.estado != 'ELIMINADO') AS n_unidades
+            FROM ingresos i ORDER BY i.created_at DESC, i.id DESC");
+        echo json_encode(['ok' => true, 'ingresos' => $r->fetch_all(MYSQLI_ASSOC)]);
+        break;
+
+    case 'ingreso_detalle':
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $id = intval($data['id'] ?? 0);
+        $ing = $db->query("SELECT id, origen, nota, created_at FROM ingresos WHERE id=$id")->fetch_assoc();
+        if (!$ing) { http_response_code(404); die(json_encode(['error' => 'Ingreso no encontrado'])); }
+        $prods = $db->query("SELECT p.codigo, p.descripcion, p.categoria, p.marca, p.stock_preventa,
+                (SELECT COALESCE(SUM(pi.cantidad), 0) FROM pedido_items pi
+                    JOIN pedidos pe ON pe.id = pi.pedido_id
+                    WHERE pi.codigo = p.codigo AND pe.estado != 'ELIMINADO') AS unidades_pedidas,
+                (SELECT COUNT(DISTINCT pi.pedido_id) FROM pedido_items pi
+                    JOIN pedidos pe ON pe.id = pi.pedido_id
+                    WHERE pi.codigo = p.codigo AND pe.estado != 'ELIMINADO') AS n_pedidos
+            FROM productos p WHERE p.ingreso_id = $id ORDER BY p.categoria, p.codigo");
+        echo json_encode(['ok' => true, 'ingreso' => $ing, 'productos' => $prods->fetch_all(MYSQLI_ASSOC)]);
+        break;
+
+    case 'ingreso_editar':
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $id = intval($data['id'] ?? 0);
+        $nota = trim($data['nota'] ?? '');
+        $nota = $nota !== '' ? mb_substr($nota, 0, 255) : null;
+        $stmt = $db->prepare("UPDATE ingresos SET nota=? WHERE id=?");
+        $stmt->bind_param('si', $nota, $id);
+        $stmt->execute();
+        echo json_encode(['ok' => true]);
+        break;
+
+    case 'ingreso_quitar':
+        // Saca artículos de un ingreso (quedan como NO ingresados).
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $id = intval($data['id'] ?? 0);
+        $codigos = array_values(array_unique(array_filter(array_map('trim', $data['codigos'] ?? []))));
+        if ($codigos) {
+            $ph = implode(',', array_fill(0, count($codigos), '?'));
+            $stmt = $db->prepare("UPDATE productos SET ingreso=0, ingreso_id=NULL WHERE ingreso_id=? AND codigo IN ($ph)");
+            $stmt->bind_param('i' . str_repeat('s', count($codigos)), $id, ...$codigos);
+            $stmt->execute();
+        }
+        sincronizar_ingresos($db, 'manual', null);
+        echo json_encode(['ok' => true]);
+        break;
+
+    case 'ingreso_agregar':
+        // Suma artículos a un ingreso existente (si estaban en otro, se mueven).
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $id = intval($data['id'] ?? 0);
+        $codigos = array_values(array_unique(array_filter(array_map('trim', $data['codigos'] ?? []))));
+        $existe = $db->query("SELECT id FROM ingresos WHERE id=$id")->fetch_assoc();
+        if (!$existe) { http_response_code(404); die(json_encode(['error' => 'Ingreso no encontrado'])); }
+        $noEnc = [];
+        if ($codigos) {
+            $ph = implode(',', array_fill(0, count($codigos), '?'));
+            $types = str_repeat('s', count($codigos));
+            $stmt = $db->prepare("SELECT codigo FROM productos WHERE codigo IN ($ph)");
+            $stmt->bind_param($types, ...$codigos);
+            $stmt->execute();
+            $ex = array_column($stmt->get_result()->fetch_all(MYSQLI_ASSOC), 'codigo');
+            $noEnc = array_values(array_diff($codigos, $ex));
+            if ($ex) {
+                $ph2 = implode(',', array_fill(0, count($ex), '?'));
+                $stmt = $db->prepare("UPDATE productos SET ingreso=1, ingreso_id=? WHERE codigo IN ($ph2)");
+                $stmt->bind_param('i' . str_repeat('s', count($ex)), $id, ...$ex);
+                $stmt->execute();
+            }
+        }
+        sincronizar_ingresos($db, 'manual', null);
+        echo json_encode(['ok' => true, 'no_encontrados' => $noEnc]);
+        break;
+
+    case 'ingreso_deshacer':
+        // Deshace el ingreso entero: todos sus artículos vuelven a "no ingresado".
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $id = intval($data['id'] ?? 0);
+        $db->query("UPDATE productos SET ingreso=0, ingreso_id=NULL WHERE ingreso_id=$id");
+        $db->query("DELETE FROM ingresos WHERE id=$id");
+        sincronizar_ingresos($db, 'manual', null);
+        echo json_encode(['ok' => true]);
         break;
 
     case 'pedidos_por_productos':

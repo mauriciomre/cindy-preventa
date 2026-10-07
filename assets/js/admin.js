@@ -380,6 +380,7 @@ function showSection(s, btn) {
     if (s === "pedidos") loadPedidos();
     if (s === "clientes") loadClientes();
     if (s === "opiniones") loadOpiniones();
+    if (s === "ingresos") loadIngresos();
     if (window.innerWidth <= 860) closeSidebarMobile();
 }
 
@@ -2925,7 +2926,7 @@ function parsearListaCodigos(raw) {
     return codigos.filter(function (c, i) { return codigos.indexOf(c) === i; });
 }
 
-// Herramientas → "Marcar productos como ingresados": pega una lista de SKU
+// Ingresos → "Nuevo ingreso": pega una lista de SKU
 // (uno por línea, o separados por coma/espacio) — antes de aplicar nada,
 // muestra una vista previa (mismo criterio que el wizard de import de
 // Excel) para poder ver qué código no matcheó con el catálogo y elegir
@@ -3006,14 +3007,17 @@ async function confirmarIngresoBulk() {
     var res = await fetch(API + "?action=productos_ingreso_bulk", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ _user: authUser, _pass: authPass, codigos: codigos, ingreso: true }),
+        body: JSON.stringify({ _user: authUser, _pass: authPass, codigos: codigos, ingreso: true, nota: (document.getElementById("ingresoNota") || {}).value || "" }),
     });
     var json = await res.json();
     if (json.ok) {
         toast("✔ " + json.actualizados + " producto(s) marcado(s) como ingresado");
         document.getElementById("ingresoSkuList").value = "";
+        document.getElementById("ingresoNota").value = "";
+        document.getElementById("nuevoIngresoBox").style.display = "none";
         closeIngresoPreviewModal();
         await loadProducts();
+        loadIngresos();
         // El reporte de pedidos afectados se abre solo, apenas se confirma
         // el ingreso — no hace falta ir a buscarlo aparte con la otra
         // herramienta ("¿Quién pidió estos artículos?", misma lógica).
@@ -3022,6 +3026,204 @@ async function confirmarIngresoBulk() {
         btn.disabled = false;
         toast("Error: " + (json.error || "desconocido"), "#c62828");
     }
+}
+
+// ── INGRESOS (tandas de mercadería) ───────────────────────────────────────────
+var allIngresos = [];
+var _ingresoActual = null; // { ingreso, productos } del modal de detalle abierto
+
+var INGRESO_ORIGEN = {
+    carga: { label: "Carga", color: "#1565c0", bg: "#e3f2fd" },
+    manual: { label: "Manual", color: "#555", bg: "#f0f0f0" },
+    excel: { label: "Excel", color: "#6a1b9a", bg: "#f3e5f5" },
+    historico: { label: "Histórico", color: "#8d6e00", bg: "#fff8e1" },
+};
+
+function ingresoOrigenBadge(o) {
+    var e = INGRESO_ORIGEN[o] || INGRESO_ORIGEN.manual;
+    return (
+        '<span style="background:' + e.bg + ";color:" + e.color +
+        ';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">' + e.label + "</span>"
+    );
+}
+
+async function ingresoApi(accion, extra) {
+    var body = Object.assign({ _user: authUser, _pass: authPass }, extra || {});
+    var res = await fetch(API + "?action=" + accion, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+    });
+    return res.json();
+}
+
+async function loadIngresos() {
+    var json = await ingresoApi("ingresos");
+    allIngresos = json.ok ? json.ingresos : [];
+    renderIngresos();
+}
+
+function renderIngresos() {
+    var tb = document.getElementById("ingresosTbody");
+    if (!tb) return;
+    if (!allIngresos.length) {
+        tb.innerHTML =
+            '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">' +
+            "Todavía no hay ingresos. Tocá <strong>Nuevo ingreso</strong> para cargar el primero.</td></tr>";
+        return;
+    }
+    tb.innerHTML = allIngresos
+        .map(function (i) {
+            var f = new Date(i.created_at.replace(" ", "T"));
+            return (
+                "<tr><td><strong>#" + i.id + "</strong></td>" +
+                "<td>" + f.toLocaleDateString("es-AR") + ' <span style="color:var(--muted);font-size:11px">' +
+                f.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) + "</span> " +
+                ingresoOrigenBadge(i.origen) + "</td>" +
+                '<td class="col-hide-1" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+                esc(i.nota || "") + "</td>" +
+                '<td style="text-align:center;font-weight:700">' + i.n_articulos + "</td>" +
+                '<td class="col-hide-1" style="text-align:center">' + i.n_pedidos + "</td>" +
+                '<td class="col-hide-2" style="text-align:center">' + i.n_unidades + "</td>" +
+                '<td><button class="btn btn-edit" onclick="openIngresoDetalle(' + i.id + ')">Ver</button></td></tr>'
+            );
+        })
+        .join("");
+}
+
+function toggleNuevoIngreso() {
+    var box = document.getElementById("nuevoIngresoBox");
+    var abrir = box.style.display === "none";
+    box.style.display = abrir ? "" : "none";
+    if (abrir) document.getElementById("ingresoAutoInput").focus();
+}
+
+async function openIngresoDetalle(id) {
+    var json = await ingresoApi("ingreso_detalle", { id: id });
+    if (!json.ok) {
+        toast("No se pudo abrir el ingreso", "#c62828");
+        return;
+    }
+    _ingresoActual = json;
+    renderIngresoDetalle();
+    document.getElementById("ingresoDetalleModalBg").classList.add("open");
+}
+
+function renderIngresoDetalle() {
+    var d = _ingresoActual;
+    if (!d) return;
+    var i = d.ingreso;
+    var f = new Date(i.created_at.replace(" ", "T"));
+    document.getElementById("ingresoDetalleTitle").textContent = "Ingreso #" + i.id;
+    var html =
+        '<p style="font-size:13px;color:var(--muted);margin-bottom:12px">' +
+        f.toLocaleString("es-AR") + " · " + ingresoOrigenBadge(i.origen) + " · " +
+        d.productos.length + " artículo(s)</p>";
+    html +=
+        '<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">' +
+        '<input type="text" id="ingresoDetNota" maxlength="255" value="' + esc(i.nota || "") +
+        '" placeholder="Nota del ingreso (opcional)" style="flex:1;min-width:200px;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px">' +
+        '<button class="btn" onclick="guardarNotaIngreso()">Guardar nota</button></div>';
+    if (!d.productos.length) {
+        html += '<p style="color:var(--muted);font-size:13px">Este ingreso no tiene artículos.</p>';
+    } else {
+        html +=
+            '<div class="table-wrap" style="margin-bottom:12px"><div class="table-scroll"><table><thead><tr>' +
+            '<th style="width:36px"></th><th>Código</th><th>Descripción</th><th class="col-hide-1">Categoría</th>' +
+            '<th style="text-align:center">Pedidos</th><th class="col-hide-1" style="text-align:center">Unid. pedidas</th>' +
+            "</tr></thead><tbody>";
+        d.productos.forEach(function (p) {
+            html +=
+                '<tr><td><input type="checkbox" class="ingreso-det-check" value="' + esc(p.codigo) + '"></td>' +
+                "<td><code>" + esc(p.codigo) + "</code></td><td>" + esc(p.descripcion || "") + "</td>" +
+                '<td class="col-hide-1">' + esc(p.categoria || "") + "</td>" +
+                '<td style="text-align:center">' + p.n_pedidos + "</td>" +
+                '<td class="col-hide-1" style="text-align:center">' + p.unidades_pedidas + "</td></tr>";
+        });
+        html += "</tbody></table></div></div>";
+        html +=
+            '<button class="btn" style="margin-bottom:18px" onclick="quitarDeIngreso()">Quitar seleccionados del ingreso</button>';
+    }
+    html +=
+        '<div style="border-top:1px solid var(--border);padding-top:14px">' +
+        '<label style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:6px">Agregar artículos a este ingreso</label>' +
+        '<textarea id="ingresoDetAgregar" rows="2" placeholder="Códigos separados por línea, coma o espacio" ' +
+        'style="width:100%;box-sizing:border-box;padding:10px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;resize:vertical"></textarea>' +
+        '<button class="btn" style="margin-top:8px;background:#198754;color:#fff" onclick="agregarAIngreso()">Agregar al ingreso</button></div>';
+    document.getElementById("ingresoDetalleBody").innerHTML = html;
+}
+
+function closeIngresoDetalle() {
+    document.getElementById("ingresoDetalleModalBg").classList.remove("open");
+    _ingresoActual = null;
+}
+
+async function guardarNotaIngreso() {
+    if (!_ingresoActual) return;
+    var nota = document.getElementById("ingresoDetNota").value;
+    var json = await ingresoApi("ingreso_editar", { id: _ingresoActual.ingreso.id, nota: nota });
+    if (json.ok) {
+        toast("Nota guardada");
+        _ingresoActual.ingreso.nota = nota;
+        loadIngresos();
+    } else toast("Error", "#c62828");
+}
+
+async function quitarDeIngreso() {
+    if (!_ingresoActual) return;
+    var codigos = Array.from(document.querySelectorAll(".ingreso-det-check:checked")).map(function (el) { return el.value; });
+    if (!codigos.length) {
+        toast("Tildá al menos un artículo", "#e65100");
+        return;
+    }
+    if (!confirm("¿Quitar " + codigos.length + " artículo(s) de este ingreso? Quedan como NO ingresados.")) return;
+    var id = _ingresoActual.ingreso.id;
+    var json = await ingresoApi("ingreso_quitar", { id: id, codigos: codigos });
+    if (!json.ok) return toast("Error", "#c62828");
+    toast("Artículos quitados del ingreso");
+    await loadProducts();
+    await loadIngresos();
+    if (allIngresos.some(function (i) { return i.id === id; })) openIngresoDetalle(id);
+    else closeIngresoDetalle(); // quedó vacío: se borró solo
+}
+
+async function agregarAIngreso() {
+    if (!_ingresoActual) return;
+    var codigos = parsearListaCodigos(document.getElementById("ingresoDetAgregar").value);
+    if (!codigos.length) {
+        toast("Pegá al menos un código", "#c62828");
+        return;
+    }
+    var id = _ingresoActual.ingreso.id;
+    var json = await ingresoApi("ingreso_agregar", { id: id, codigos: codigos });
+    if (!json.ok) return toast("Error: " + (json.error || "desconocido"), "#c62828");
+    if (json.no_encontrados && json.no_encontrados.length) {
+        toast("No se encontraron: " + json.no_encontrados.join(", "), "#e65100");
+    } else toast("Artículos agregados al ingreso");
+    await loadProducts();
+    await loadIngresos();
+    openIngresoDetalle(id);
+}
+
+async function deshacerIngreso() {
+    if (!_ingresoActual) return;
+    var n = _ingresoActual.productos.length;
+    if (!confirm("¿Deshacer el ingreso #" + _ingresoActual.ingreso.id + "? Sus " + n + " artículo(s) vuelven a quedar como NO ingresados.")) return;
+    var json = await ingresoApi("ingreso_deshacer", { id: _ingresoActual.ingreso.id });
+    if (!json.ok) return toast("Error", "#c62828");
+    toast("Ingreso deshecho");
+    closeIngresoDetalle();
+    await loadProducts();
+    loadIngresos();
+}
+
+// Los modales no se apilan (comparten z-index): se cierra el detalle antes de
+// abrir el reporte de pedidos.
+function verPedidosDeIngreso() {
+    if (!_ingresoActual) return;
+    var codigos = _ingresoActual.productos.map(function (p) { return p.codigo; });
+    closeIngresoDetalle();
+    fetchYMostrarPedidosPorProductos(codigos);
 }
 
 // ── "¿Quién pidió estos artículos?" ─────────────────────────────────────────
