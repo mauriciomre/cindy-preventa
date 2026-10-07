@@ -2328,9 +2328,9 @@ function mostrarCartelOpinion(pedidoId) {
         '<div style="text-align:center;color:var(--muted);font-size:0.9em">Esto es mejor que cargar tu pedido en Excel. Tu opinión nos ayuda a mejorar.</div>' +
         '<div class="opinion-stars" id="opinionStars">' + estrellasHtml + "</div>" +
         '<textarea class="opinion-comment" id="opinionComment" placeholder="Contanos qué te pareció (opcional)"></textarea>' +
-        '<div style="display:flex;gap:8px;margin-top:14px">' +
-        '<button class="continue-btn" onclick="omitirOpinion()" style="flex:1">Omitir</button>' +
-        '<button class="wa" id="btnEnviarOpinion" onclick="enviarOpinion(' + pedidoId + ')" style="flex:1">Enviar opinión</button>' +
+        '<div class="opinion-actions">' +
+        '<button class="continue-btn" onclick="omitirOpinion()">Omitir</button>' +
+        '<button class="wa" id="btnEnviarOpinion" onclick="enviarOpinion(' + pedidoId + ')">Enviar opinión</button>' +
         "</div>";
 }
 

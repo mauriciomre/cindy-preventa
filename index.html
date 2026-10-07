@@ -142,7 +142,25 @@
                 border-top: 1px solid var(--border);
                 flex-shrink: 0;
             }
-            .preview-modal-actions button { flex: 1; }
+            .preview-modal-actions { align-items: stretch; }
+            .opinion-actions { display: flex; align-items: stretch; gap: 8px; margin-top: 14px; }
+            .preview-modal-actions button,
+            .opinion-actions button {
+                flex: 1;
+                width: auto;
+                margin: 0;
+                padding: 0 8px;
+                min-height: 48px;
+                font-size: 14px;
+                white-space: nowrap;
+                min-width: 0;
+                font-weight: 700;
+                border-radius: 12px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+            }
             /* Cartel de opinión (dentro del mismo modal de vista previa, tras confirmar) */
             .opinion-stars { display: flex; gap: 6px; justify-content: center; margin: 14px 0; }
             .opinion-star { background: none; border: none; padding: 4px; cursor: pointer; color: var(--border); line-height: 1; }
