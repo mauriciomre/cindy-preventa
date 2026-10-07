@@ -1,0 +1,2 @@
+# Tipo MIME correcto para el manifest de la PWA
+AddType application/manifest+json .webmanifest
