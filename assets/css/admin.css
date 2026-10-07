@@ -1798,3 +1798,23 @@ td.editing {
     .pedido-items-table th,
     .pedido-items-table td { padding: 8px 6px }
 }
+
+/* Modales con contenido largo (detalle de ingreso con cientos de artículos,
+   pedido, ¿Quién pidió?): la barra de botones queda fija abajo del modal para
+   que "Cerrar" y el resto siempre se vean, y la tabla de artículos del
+   ingreso scrollea en una altura acotada en vez de estirar todo el modal. */
+#ingresoDetalleModalBg .modal-foot,
+#pedidoModalBg .modal-foot,
+#lookupModalBg .modal-foot {
+    position: sticky;
+    bottom: -28px;
+    background: #fff;
+    margin: 20px -28px -28px;
+    padding: 12px 28px;
+    border-top: 1px solid var(--border);
+    z-index: 2
+}
+
+#ingresoDetalleBody .table-scroll {
+    max-height: 38vh
+}
