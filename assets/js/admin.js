@@ -1035,9 +1035,15 @@ async function eliminarCategoria(id, nombre, count) {
 }
 
 // ── PREVENTAS ─────────────────────────────────────────────────────────────────
+// Preventas archivadas: no se listan ni se cargan sus productos salvo que se tilde
+// "Mostrar archivadas" en Preventas. allPreventasTodas guarda la lista completa.
+var verArchivadas = false;
+var allPreventasTodas = [];
+
 async function loadPreventas() {
     var res = await fetch(API + "?action=preventas&_user=" + encodeURIComponent(authUser) + "&_pass=" + encodeURIComponent(authPass));
-    allPreventas = await res.json();
+    allPreventasTodas = await res.json();
+    allPreventas = allPreventasTodas.filter(function (pv) { return verArchivadas || pv.archivada != 1; });
     renderPreventaSelector();
     renderPreventaFilter();
     renderPreventaTable();
@@ -1100,15 +1106,17 @@ function renderPreventaTable() {
     var html = "";
     allPreventas.forEach(function (pv) {
         var productosPv = allProducts.filter((p) => String(p.preventa_id) === String(pv.id));
-        var count = productosPv.length;
+        var archivada = pv.archivada == 1;
+        // Las archivadas no cargan sus productos: el conteo viene del servidor.
+        var count = archivada && !productosPv.length ? parseInt(pv.n_productos, 10) || 0 : productosPv.length;
         // Si ya ingresaron TODOS los productos de una preventa activa, esa
         // preventa dejó de tener sentido como tal — sus artículos ya se
         // pueden comprar directo en la página principal, no son "preventa".
         // Se sugiere desactivarla en vez de hacerlo solo — es una decisión
         // de Mauricio, no algo que la app deba imponer.
-        var todoIngresado = pv.activa == 1 && count > 0 && productosPv.every(function (p) { return p.ingreso == 1; });
+        var todoIngresado = !archivada && pv.activa == 1 && count > 0 && productosPv.every(function (p) { return p.ingreso == 1; });
         var imgUrl = pv.imagen ? "../" + pv.imagen : null;
-        html += '<tr draggable="true" data-prev-id="' + pv.id + '">';
+        html += '<tr draggable="true" data-prev-id="' + pv.id + '"' + (archivada ? ' style="opacity:.6"' : "") + ">";
         html += '<td><span class="drag-handle">' + icon("grip-vertical", {size: 16}) + '</span></td>';
         html += '<td>' + (imgUrl
             ? '<img class="thumb" src="' + imgUrl + '?v=' + Date.now() + '" onerror="this.style.display=\'none\'">'
@@ -1116,6 +1124,7 @@ function renderPreventaTable() {
                 ? '<div class="thumb" style="background:' + esc(pv.color_portada) + '"></div>'
                 : '<div class="thumb-ph">' + icon("megaphone") + '</div>') + '</td>';
         html += "<td><strong>" + esc(pv.nombre) + "</strong>" +
+            (archivada ? ' <span class="badge-agot" style="background:#eceff1;color:#546e7a">' + icon("archive", { size: 12 }) + " Archivada</span>" : "") +
             (pv.detalle ? '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + esc(pv.detalle) + "</div>" : "") +
             (todoIngresado
                 ? '<div style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">' +
@@ -1125,12 +1134,15 @@ function renderPreventaTable() {
                   "</div>"
                 : "") +
             "</td>";
-        html += '<td><label class="switch"><input type="checkbox" ' + (pv.activa == 1 ? "checked" : "") +
+        html += '<td><label class="switch"><input type="checkbox" ' + (pv.activa == 1 ? "checked " : "") + (archivada ? 'disabled title="Archivada: desarchivala para poder activarla" ' : "") +
             ' onchange="togglePreventaActiva(' + pv.id + ',this.checked)"><span class="switch-slider"></span></label></td>';
         html += "<td>" + count + " producto" + (count !== 1 ? "s" : "") + "</td>";
         html += '<td><div class="actions">';
         html += '<button class="btn" style="background:#e3f2fd;color:#0d47a1" onclick="openPrevProductosModal(' + pv.id + ')">' + icon("package") + ' Productos</button>';
         html += '<button class="btn btn-edit" onclick="openPrevModal(' + pv.id + ')">' + icon("pencil") + ' Editar</button>';
+        html += archivada
+            ? '<button class="btn" style="background:#e8f5e9;color:#2e7d32" onclick="archivarPreventa(' + pv.id + ',false)">' + icon("archive-restore") + " Desarchivar</button>"
+            : '<button class="btn" style="background:#eceff1;color:#455a64" onclick="archivarPreventa(' + pv.id + ',true)">' + icon("archive") + " Archivar</button>";
         html += '<button class="btn btn-danger" onclick="eliminarPreventa(' + pv.id + ",'" + esc(pv.nombre) + "'," + count + ')">' + icon("trash-2") + '</button></div></td></tr>';
     });
     document.getElementById("prevTbody").innerHTML =
@@ -1334,6 +1346,28 @@ async function guardarPreventa() {
         await loadProducts();
     } else toast("Error: " + (json.error || "desconocido"), "#c62828");
 }
+async function archivarPreventa(id, archivada) {
+    var pv = allPreventasTodas.find(function (p) { return parseInt(p.id) === parseInt(id); });
+    if (!pv) return;
+    if (archivada && !confirm("¿Archivar «" + pv.nombre + "»?\n\nQueda inactiva, sale del catálogo y sus productos dejan de cargarse en el admin (así todo anda más rápido). No se borra nada: podés desarchivarla cuando quieras.")) return;
+    var res = await fetch(API + "?action=preventa_archivar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ _user: authUser, _pass: authPass, id: id, archivada: archivada }),
+    });
+    var json = await res.json();
+    if (!json.ok) return toast("Error: " + (json.error || "desconocido"), "#c62828");
+    toast(archivada ? "Preventa archivada" : "Preventa desarchivada (queda inactiva)");
+    await loadPreventas();
+    await loadProducts();
+}
+
+async function toggleVerArchivadas(on) {
+    verArchivadas = !!on;
+    await loadPreventas();
+    await loadProducts();
+}
+
 async function togglePreventaActiva(id, activa) {
     var pv = allPreventas.find((p) => parseInt(p.id) === parseInt(id));
     if (!pv) return;
@@ -1521,7 +1555,7 @@ document.addEventListener("click", function (e) {
 
 // ── PRODUCTOS ─────────────────────────────────────────────────────────────────
 async function loadProducts() {
-    var res = await fetch(API + "?action=productos&_user=" + encodeURIComponent(authUser) + "&_pass=" + encodeURIComponent(authPass));
+    var res = await fetch(API + "?action=productos&_user=" + encodeURIComponent(authUser) + "&_pass=" + encodeURIComponent(authPass) + (verArchivadas ? "&archivadas=1" : ""));
     allProducts = await res.json();
     renderTable(getFiltered());
 }

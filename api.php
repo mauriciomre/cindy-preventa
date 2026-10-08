@@ -290,6 +290,14 @@ function manager_precio_por_codigo($token, $codigo, $idLista) {
     return null;
 }
 
+// Crea el índice solo si no hay ya uno que arranque con esa columna.
+function asegurar_indice($db, $tabla, $columna, $nombre, $definicion) {
+    $r = $db->query("SHOW INDEX FROM $tabla WHERE Column_name='" . $db->real_escape_string($columna) . "' AND Seq_in_index=1");
+    if ($r && $r->num_rows === 0) {
+        $db->query("ALTER TABLE $tabla ADD INDEX $nombre ($definicion)");
+    }
+}
+
 function setupDB($db) {
     $db->query("CREATE TABLE IF NOT EXISTS categorias (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -559,6 +567,19 @@ function setupDB($db) {
         $db->query("ALTER TABLE pedido_items ADD COLUMN armado TINYINT(1) NOT NULL DEFAULT 0, ADD COLUMN armado_at DATETIME DEFAULT NULL, ADD COLUMN armado_ingreso_id INT DEFAULT NULL");
     }
 
+    // Índices para las búsquedas por código de artículo y por pedido (Ingresos,
+    // ¿Quién pidió?, detalle de pedido): sin ellos recorren todos los ítems.
+    asegurar_indice($db, 'pedido_items', 'codigo', 'idx_pi_codigo', 'codigo');
+    asegurar_indice($db, 'pedido_items', 'pedido_id', 'idx_pi_pedido', 'pedido_id');
+    asegurar_indice($db, 'productos', 'foto', 'idx_prod_foto', 'foto(100)');
+
+    // Preventas archivadas: salen del catálogo y no se cargan en el admin (los
+    // datos y los pedidos se conservan). Una archivada queda siempre inactiva.
+    $colCheck = $db->query("SHOW COLUMNS FROM preventas LIKE 'archivada'");
+    if ($colCheck && $colCheck->num_rows === 0) {
+        $db->query("ALTER TABLE preventas ADD COLUMN archivada TINYINT(1) NOT NULL DEFAULT 0, ADD COLUMN archivada_at DATETIME DEFAULT NULL");
+    }
+
     // "Impreso": cuándo se imprimió por última vez la hoja del pedido (NULL = sin imprimir).
     $colCheck = $db->query("SHOW COLUMNS FROM pedidos LIKE 'impreso_at'");
     if ($colCheck && $colCheck->num_rows === 0) {
@@ -760,7 +781,30 @@ function armarMensajeWA($clienteData, $transporte, $obs, $itemsProcesados, $tota
 
 $action = $_GET['action'] ?? '';
 $db = getDB();
-setupDB($db);
+
+// Las migraciones (setupDB) son ~40 consultas de "¿existe esta tabla/columna?":
+// correrlas en CADA llamada a la API volvía lenta a toda la plataforma. Ahora
+// corren una sola vez por versión. IMPORTANTE: al agregar una migración nueva en
+// setupDB(), subir SCHEMA_VERSION para que se aplique en el próximo request.
+define('SCHEMA_VERSION', '2026-10-08.1');
+
+function schema_actualizado($db) {
+    try {
+        $r = $db->query("SELECT valor FROM config WHERE clave='schema_version' LIMIT 1");
+        $row = $r ? $r->fetch_assoc() : null;
+        return $row && $row['valor'] === SCHEMA_VERSION;
+    } catch (Throwable $e) {
+        return false; // la tabla config todavía no existe: instalación nueva
+    }
+}
+
+if (!schema_actualizado($db)) {
+    setupDB($db);
+    $verSchema = SCHEMA_VERSION;
+    $stmtVer = $db->prepare("INSERT INTO config (clave, valor) VALUES ('schema_version', ?) ON DUPLICATE KEY UPDATE valor=?");
+    $stmtVer->bind_param('ss', $verSchema, $verSchema);
+    $stmtVer->execute();
+}
 
 switch ($action) {
 
@@ -781,6 +825,8 @@ switch ($action) {
         // incluidos productos sin preventa o con preventa inactiva, para poder
         // gestionarlos.
         if (!$isAdmin) { $sql .= " AND pv.activa = 1"; }
+        // Preventas archivadas: no se cargan en el admin salvo que se pida (?archivadas=1).
+        elseif (empty($_GET['archivadas'])) { $sql .= " AND (pv.id IS NULL OR pv.archivada = 0)"; }
         if ($cat)     { $sql .= " AND p.categoria = ?"; $params[] = $cat; $types .= 's'; }
         if ($barcode) { $sql .= " AND p.codigo_barras = ?"; $params[] = $barcode; $types .= 's'; }
         elseif ($q)   { $sql .= " AND (p.descripcion LIKE ? OR p.codigo LIKE ? OR p.codigo_barras LIKE ?)"; $like = "%$q%"; $params[] = $like; $params[] = $like; $params[] = $like; $types .= 'sss'; }
@@ -791,12 +837,20 @@ switch ($action) {
         if ($params) $stmt->bind_param($types, ...$params);
         $stmt->execute();
         $productos = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-        foreach ($productos as &$prod) {
-            $cstmt = $db->prepare("SELECT c.id, c.nombre, c.hex FROM colores c JOIN producto_colores pc ON c.id = pc.color_id WHERE pc.producto_id = ? ORDER BY c.nombre");
-            $cstmt->bind_param('i', $prod['id']);
-            $cstmt->execute();
-            $prod['colores'] = $cstmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        // Colores de TODOS los productos en una sola consulta (antes: una por producto).
+        $coloresPorProducto = [];
+        if ($productos) {
+            $idsProd = implode(',', array_map('intval', array_column($productos, 'id')));
+            $rc = $db->query("SELECT pc.producto_id, c.id, c.nombre, c.hex FROM producto_colores pc
+                JOIN colores c ON c.id = pc.color_id WHERE pc.producto_id IN ($idsProd) ORDER BY c.nombre");
+            while ($rowc = $rc->fetch_assoc()) {
+                $coloresPorProducto[$rowc['producto_id']][] = ['id' => $rowc['id'], 'nombre' => $rowc['nombre'], 'hex' => $rowc['hex']];
+            }
         }
+        foreach ($productos as &$prod) {
+            $prod['colores'] = $coloresPorProducto[$prod['id']] ?? [];
+        }
+        unset($prod);
         echo json_encode($productos);
         break;
 
@@ -1277,6 +1331,22 @@ switch ($action) {
         else { http_response_code(400); echo json_encode(['error' => 'Ya existe esa preventa']); }
         break;
 
+    case 'preventa_archivar':
+        // Archivar: la preventa queda inactiva, sale del catálogo y sus productos
+        // dejan de cargarse en el admin. No se borra nada.
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $id = intval($data['id'] ?? 0);
+        $existe = $db->query("SELECT id FROM preventas WHERE id=$id")->fetch_assoc();
+        if (!$existe) { http_response_code(404); die(json_encode(['error' => 'Preventa no encontrada'])); }
+        if (!empty($data['archivada'])) {
+            $db->query("UPDATE preventas SET archivada=1, archivada_at=NOW(), activa=0 WHERE id=$id");
+        } else {
+            $db->query("UPDATE preventas SET archivada=0, archivada_at=NULL WHERE id=$id");
+        }
+        echo json_encode(['ok' => true]);
+        break;
+
     case 'preventa_editar':
         $id = intval($_GET['id'] ?? 0);
         $data = json_decode(file_get_contents('php://input'), true);
@@ -1284,6 +1354,8 @@ switch ($action) {
         $nombre = trim($data['nombre'] ?? '');
         $detalle = isset($data['detalle']) && $data['detalle'] !== '' ? trim($data['detalle']) : null;
         $activa = !empty($data['activa']) ? 1 : 0;
+        $arch = $db->query("SELECT archivada FROM preventas WHERE id=$id")->fetch_assoc();
+        if ($arch && intval($arch['archivada']) === 1) $activa = 0; // una archivada no se activa: primero se desarchiva
         $mostrarStock = !empty($data['mostrar_stock']) ? 1 : 0;
         $colorPortada = isset($data['color_portada']) && $data['color_portada'] !== '' ? trim($data['color_portada']) : null;
         if (isset($data['imagen'])) {
