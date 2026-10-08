@@ -271,10 +271,14 @@ document.addEventListener("keydown", function (e) {
 // ── FAVORITOS ─────────────────────────────────────────────────────────────────
 var ALL_SECTIONS = [
     { key: "productos", label: "Productos", icon: "clipboard-list" },
+    { key: "preventas", label: "Preventas", icon: "megaphone" },
     { key: "categorias", label: "Categorías", icon: "folder" },
     { key: "colores", label: "Colores", icon: "palette" },
     { key: "pedidos", label: "Pedidos", icon: "shopping-cart" },
+    { key: "ingresos", label: "Ingresos", icon: "package-plus" },
+    { key: "opiniones", label: "Opiniones", icon: "star" },
     { key: "clientes", label: "Clientes", icon: "user" },
+    { key: "herramientas", label: "Herramientas", icon: "wrench" },
     { key: "configuracion", label: "Configuración", icon: "settings" },
 ];
 var favSections = [];
