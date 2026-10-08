@@ -182,6 +182,7 @@ async function doLogin() {
             applyToolsOrder();
             initToolsDragDrop();
             initFiltrosPanel();
+            restaurarUltimoMenu();
         } else {
             document.getElementById("lerr").textContent =
                 "Usuario o contraseña incorrectos";
@@ -227,6 +228,7 @@ async function tryAutoLogin() {
             applyToolsOrder();
             initToolsDragDrop();
             initFiltrosPanel();
+            restaurarUltimoMenu();
         } else {
             localStorage.removeItem("tb_admin_user");
             localStorage.removeItem("tb_admin_pass");
@@ -356,6 +358,8 @@ function applyFavModal() {
 
 // ── NAVEGACIÓN ────────────────────────────────────────────────────────────────
 function showSection(s, btn) {
+    // Se recuerda el último menú abierto (en este navegador) para volver ahí al entrar.
+    try { localStorage.setItem("tb_last_section", s); } catch (e) {}
     document
         .querySelectorAll(".section")
         .forEach((el) => el.classList.remove("on"));
@@ -385,6 +389,16 @@ function showSection(s, btn) {
     if (s === "opiniones") loadOpiniones();
     if (s === "ingresos") loadIngresos();
     if (window.innerWidth <= 860) closeSidebarMobile();
+}
+
+// Al abrir la plataforma se muestra el último menú que se usó (si todavía existe).
+function restaurarUltimoMenu() {
+    var key = null;
+    try { key = localStorage.getItem("tb_last_section"); } catch (e) {}
+    if (!key || key === "productos") return;
+    var existe = document.getElementById("sec" + key.charAt(0).toUpperCase() + key.slice(1)) &&
+        document.querySelector('.sidebar-item[data-section="' + key + '"]');
+    if (existe) showSection(key);
 }
 
 // ── CONFIGURACIÓN ─────────────────────────────────────────────────────────────
