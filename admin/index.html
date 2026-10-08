@@ -908,6 +908,11 @@
                                 <option value="ENVIADO">Enviado</option>
                                 <option value="ELIMINADO">Eliminados</option>
                             </select>
+                            <select id="pedidoFiltImp" onchange="renderPedidosTable()">
+                                <option value="">Impresión: todos</option>
+                                <option value="sin">Sin imprimir</option>
+                                <option value="si">Impresos</option>
+                            </select>
                         </div>
                         <div class="table-wrap">
                             <div class="table-scroll">
@@ -921,6 +926,7 @@
                                             <th>Total</th>
                                             <th>Estado</th>
                                             <th class="col-hide-1">Observaciones</th>
+                                            <th>Impreso</th>
                                             <th>Acciones</th>
                                         </tr>
                                     </thead>
@@ -973,6 +979,7 @@
                                             <th style="text-align:center">Artículos</th>
                                             <th class="col-hide-1" style="text-align:center">Pedidos</th>
                                             <th class="col-hide-2" style="text-align:center">Unidades pedidas</th>
+                                            <th style="text-align:center">Impreso</th>
                                             <th style="text-align:center">Armado</th>
                                             <th>Acciones</th>
                                         </tr>

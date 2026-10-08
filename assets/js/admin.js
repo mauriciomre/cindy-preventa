@@ -2835,7 +2835,10 @@ async function cambiarEstadoDesdeTabla(id, selectEl) {
 
 function renderPedidosTable() {
     var html = "";
-    allPedidos.forEach(function (p) {
+    var filtImp = (document.getElementById("pedidoFiltImp") || {}).value || "";
+    allPedidos.filter(function (p) {
+        return !filtImp || (filtImp === "sin" ? !p.impreso_at : !!p.impreso_at);
+    }).forEach(function (p) {
         var fecha = new Date(p.created_at).toLocaleString("es-AR", {
             day: "2-digit",
             month: "2-digit",
@@ -2870,6 +2873,7 @@ function renderPedidosTable() {
             esc(p.observaciones || "") +
             '">' + (p.observaciones ? esc(p.observaciones) : '<span style="color:var(--muted)">—</span>') +
             "</td>";
+        html += '<td style="white-space:nowrap">' + impresoChip(p.impreso_at, "pedido", p.id) + "</td>";
         html +=
             '<td><div class="actions"><button class="btn btn-edit" onclick="openPedidoModal(' +
             p.id +
@@ -2889,7 +2893,7 @@ function renderPedidosTable() {
     });
     document.getElementById("pedidosTbody").innerHTML =
         html ||
-        '<tr><td colspan="8" style="text-align:center;color:#aaa;padding:30px">No hay pedidos</td></tr>';
+        '<tr><td colspan="9" style="text-align:center;color:#aaa;padding:30px">No hay pedidos</td></tr>';
 }
 
 async function eliminarPedido(id) {
@@ -2980,6 +2984,7 @@ async function openPedidoModal(id) {
         '<button class="btn btn-primary" style="padding:6px 14px;font-size:12px" onclick="cambiarEstadoPedido()">Actualizar</button>';
     html +=
         '<span style="font-size:12px;color:var(--muted)">' + fecha + "</span>";
+    html += '<span id="pedidoImpresoWrap" style="margin-left:auto">' + impresoChip(p.impreso_at, "pedido", p.id) + "</span>";
     html += "</div>";
     // Historial estados
     if (p.historial && p.historial.length) {
@@ -3020,7 +3025,9 @@ async function openPedidoModal(id) {
 // Un ítem está en uno de tres estados: "pendiente" (el producto todavía no
 // ingresó), "para_armar" (ingresó y no se puso en el pedido) o "armado".
 function estadoItemPedido(it) {
-    if (it.armado == 1) return "armado";
+    // armado: tildado a mano en el pedido, o cubierto por un ingreso marcado como
+    // armado (solo si el pedido existía antes del corte: ver armado_por_ingreso).
+    if (it.armado == 1 || it.armado_por_ingreso == 1) return "armado";
     return it.ingreso == 1 ? "para_armar" : "pendiente";
 }
 
@@ -3047,7 +3054,7 @@ function renderPedidoItems() {
     if (r.total > 0 && r.armado === r.total) {
         html +=
             '<div style="margin-bottom:10px;padding:10px 12px;background:#e8f5e9;color:#1b5e20;border-radius:8px;font-size:13px;font-weight:700">' +
-            icon("circle-check-big") + " Pedido completo, listo para facturar</div>";
+            icon("circle-check-big") + " Pedido completo: todo armado</div>";
     }
     html +=
         '<div class="table-wrap" style="margin-bottom:16px"><div class="table-scroll">' +
@@ -3067,9 +3074,11 @@ function renderPedidoItems() {
             '</td><td class="col-hide-1" style="font-weight:700">' + fmt(item.subtotal) +
             '</td><td style="text-align:center"><input type="checkbox" ' + (item.ingreso == 1 ? "checked " : "") +
             "onchange=\"toggleItemIngreso('" + esc(item.codigo).replace(/'/g, "\\'") + "',this.checked)\" title=\"Ingresó (vale para todos los pedidos con este artículo)\"></td>" +
-            '<td style="text-align:center"><input type="checkbox" ' + (item.armado == 1 ? "checked " : "") +
-            (item.ingreso == 1 || item.armado == 1 ? "" : "disabled ") +
-            'onchange="toggleItemArmado(' + item.id + ',this.checked)" title="Armado: ya está puesto en el pedido"></td></tr>';
+            '<td style="text-align:center"><input type="checkbox" ' + (item.armado == 1 || item.armado_por_ingreso == 1 ? "checked " : "") +
+            (item.armado_por_ingreso == 1 || (item.ingreso != 1 && item.armado != 1) ? "disabled " : "") +
+            'onchange="toggleItemArmado(' + item.id + ',this.checked)" title="' +
+            (item.armado_por_ingreso == 1 ? "Armado con el ingreso #" + item.ingreso_ref + " (se cambia desde Ingresos)" : "Armado: ya está puesto en el pedido") +
+            '"></td></tr>';
     });
     html += "</tbody></table></div></div>";
     wrap.innerHTML = html;
@@ -3121,21 +3130,6 @@ async function armarTodoIngresado() {
     renderPedidoItems();
     loadIngresos();
     toast("Marcados como armados");
-}
-
-// Después de imprimir una hoja de armado: pregunta si de verdad se armó (el
-// papel puede haber salido mal) y recién ahí marca los ítems como armados.
-async function confirmarArmadoImpreso(itemIds) {
-    if (!itemIds.length) return false;
-    if (!confirm("¿Marcar como armados los " + itemIds.length + " ítem(s) que acabás de imprimir?\n\nSi la impresión salió mal o todavía no los armaste, tocá Cancelar: se pueden volver a imprimir.")) return false;
-    var json = await ingresoApi("pedido_items_armado", { item_ids: itemIds, armado: true });
-    if (!json.ok) {
-        toast("Error al marcar como armados", "#c62828");
-        return false;
-    }
-    toast("✔ " + itemIds.length + " ítem(s) marcado(s) como armados");
-    loadIngresos();
-    return true;
 }
 
 function closePedidoModal() {
@@ -3316,11 +3310,78 @@ async function loadIngresos() {
     renderIngresos();
 }
 
-function avanceArmadoHtml(i) {
-    var n = parseInt(i.n_items, 10) || 0, a = parseInt(i.n_armados, 10) || 0;
-    if (!n) return '<span style="color:var(--muted)">—</span>';
-    var color = a === n ? "#2e7d32" : a === 0 ? "#b71c1c" : "#e65100";
-    return '<span style="color:' + color + ';font-weight:700">' + a + " / " + n + "</span>";
+function fmtCorto(d) {
+    var f = new Date(String(d).replace(" ", "T"));
+    return (
+        f.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" }) + " " +
+        f.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })
+    );
+}
+
+// Chip "Impreso dd/mm hh:mm" / "Sin imprimir": un toque lo invierte (por si salió
+// mal la impresión o se imprimió por otro lado).
+function impresoChip(at, tipo, id) {
+    var on = !!at;
+    return (
+        '<button type="button" class="chip-toggle ' + (on ? "ok" : "warn") + '" onclick="toggleImpreso(\'' + tipo + "'," + id +
+        ')" title="' + (on ? "Tocá para marcar como NO impreso" : "Tocá para marcar como impreso") + '">' +
+        icon("printer", { size: 13 }) + " " + (on ? "Impreso " + fmtCorto(at) : "Sin imprimir") + "</button>"
+    );
+}
+
+function armadoChip(at, id) {
+    var on = !!at;
+    return (
+        '<button type="button" class="chip-toggle ' + (on ? "ok" : "warn") + '" onclick="toggleIngresoArmado(' + id +
+        ')" title="' + (on ? "Tocá para volver a Pendiente de armar" : "Tocá para marcar el ingreso como Armado") + '">' +
+        icon(on ? "circle-check-big" : "clock", { size: 13 }) + " " + (on ? "Armado " + fmtCorto(at) : "Pendiente de armar") + "</button>"
+    );
+}
+
+async function marcarImpreso(tipo, id, impreso) {
+    var json = await ingresoApi("marcar_impreso", { tipo: tipo, id: id, impreso: impreso });
+    if (!json.ok) return null;
+    var at = json.impreso_at || null;
+    if (tipo === "pedido") {
+        allPedidos.forEach(function (p) { if (p.id == id) p.impreso_at = at; });
+        if (pedidoActual && pedidoActual.id == id) {
+            pedidoActual.impreso_at = at;
+            var w = document.getElementById("pedidoImpresoWrap");
+            if (w) w.innerHTML = impresoChip(at, "pedido", id);
+        }
+        if (document.getElementById("pedidosTbody")) renderPedidosTable();
+    } else {
+        allIngresos.forEach(function (i) { if (i.id == id) i.impreso_at = at; });
+        if (_ingresoActual && _ingresoActual.ingreso.id == id) {
+            _ingresoActual.ingreso.impreso_at = at;
+            renderIngresoDetalle();
+        }
+        renderIngresos();
+    }
+    return at;
+}
+
+function marcarImpresoYRefrescar(tipo, id) {
+    return marcarImpreso(tipo, id, true);
+}
+
+function toggleImpreso(tipo, id) {
+    var actual = tipo === "pedido"
+        ? (pedidoActual && pedidoActual.id == id ? pedidoActual : allPedidos.find(function (p) { return p.id == id; }))
+        : allIngresos.find(function (i) { return i.id == id; });
+    marcarImpreso(tipo, id, !(actual && actual.impreso_at));
+}
+
+async function toggleIngresoArmado(id) {
+    var ing = allIngresos.find(function (i) { return i.id == id; });
+    var json = await ingresoApi("ingreso_armado", { id: id, armado: !(ing && ing.armado_at) });
+    if (!json.ok) return toast("Error", "#c62828");
+    await loadIngresos();
+    if (_ingresoActual && _ingresoActual.ingreso.id == id) {
+        _ingresoActual.ingreso.armado_at = json.armado_at;
+        renderIngresoDetalle();
+    }
+    toast(json.armado_at ? "Ingreso marcado como armado" : "Ingreso vuelto a pendiente de armar");
 }
 
 function renderIngresos() {
@@ -3328,7 +3389,7 @@ function renderIngresos() {
     if (!tb) return;
     if (!allIngresos.length) {
         tb.innerHTML =
-            '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">' +
+            '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">' +
             "Todavía no hay ingresos. Tocá <strong>Nuevo ingreso</strong> para cargar el primero.</td></tr>";
         return;
     }
@@ -3345,7 +3406,8 @@ function renderIngresos() {
                 '<td style="text-align:center;font-weight:700">' + i.n_articulos + "</td>" +
                 '<td class="col-hide-1" style="text-align:center">' + i.n_pedidos + "</td>" +
                 '<td class="col-hide-2" style="text-align:center">' + i.n_unidades + "</td>" +
-                '<td style="text-align:center;white-space:nowrap">' + avanceArmadoHtml(i) + "</td>" +
+                '<td style="text-align:center">' + impresoChip(i.impreso_at, "ingreso", i.id) + "</td>" +
+                '<td style="text-align:center">' + armadoChip(i.armado_at, i.id) + "</td>" +
                 '<td><button class="btn btn-edit" onclick="openIngresoDetalle(' + i.id + ')">Ver</button></td></tr>'
             );
         })
@@ -3380,11 +3442,10 @@ function renderIngresoDetalle() {
         '<p style="font-size:13px;color:var(--muted);margin-bottom:12px">' +
         f.toLocaleString("es-AR") + " · " + ingresoOrigenBadge(i.origen) + " · " +
         d.productos.length + " artículo(s)</p>";
-    var ing = allIngresos.find(function (x) { return x.id == i.id; });
-    if (ing) {
-        html += '<p style="font-size:13px;margin-bottom:12px">Armado: ' + avanceArmadoHtml(ing) +
-            ' <span style="color:var(--muted)">ítems de pedidos</span></p>';
-    }
+    html +=
+        '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px">' +
+        armadoChip(i.armado_at, i.id) + impresoChip(i.impreso_at, "ingreso", i.id) + "</div>" +
+        '<p style="font-size:12px;color:var(--muted);margin-bottom:12px">Al marcarlo como armado, los pedidos que entren después de la última hoja impresa NO se consideran armados.</p>';
     html +=
         '<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">' +
         '<input type="text" id="ingresoDetNota" maxlength="255" value="' + esc(i.nota || "") +
@@ -3490,7 +3551,7 @@ async function imprimirArmadoDeIngreso() {
     var codigos = _ingresoActual.productos.map(function (p) { return p.codigo; });
     if (!codigos.length) return toast("Este ingreso no tiene artículos", "#e65100");
     _lookupReportData = await cargarPedidosPorProductos(codigos);
-    imprimirLookupReport(true);
+    if (imprimirLookupReport(true)) marcarImpresoYRefrescar("ingreso", _ingresoActual.ingreso.id);
 }
 
 function verPedidosDeIngreso() {
@@ -3856,9 +3917,10 @@ function renderLookupModal(codigosBuscados, grupos) {
                 (it.en_lista_espera == 1
                     ? ' <span style="font-size:10px;color:#b71c1c;font-weight:700">· Lista de espera</span>'
                     : "") +
-                '</td><td style="text-align:center"><input type="checkbox" ' + (it.armado == 1 ? "checked " : "") +
-                (it.ingreso == 1 || it.armado == 1 ? "" : "disabled ") +
-                'onchange="toggleLookupArmado(' + it.item_id + ',this.checked)"></td></tr>';
+                '</td><td style="text-align:center"><input type="checkbox" ' + (est === "armado" ? "checked " : "") +
+                (it.armado_por_ingreso == 1 || (it.ingreso != 1 && it.armado != 1) ? "disabled " : "") +
+                'onchange="toggleLookupArmado(' + it.item_id + ',this.checked)"' +
+                (it.armado_por_ingreso == 1 ? ' title="Armado con el ingreso #' + it.ingreso_ref + '"' : "") + "></td></tr>";
         });
         html += "</tbody></table></div></div>";
         html += '<div style="margin-top:8px"><button class="btn btn-edit" onclick="verPedidoDesdeLookup(' + g.pedido_id + ')">Ver pedido completo</button></div>';
@@ -3896,7 +3958,7 @@ async function toggleLookupArmado(itemId, checked) {
 // forzarSoloIngresados: la hoja de armado de un Ingreso siempre lleva solo lo
 // ingresado y sin armar; el reporte de "¿Quién pidió?" respeta el tilde del modal.
 function imprimirLookupReport(forzarSoloIngresados) {
-    if (!_lookupReportData) return;
+    if (!_lookupReportData) return false;
     var codigosBuscados = _lookupReportData.codigosBuscados;
     var tilde = document.getElementById("lookupSoloIngresados");
     var solo = forzarSoloIngresados === true || !tilde || tilde.checked;
@@ -3904,7 +3966,7 @@ function imprimirLookupReport(forzarSoloIngresados) {
     var grupos = [];
     _lookupReportData.grupos.forEach(function (g) {
         var items = g.items.filter(function (it) {
-            if (it.armado == 1) { omitidosArmados++; return false; }
+            if (estadoItemPedido(it) === "armado") { omitidosArmados++; return false; }
             if (solo && it.ingreso != 1) { omitidosSinIngresar++; return false; }
             return true;
         });
@@ -3912,7 +3974,7 @@ function imprimirLookupReport(forzarSoloIngresados) {
     });
     if (!grupos.length) {
         toast("No hay nada para imprimir: todo está armado" + (solo ? " o todavía no ingresó" : ""), "#e65100");
-        return;
+        return false;
     }
     var fecha = new Date().toLocaleString("es-AR");
     var html =
@@ -3936,6 +3998,21 @@ function imprimirLookupReport(forzarSoloIngresados) {
             (omitidosArmados && omitidosSinIngresar ? " y " : "") +
             (omitidosSinIngresar ? omitidosSinIngresar + " sin ingresar" : "") + ".</p>";
     }
+    // Resumen para el picking: total de unidades por artículo, para sacarlos del depósito juntos.
+    var resumen = {}, ordenRes = [];
+    grupos.forEach(function (g) {
+        g.items.forEach(function (it) {
+            if (!resumen[it.codigo]) { resumen[it.codigo] = { desc: it.descripcion || "", unidades: 0, pedidos: {} }; ordenRes.push(it.codigo); }
+            resumen[it.codigo].unidades += parseInt(it.cantidad, 10) || 0;
+            resumen[it.codigo].pedidos[g.pedido_id] = 1;
+        });
+    });
+    html += '<h3 style="font-size:13px;margin:10px 0 4px">Para sacar del depósito</h3><table><thead><tr><th>Código</th><th>Descripción</th><th>Unidades</th><th>Pedidos</th></tr></thead><tbody>';
+    ordenRes.forEach(function (c) {
+        html += "<tr><td>" + esc(c) + "</td><td>" + esc(resumen[c].desc) + "</td><td><strong>" + resumen[c].unidades + "</strong></td><td>" + Object.keys(resumen[c].pedidos).length + "</td></tr>";
+    });
+    html += "</tbody></table>";
+    html += '<h3 style="font-size:13px;margin:14px 0 4px">Detalle por pedido</h3>';
     grupos.forEach(function (g) {
         var fechaPedido = new Date(g.created_at).toLocaleString("es-AR");
         html += '<div class="pedido-box">';
@@ -3960,25 +4037,7 @@ function imprimirLookupReport(forzarSoloIngresados) {
     w.document.write(html);
     w.document.close();
     w.print();
-    var paraArmar = [];
-    grupos.forEach(function (g) {
-        g.items.forEach(function (it) { if (it.ingreso == 1) paraArmar.push(it); });
-    });
-    if (paraArmar.length) {
-        setTimeout(async function () {
-            var ok = await confirmarArmadoImpreso(paraArmar.map(function (it) { return it.item_id; }));
-            if (!ok) return;
-            _lookupReportData.grupos.forEach(function (g) {
-                g.items.forEach(function (it) {
-                    if (paraArmar.some(function (x) { return x.item_id == it.item_id; })) it.armado = 1;
-                });
-            });
-            if (document.getElementById("lookupModalBg").classList.contains("open")) {
-                renderLookupModal(_lookupReportData.codigosBuscados, _lookupReportData.grupos);
-            }
-            if (_ingresoActual) openIngresoDetalle(_ingresoActual.ingreso.id);
-        }, 300);
-    }
+    return true;
 }
 
 async function guardarPedidoObs() {
@@ -4125,7 +4184,7 @@ function imprimirPedido(soloNuevos) {
             html += tablaItems(pendientes);
         }
         if (ingresados.length) {
-            html += '<h4 style="font-size:11px;color:#2e7d32;margin:8px 0 4px 0;text-transform:uppercase">Ya ingresó — para armar</h4>';
+            html += '<h4 style="font-size:11px;color:#2e7d32;margin:8px 0 4px 0;text-transform:uppercase">Ya ingresó — para preparar</h4>';
             html += tablaItems(ingresados);
         }
         if (armados.length) {
@@ -4160,15 +4219,8 @@ function imprimirPedido(soloNuevos) {
     w.document.write(html);
     w.document.close();
     w.print();
-    if (soloNuevos) {
-        var idsImpresos = itemsImp.map(function (it) { return it.id; });
-        setTimeout(async function () {
-            if (await confirmarArmadoImpreso(idsImpresos)) {
-                itemsImp.forEach(function (it) { it.armado = 1; });
-                renderPedidoItems();
-            }
-        }, 300);
-    }
+    // La hoja completa cuenta como "impresa"; la parcial es solo un extra.
+    if (!soloNuevos) marcarImpresoYRefrescar("pedido", p.id);
 }
 
 // ── CLIENTES ──────────────────────────────────────────────────────────────────

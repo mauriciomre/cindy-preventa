@@ -559,6 +559,19 @@ function setupDB($db) {
         $db->query("ALTER TABLE pedido_items ADD COLUMN armado TINYINT(1) NOT NULL DEFAULT 0, ADD COLUMN armado_at DATETIME DEFAULT NULL, ADD COLUMN armado_ingreso_id INT DEFAULT NULL");
     }
 
+    // "Impreso": cuándo se imprimió por última vez la hoja del pedido (NULL = sin imprimir).
+    $colCheck = $db->query("SHOW COLUMNS FROM pedidos LIKE 'impreso_at'");
+    if ($colCheck && $colCheck->num_rows === 0) {
+        $db->query("ALTER TABLE pedidos ADD COLUMN impreso_at DATETIME DEFAULT NULL");
+    }
+    // Ingresos: estado de armado (manual) + cuándo se imprimió su hoja de armado.
+    // armado_corte = hasta cuándo llegan los pedidos que cubre ese armado: los
+    // pedidos que entran DESPUÉS no están armados aunque el ingreso lo esté.
+    $colCheck = $db->query("SHOW COLUMNS FROM ingresos LIKE 'armado_at'");
+    if ($colCheck && $colCheck->num_rows === 0) {
+        $db->query("ALTER TABLE ingresos ADD COLUMN armado_at DATETIME DEFAULT NULL, ADD COLUMN armado_corte DATETIME DEFAULT NULL, ADD COLUMN impreso_at DATETIME DEFAULT NULL");
+    }
+
     $db->query("CREATE TABLE IF NOT EXISTS pedido_estados (
         id INT AUTO_INCREMENT PRIMARY KEY,
         pedido_id INT NOT NULL,
@@ -2069,9 +2082,14 @@ switch ($action) {
         // "ingreso" viene del PRODUCTO actual (pr.ingreso), no de un snapshot
         // del ítem — así si se marca/desmarca desde Productos o desde otro
         // pedido, se ve reflejado acá también sin tener que resincronizar nada.
-        $pedido['items'] = $db->query("SELECT pi.*, COALESCE(pr.ingreso, 0) as ingreso
+        // armado_por_ingreso: el ítem entra en un ingreso ya marcado como armado Y el
+        // pedido existía antes del corte (un pedido posterior NO está armado).
+        $pedido['items'] = $db->query("SELECT pi.*, COALESCE(pr.ingreso, 0) as ingreso, pr.ingreso_id AS ingreso_ref,
+                (CASE WHEN ing.armado_corte IS NOT NULL AND ped.created_at <= ing.armado_corte THEN 1 ELSE 0 END) AS armado_por_ingreso
             FROM pedido_items pi
+            JOIN pedidos ped ON ped.id = pi.pedido_id
             LEFT JOIN productos pr ON pr.codigo = pi.codigo
+            LEFT JOIN ingresos ing ON ing.id = pr.ingreso_id
             WHERE pi.pedido_id=$id")->fetch_all(MYSQLI_ASSOC);
         $pedido['historial'] = $db->query("SELECT * FROM pedido_estados WHERE pedido_id=$id ORDER BY created_at ASC")->fetch_all(MYSQLI_ASSOC);
         echo json_encode($pedido);
@@ -2186,7 +2204,7 @@ switch ($action) {
         $data = json_decode(file_get_contents('php://input'), true);
         checkAuth($data);
         sincronizar_ingresos($db, 'manual', null); // autocorrige cualquier marca suelta
-        $r = $db->query("SELECT i.id, i.origen, i.nota, i.created_at,
+        $r = $db->query("SELECT i.id, i.origen, i.nota, i.created_at, i.armado_at, i.impreso_at,
                 (SELECT COUNT(*) FROM productos p WHERE p.ingreso_id = i.id) AS n_articulos,
                 (SELECT COUNT(DISTINCT pi.pedido_id) FROM pedido_items pi
                     JOIN pedidos pe ON pe.id = pi.pedido_id
@@ -2212,7 +2230,7 @@ switch ($action) {
         $data = json_decode(file_get_contents('php://input'), true);
         checkAuth($data);
         $id = intval($data['id'] ?? 0);
-        $ing = $db->query("SELECT id, origen, nota, created_at FROM ingresos WHERE id=$id")->fetch_assoc();
+        $ing = $db->query("SELECT id, origen, nota, created_at, armado_at, armado_corte, impreso_at FROM ingresos WHERE id=$id")->fetch_assoc();
         if (!$ing) { http_response_code(404); die(json_encode(['error' => 'Ingreso no encontrado'])); }
         $prods = $db->query("SELECT p.codigo, p.descripcion, p.categoria, p.marca, p.stock_preventa,
                 (SELECT COALESCE(SUM(pi.cantidad), 0) FROM pedido_items pi
@@ -2419,6 +2437,36 @@ switch ($action) {
         echo json_encode(['ok' => true, 'restaurados' => $n]);
         break;
 
+    case 'marcar_impreso':
+        // Marca (o desmarca) que la hoja de un pedido o de un ingreso ya se imprimió.
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $tipo = $data['tipo'] ?? '';
+        $id = intval($data['id'] ?? 0);
+        $tabla = $tipo === 'pedido' ? 'pedidos' : ($tipo === 'ingreso' ? 'ingresos' : '');
+        if (!$tabla || !$id) { http_response_code(400); die(json_encode(['error' => 'Datos incompletos'])); }
+        if (!empty($data['impreso'])) $db->query("UPDATE $tabla SET impreso_at=NOW() WHERE id=$id");
+        else $db->query("UPDATE $tabla SET impreso_at=NULL WHERE id=$id");
+        $row = $db->query("SELECT impreso_at FROM $tabla WHERE id=$id")->fetch_assoc();
+        echo json_encode(['ok' => true, 'impreso_at' => $row['impreso_at'] ?? null]);
+        break;
+
+    case 'ingreso_armado':
+        // Estado del ingreso: ya se armó en los pedidos / pendiente de armar. Al
+        // marcarlo se guarda el corte: la última vez que se imprimió su hoja (los
+        // pedidos posteriores a esa hoja no entraron) o, si nunca se imprimió, ahora.
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $id = intval($data['id'] ?? 0);
+        if (!empty($data['armado'])) {
+            $db->query("UPDATE ingresos SET armado_at=NOW(), armado_corte=COALESCE(impreso_at, NOW()) WHERE id=$id");
+        } else {
+            $db->query("UPDATE ingresos SET armado_at=NULL, armado_corte=NULL WHERE id=$id");
+        }
+        $row = $db->query("SELECT armado_at, armado_corte FROM ingresos WHERE id=$id")->fetch_assoc();
+        echo json_encode(['ok' => true, 'armado_at' => $row['armado_at'] ?? null, 'armado_corte' => $row['armado_corte'] ?? null]);
+        break;
+
     case 'pedidos_por_productos':
         // "¿Quién pidió estos artículos?" — al ir ingresando mercadería física
         // al local, sirve para ver de un vistazo qué pedidos pendientes
@@ -2433,13 +2481,15 @@ switch ($action) {
         $placeholders = implode(',', array_fill(0, count($codigos), '?'));
         $types = str_repeat('s', count($codigos));
         $stmt = $db->prepare("SELECT pi.id as item_id, pi.codigo, pi.descripcion, pi.cantidad, pi.colores_detalle, pi.en_lista_espera,
-                pi.armado, COALESCE(pr.ingreso, 0) as ingreso,
+                pi.armado, COALESCE(pr.ingreso, 0) as ingreso, pr.ingreso_id AS ingreso_ref,
+                (CASE WHEN ing.armado_corte IS NOT NULL AND p.created_at <= ing.armado_corte THEN 1 ELSE 0 END) AS armado_por_ingreso,
                 p.id as pedido_id, p.estado, p.created_at, p.observaciones,
                 c.nombre as cliente_nombre, c.telefono as cliente_tel
             FROM pedido_items pi
             JOIN pedidos p ON p.id = pi.pedido_id
             JOIN clientes c ON c.id = p.cliente_id
             LEFT JOIN productos pr ON pr.codigo = pi.codigo
+            LEFT JOIN ingresos ing ON ing.id = pr.ingreso_id
             WHERE pi.codigo IN ($placeholders) AND p.estado != 'ELIMINADO'
             ORDER BY p.created_at ASC");
         $stmt->bind_param($types, ...$codigos);
