@@ -1892,3 +1892,10 @@ td.editing {
 .chip-toggle:hover {
     filter: brightness(.95)
 }
+
+
+/* Selección y filtros de fecha en Pedidos / Ingresos */
+.sel-cell { width: 34px; text-align: center }
+tr.sel-row td { background: var(--pale) }
+.toolbar-date { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); font-weight: 600 }
+.toolbar-date input { padding: 8px 10px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 13px; font-family: inherit }

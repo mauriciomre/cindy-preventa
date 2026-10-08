@@ -181,7 +181,6 @@ async function doLogin() {
             checkLastImport();
             applyToolsOrder();
             initToolsDragDrop();
-            renderQpChips();
             initFiltrosPanel();
         } else {
             document.getElementById("lerr").textContent =
@@ -227,7 +226,6 @@ async function tryAutoLogin() {
             checkLastImport();
             applyToolsOrder();
             initToolsDragDrop();
-            renderQpChips();
             initFiltrosPanel();
         } else {
             localStorage.removeItem("tb_admin_user");
@@ -1961,6 +1959,10 @@ function renderTableFromList(list) {
                     p.id +
                     ')">' + icon("pencil") + ' Editar</button>';
                 html +=
+                    '<button class="btn" title="Ver qué pedidos incluyen este artículo" onclick="verPedidosDeProducto(' +
+                    p.id +
+                    ')">' + icon("shopping-cart") + '</button>';
+                html +=
                     '<button class="btn btn-danger" onclick="deleteProduct(' +
                     p.id +
                     ",'" +
@@ -2118,6 +2120,17 @@ async function bulkEliminar() {
     bulkCerrarUndo();
     await loadProducts();
     loadIngresos();
+}
+
+function verPedidosDeProducto(id) {
+    var p = allProducts.find(function (x) { return x.id === id; });
+    if (p) fetchYMostrarPedidosPorProductos([p.codigo]);
+}
+
+function verPedidosDeSeleccion() {
+    var codigos = allProducts.filter(function (p) { return selIds.has(p.id); }).map(function (p) { return p.codigo; });
+    if (!codigos.length) return;
+    fetchYMostrarPedidosPorProductos(codigos);
 }
 
 function bulkCerrarUndo() {
@@ -2867,67 +2880,67 @@ async function cambiarEstadoDesdeTabla(id, selectEl) {
     } else toast("Error al actualizar estado", "#c62828");
 }
 
-function renderPedidosTable() {
-    var html = "";
+function pedidosVisibles() {
     var filtImp = (document.getElementById("pedidoFiltImp") || {}).value || "";
-    allPedidos.filter(function (p) {
+    var list = allPedidos.filter(function (p) {
         return !filtImp || (filtImp === "sin" ? !p.impreso_at : !!p.impreso_at);
-    }).forEach(function (p) {
+    });
+    return tblSortList("pedidos", list);
+}
+
+function renderPedidosTable() {
+    var head = document.getElementById("pedidosThead");
+    if (!head) return;
+    var T = "pedidos";
+    head.innerHTML =
+        "<tr>" +
+        (tcol(T, "sel") ? '<th class="sel-cell"><input type="checkbox" id="selAll_pedidos" title="Seleccionar todos los pedidos filtrados" onchange="tblSelAll(\'pedidos\',this.checked)"></th>' : "") +
+        (tcol(T, "id") ? tth(T, "#", "id") : "") +
+        (tcol(T, "fecha") ? tth(T, "Fecha", "fecha", "col-hide-2") : "") +
+        (tcol(T, "cliente") ? tth(T, "Cliente", "cliente", "sticky-col") : "") +
+        (tcol(T, "tel") ? tth(T, "Teléfono", "tel", "col-hide-1") : "") +
+        (tcol(T, "total") ? tth(T, "Total", "total") : "") +
+        (tcol(T, "estado") ? tth(T, "Estado", "estado") : "") +
+        (tcol(T, "obs") ? tth(T, "Observaciones", "obs", "col-hide-1") : "") +
+        (tcol(T, "impreso") ? tth(T, "Impreso", "impreso") : "") +
+        (tcol(T, "acciones") ? "<th>Acciones</th>" : "") +
+        "</tr>";
+    var list = pedidosVisibles();
+    var html = "";
+    list.forEach(function (p) {
         var fecha = new Date(p.created_at).toLocaleString("es-AR", {
-            day: "2-digit",
-            month: "2-digit",
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
+            day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
         });
         var eliminado = p.estado === "ELIMINADO";
-        html += "<tr" + (eliminado ? ' style="opacity:.5"' : "") + ">";
-        html += "<td><strong>#" + p.id + "</strong></td>";
-        html +=
-            '<td class="col-hide-2" style="font-size:12px;white-space:nowrap">' + fecha + "</td>";
-        html +=
-            '<td class="sticky-col"><button class="link-btn" onclick="abrirClienteDesdePedido(' +
-            p.cliente_id +
-            ')">' +
-            p.cliente_nombre +
-            "</button></td>";
-        html +=
-            '<td class="col-hide-1"><a href="https://wa.me/' +
-            p.cliente_tel +
-            '" target="_blank" style="color:var(--blue);text-decoration:none">+' +
-            p.cliente_tel +
-            "</a></td>";
-        html +=
-            '<td style="font-weight:800;color:var(--blue)">' +
-            fmt(p.total) +
-            "</td>";
-        html += "<td>" + (eliminado ? estadoBadge(p.estado) : estadoBadgeSelect(p)) + "</td>";
-        html +=
-            '<td class="col-hide-1" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' +
-            esc(p.observaciones || "") +
-            '">' + (p.observaciones ? esc(p.observaciones) : '<span style="color:var(--muted)">—</span>') +
-            "</td>";
-        html += '<td style="white-space:nowrap">' + impresoChip(p.impreso_at, "pedido", p.id) + "</td>";
-        html +=
-            '<td><div class="actions"><button class="btn btn-edit" onclick="openPedidoModal(' +
-            p.id +
-            ')">Ver</button>';
-        if (eliminado)
+        var sel = TBL.pedidos.sel.has(String(p.id));
+        html += "<tr" + (sel ? ' class="sel-row"' : "") + (eliminado ? ' style="opacity:.5"' : "") + ">";
+        if (tcol(T, "sel"))
+            html += '<td class="sel-cell"><input type="checkbox" ' + (sel ? "checked " : "") + "onchange=\"tblSelToggle('pedidos'," + p.id + ',this.checked)"></td>';
+        if (tcol(T, "id")) html += "<td><strong>#" + p.id + "</strong></td>";
+        if (tcol(T, "fecha")) html += '<td class="col-hide-2" style="font-size:12px;white-space:nowrap">' + fecha + "</td>";
+        if (tcol(T, "cliente"))
+            html += '<td class="sticky-col"><button class="link-btn" onclick="abrirClienteDesdePedido(' + p.cliente_id + ')">' + p.cliente_nombre + "</button></td>";
+        if (tcol(T, "tel"))
+            html += '<td class="col-hide-1"><a href="https://wa.me/' + p.cliente_tel + '" target="_blank" style="color:var(--blue);text-decoration:none">+' + p.cliente_tel + "</a></td>";
+        if (tcol(T, "total")) html += '<td style="font-weight:800;color:var(--blue)">' + fmt(p.total) + "</td>";
+        if (tcol(T, "estado")) html += "<td>" + (eliminado ? estadoBadge(p.estado) : estadoBadgeSelect(p)) + "</td>";
+        if (tcol(T, "obs"))
             html +=
-                '<button class="btn" style="background:#e8f5e9;color:#2e7d32;padding:6px 12px;font-size:12px" onclick="restaurarPedido(' +
-                p.id +
-                ')">' + icon("undo-2", {size: 14}) + ' Restaurar</button>';
-        else
-            html +=
-                '<button class="btn btn-danger" onclick="eliminarPedido(' +
-                p.id +
-                ')">' + icon("trash-2") + '</button>';
-        html += "</div></td>";
+                '<td class="col-hide-1" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(p.observaciones || "") + '">' +
+                (p.observaciones ? esc(p.observaciones) : '<span style="color:var(--muted)">—</span>') + "</td>";
+        if (tcol(T, "impreso")) html += '<td style="white-space:nowrap">' + impresoChip(p.impreso_at, "pedido", p.id) + "</td>";
+        if (tcol(T, "acciones")) {
+            html += '<td><div class="actions"><button class="btn btn-edit" onclick="openPedidoModal(' + p.id + ')">Ver</button>';
+            if (eliminado)
+                html += '<button class="btn" style="background:#e8f5e9;color:#2e7d32;padding:6px 12px;font-size:12px" onclick="restaurarPedido(' + p.id + ')">' + icon("undo-2", { size: 14 }) + " Restaurar</button>";
+            else html += '<button class="btn btn-danger" onclick="eliminarPedido(' + p.id + ')">' + icon("trash-2") + "</button>";
+            html += "</div></td>";
+        }
         html += "</tr>";
     });
     document.getElementById("pedidosTbody").innerHTML =
-        html ||
-        '<tr><td colspan="9" style="text-align:center;color:#aaa;padding:30px">No hay pedidos</td></tr>';
+        html || '<tr><td colspan="' + tblVisibleCount(T) + '" style="text-align:center;color:#aaa;padding:30px">No hay pedidos</td></tr>';
+    tblSelSync(T, list, "id");
 }
 
 async function eliminarPedido(id) {
@@ -3229,6 +3242,9 @@ async function previsualizarIngresoBulk() {
         return;
     }
     renderIngresoPreview(codigos, json.productos || {});
+    // Los modales no se apilan: se cierra el de carga y, si se cancela la vista
+    // previa, se vuelve a abrir (lo escrito se conserva).
+    cerrarNuevoIngreso();
     document.getElementById("ingresoPreviewModalBg").classList.add("open");
 }
 
@@ -3274,8 +3290,9 @@ function actualizarContadorIngresoPreview() {
     btn.disabled = n === 0;
 }
 
-function closeIngresoPreviewModal() {
+function closeIngresoPreviewModal(sinVolver) {
     document.getElementById("ingresoPreviewModalBg").classList.remove("open");
+    if (!sinVolver) abrirNuevoIngreso();
 }
 
 async function confirmarIngresoBulk() {
@@ -3295,8 +3312,7 @@ async function confirmarIngresoBulk() {
         toast("✔ " + json.actualizados + " producto(s) marcado(s) como ingresado");
         document.getElementById("ingresoSkuList").value = "";
         document.getElementById("ingresoNota").value = "";
-        document.getElementById("nuevoIngresoBox").style.display = "none";
-        closeIngresoPreviewModal();
+        closeIngresoPreviewModal(true);
         await loadProducts();
         loadIngresos();
         // El reporte de pedidos afectados se abre solo, apenas se confirma
@@ -3307,6 +3323,221 @@ async function confirmarIngresoBulk() {
         btn.disabled = false;
         toast("Error: " + (json.error || "desconocido"), "#c62828");
     }
+}
+
+// ── TABLAS DE PEDIDOS E INGRESOS: orden, columnas y edición masiva ───────────
+// Mismo comportamiento que la tabla de Productos: encabezados que ordenan, botón
+// Columnas (se recuerda en este navegador) y selección con barra de cambios en bloque.
+var TBL = {
+    pedidos: {
+        cols: [
+            { key: "sel", label: "Selección", def: true },
+            { key: "id", label: "Número (#)", def: true },
+            { key: "fecha", label: "Fecha", def: true },
+            { key: "cliente", label: "Cliente", def: true },
+            { key: "tel", label: "Teléfono", def: true },
+            { key: "total", label: "Total", def: true },
+            { key: "estado", label: "Estado", def: true },
+            { key: "obs", label: "Observaciones", def: true },
+            { key: "impreso", label: "Impreso", def: true },
+            { key: "acciones", label: "Acciones", def: true },
+        ],
+        sortFields: {
+            id: { f: "id", t: "number" }, fecha: { f: "created_at", t: "text" }, cliente: { f: "cliente_nombre", t: "text" },
+            tel: { f: "cliente_tel", t: "text-num" }, total: { f: "total", t: "number" }, estado: { f: "estado", t: "text" },
+            obs: { f: "observaciones", t: "text" }, impreso: { f: "impreso_at", t: "text" },
+        },
+        render: function () { renderPedidosTable(); },
+        bulk: [
+            { campo: "estado", label: "Estado", valores: [["PENDIENTE", "Pendiente"], ["EN_PREPARACION", "En preparación"], ["FACTURADO", "Facturado"], ["ENVIADO", "Enviado"]] },
+            { campo: "impreso", label: "Impresión", valores: [["si", "Marcar como impreso"], ["no", "Marcar como sin imprimir"]] },
+        ],
+        accion: "pedidos_bulk",
+        reload: function () { return loadPedidos(); },
+        singular: "pedido",
+    },
+    ingresos: {
+        cols: [
+            { key: "sel", label: "Selección", def: true },
+            { key: "id", label: "Número (#)", def: true },
+            { key: "fecha", label: "Fecha", def: true },
+            { key: "nota", label: "Nota", def: true },
+            { key: "articulos", label: "Artículos", def: true },
+            { key: "pedidos", label: "Pedidos", def: true },
+            { key: "unidades", label: "Unidades pedidas", def: true },
+            { key: "impreso", label: "Impreso", def: true },
+            { key: "armado", label: "Armado", def: true },
+            { key: "acciones", label: "Acciones", def: true },
+        ],
+        sortFields: {
+            id: { f: "id", t: "number" }, fecha: { f: "created_at", t: "text" }, nota: { f: "nota", t: "text" },
+            articulos: { f: "n_articulos", t: "number" }, pedidos: { f: "n_pedidos", t: "number" }, unidades: { f: "n_unidades", t: "number" },
+            impreso: { f: "impreso_at", t: "text" }, armado: { f: "armado_at", t: "text" },
+        },
+        render: function () { renderIngresos(); },
+        bulk: [
+            { campo: "armado", label: "Armado", valores: [["si", "Marcar como armado"], ["no", "Volver a pendiente de armar"]] },
+            { campo: "impreso", label: "Impresión", valores: [["si", "Marcar como impreso"], ["no", "Marcar como sin imprimir"]] },
+        ],
+        accion: "ingresos_bulk",
+        reload: function () { return loadIngresos(); },
+        singular: "ingreso",
+    },
+};
+
+function tblInit() {
+    Object.keys(TBL).forEach(function (t) {
+        var T = TBL[t];
+        T.vis = {};
+        T.sel = new Set();
+        T.sort = null;
+        var saved = {};
+        try { saved = JSON.parse(localStorage.getItem("tb_cols_" + t) || "{}"); } catch (e) { saved = {}; }
+        T.cols.forEach(function (c) { T.vis[c.key] = saved[c.key] !== undefined ? saved[c.key] : c.def; });
+    });
+}
+tblInit();
+
+function tcol(t, key) { return TBL[t].vis[key] !== false; }
+
+function tblVisibleCount(t) {
+    return TBL[t].cols.filter(function (c) { return TBL[t].vis[c.key] !== false; }).length;
+}
+
+// Encabezado que ordena al tocarlo (primer toque ascendente, segundo descendente, tercero sin orden).
+function tth(t, label, key, cls) {
+    var S = TBL[t].sort;
+    var activo = S && S.key === key;
+    var nombre = activo ? (S.dir === "asc" ? "arrow-up" : "arrow-down") : "chevrons-up-down";
+    return (
+        "<th" + (cls ? ' class="' + cls + '"' : "") + '><span class="th-label">' + label +
+        '<span class="th-sort-btn' + (activo ? " active" : "") + "\" onclick=\"tblSortToggle('" + t + "','" + key + '\')" title="Ordenar por ' + label + '">' +
+        icon(nombre, { size: 13 }) + "</span></span></th>"
+    );
+}
+
+function tblSortToggle(t, key) {
+    var T = TBL[t];
+    if (T.sort && T.sort.key === key) {
+        T.sort.dir = T.sort.dir === "asc" ? "desc" : null;
+        if (!T.sort.dir) T.sort = null;
+    } else T.sort = { key: key, dir: "asc" };
+    T.render();
+}
+
+function tblSortList(t, list) {
+    var T = TBL[t];
+    if (!T.sort) return list;
+    var cfg = T.sortFields[T.sort.key];
+    if (!cfg) return list;
+    var dir = T.sort.dir === "desc" ? -1 : 1;
+    return list.slice().sort(function (a, b) {
+        var av = a[cfg.f], bv = b[cfg.f], cmp;
+        if (cfg.t === "number") cmp = (parseFloat(av) || 0) - (parseFloat(bv) || 0);
+        else if (cfg.t === "text-num") cmp = String(av || "").localeCompare(String(bv || ""), undefined, { numeric: true });
+        else cmp = String(av || "").localeCompare(String(bv || ""));
+        return cmp * dir;
+    });
+}
+
+// ── Columnas visibles ──
+var _tblColsEditando = null;
+function tblOpenCols(t) {
+    _tblColsEditando = t;
+    document.getElementById("tblColModalBody").innerHTML = TBL[t].cols
+        .map(function (c) {
+            return (
+                '<label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer">' +
+                '<input type="checkbox" ' + (TBL[t].vis[c.key] !== false ? "checked " : "") + "onchange=\"TBL['" + t + "'].vis['" + c.key + "']=this.checked\"> " + c.label + "</label>"
+            );
+        })
+        .join("");
+    document.getElementById("tblColModalBg").classList.add("open");
+}
+function tblCloseCols() {
+    document.getElementById("tblColModalBg").classList.remove("open");
+    if (_tblColsEditando) tblInitPrefsOnly(_tblColsEditando);
+    _tblColsEditando = null;
+}
+// Cancelar descarta lo tildado: se vuelve a leer lo guardado.
+function tblInitPrefsOnly(t) {
+    var T = TBL[t], saved = {};
+    try { saved = JSON.parse(localStorage.getItem("tb_cols_" + t) || "{}"); } catch (e) { saved = {}; }
+    T.cols.forEach(function (c) { T.vis[c.key] = saved[c.key] !== undefined ? saved[c.key] : c.def; });
+}
+function tblApplyCols() {
+    var t = _tblColsEditando;
+    if (!t) return;
+    try { localStorage.setItem("tb_cols_" + t, JSON.stringify(TBL[t].vis)); } catch (e) {}
+    document.getElementById("tblColModalBg").classList.remove("open");
+    _tblColsEditando = null;
+    TBL[t].render();
+}
+
+// ── Selección y edición masiva ──
+function tblSelToggle(t, id, on) {
+    var T = TBL[t];
+    if (on) T.sel.add(String(id)); else T.sel.delete(String(id));
+    T.render();
+}
+function tblSelAll(t, on) {
+    var T = TBL[t];
+    var lista = t === "pedidos" ? pedidosVisibles() : ingresosVisibles();
+    lista.forEach(function (x) { if (on) T.sel.add(String(x.id)); else T.sel.delete(String(x.id)); });
+    T.render();
+}
+function tblSelClear(t) {
+    TBL[t].sel.clear();
+    TBL[t].render();
+}
+// Después de pintar: estado del tilde del encabezado y de la barra de cambios.
+function tblSelSync(t, list, idKey) {
+    var T = TBL[t];
+    var vivos = new Set((t === "pedidos" ? allPedidos : allIngresos).map(function (x) { return String(x.id); }));
+    T.sel.forEach(function (id) { if (!vivos.has(id)) T.sel.delete(id); });
+    var all = document.getElementById("selAll_" + t);
+    if (all) {
+        var n = list.filter(function (x) { return T.sel.has(String(x[idKey])); }).length;
+        all.checked = list.length > 0 && n === list.length;
+        all.indeterminate = n > 0 && n < list.length;
+    }
+    var bar = document.getElementById("bulkBar_" + t);
+    if (!bar) return;
+    if (!bar.getAttribute("data-built")) {
+        bar.setAttribute("data-built", "1");
+        bar.innerHTML =
+            '<span class="bulk-count"><strong class="bulk-n">0</strong> seleccionado(s)</span>' +
+            '<select id="bulkCampo_' + t + "\" onchange=\"tblBulkValor('" + t + "')\">" +
+            T.bulk.map(function (b) { return '<option value="' + b.campo + '">' + b.label + "</option>"; }).join("") + "</select>" +
+            '<span id="bulkValorWrap_' + t + '"></span>' +
+            "<button class=\"btn btn-primary\" onclick=\"tblBulkApply('" + t + "')\">Aplicar</button>" +
+            "<button class=\"btn\" onclick=\"tblSelClear('" + t + "')\">Limpiar selección</button>";
+        tblBulkValor(t);
+    }
+    bar.querySelector(".bulk-n").textContent = T.sel.size;
+    bar.style.display = T.sel.size ? "flex" : "none";
+}
+function tblBulkValor(t) {
+    var campo = document.getElementById("bulkCampo_" + t).value;
+    var cfg = TBL[t].bulk.find(function (b) { return b.campo === campo; });
+    document.getElementById("bulkValorWrap_" + t).innerHTML =
+        '<select id="bulkValor_' + t + '">' + cfg.valores.map(function (v) { return '<option value="' + v[0] + '">' + v[1] + "</option>"; }).join("") + "</select>";
+}
+async function tblBulkApply(t) {
+    var T = TBL[t];
+    var ids = Array.from(T.sel).map(function (x) { return parseInt(x, 10); });
+    if (!ids.length) return;
+    var campo = document.getElementById("bulkCampo_" + t).value;
+    var sel = document.getElementById("bulkValor_" + t);
+    var valor = sel.value;
+    var texto = sel.options[sel.selectedIndex].text;
+    var cfg = T.bulk.find(function (b) { return b.campo === campo; });
+    if (!confirm("¿Aplicar «" + cfg.label + ": " + texto + "» a " + ids.length + " " + T.singular + "(s)?")) return;
+    var json = await ingresoApi(T.accion, { ids: ids, campo: campo, valor: valor });
+    if (!json.ok) return toast("Error: " + (json.error || "desconocido"), "#c62828");
+    toast("Se actualizaron " + json.actualizados + " " + T.singular + "(s)");
+    T.sel.clear();
+    await T.reload();
 }
 
 // ── INGRESOS (tandas de mercadería) ───────────────────────────────────────────
@@ -3336,12 +3567,6 @@ async function ingresoApi(accion, extra) {
         body: JSON.stringify(body),
     });
     return res.json();
-}
-
-async function loadIngresos() {
-    var json = await ingresoApi("ingresos");
-    allIngresos = json.ok ? json.ingresos : [];
-    renderIngresos();
 }
 
 function fmtCorto(d) {
@@ -3403,7 +3628,10 @@ function toggleImpreso(tipo, id) {
     var actual = tipo === "pedido"
         ? (pedidoActual && pedidoActual.id == id ? pedidoActual : allPedidos.find(function (p) { return p.id == id; }))
         : allIngresos.find(function (i) { return i.id == id; });
-    marcarImpreso(tipo, id, !(actual && actual.impreso_at));
+    var estabaImpreso = !!(actual && actual.impreso_at);
+    // Volver a "sin imprimir" pide confirmación, para que no pase por un toque sin querer.
+    if (estabaImpreso && !confirm("¿Marcar " + (tipo === "pedido" ? "este pedido" : "este ingreso") + " como SIN IMPRIMIR?\n\nEl chip pasa de «Impreso» a «Sin imprimir».")) return;
+    marcarImpreso(tipo, id, !estabaImpreso);
 }
 
 async function toggleIngresoArmado(id) {
@@ -3418,41 +3646,99 @@ async function toggleIngresoArmado(id) {
     toast(json.armado_at ? "Ingreso marcado como armado" : "Ingreso vuelto a pendiente de armar");
 }
 
+var _ingBuscarTimer = null;
+function ingresosBuscar() {
+    clearTimeout(_ingBuscarTimer);
+    _ingBuscarTimer = setTimeout(loadIngresos, 300);
+}
+
+async function loadIngresos() {
+    var q = ((document.getElementById("ingFiltQ") || {}).value || "").trim();
+    var json = await ingresoApi("ingresos", { q: q });
+    allIngresos = json.ok ? json.ingresos : [];
+    renderIngresos();
+}
+
+function ingresosVisibles() {
+    var desde = (document.getElementById("ingFiltDesde") || {}).value || "";
+    var hasta = (document.getElementById("ingFiltHasta") || {}).value || "";
+    var arm = (document.getElementById("ingFiltArmado") || {}).value || "";
+    var imp = (document.getElementById("ingFiltImp") || {}).value || "";
+    var list = allIngresos.filter(function (i) {
+        var dia = String(i.created_at).slice(0, 10);
+        return (
+            (!desde || dia >= desde) &&
+            (!hasta || dia <= hasta) &&
+            (!arm || (arm === "si" ? !!i.armado_at : !i.armado_at)) &&
+            (!imp || (imp === "si" ? !!i.impreso_at : !i.impreso_at))
+        );
+    });
+    return tblSortList("ingresos", list);
+}
+
 function renderIngresos() {
+    var head = document.getElementById("ingresosThead");
     var tb = document.getElementById("ingresosTbody");
-    if (!tb) return;
-    if (!allIngresos.length) {
+    if (!head || !tb) return;
+    var T = "ingresos";
+    head.innerHTML =
+        "<tr>" +
+        (tcol(T, "sel") ? '<th class="sel-cell"><input type="checkbox" id="selAll_ingresos" title="Seleccionar todos los ingresos filtrados" onchange="tblSelAll(\'ingresos\',this.checked)"></th>' : "") +
+        (tcol(T, "id") ? tth(T, "#", "id") : "") +
+        (tcol(T, "fecha") ? tth(T, "Fecha", "fecha") : "") +
+        (tcol(T, "nota") ? tth(T, "Nota", "nota", "col-hide-1") : "") +
+        (tcol(T, "articulos") ? tth(T, "Artículos", "articulos") : "") +
+        (tcol(T, "pedidos") ? tth(T, "Pedidos", "pedidos", "col-hide-1") : "") +
+        (tcol(T, "unidades") ? tth(T, "Unidades pedidas", "unidades", "col-hide-2") : "") +
+        (tcol(T, "impreso") ? tth(T, "Impreso", "impreso") : "") +
+        (tcol(T, "armado") ? tth(T, "Armado", "armado") : "") +
+        (tcol(T, "acciones") ? "<th>Acciones</th>" : "") +
+        "</tr>";
+    var list = ingresosVisibles();
+    if (!list.length) {
         tb.innerHTML =
-            '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">' +
-            "Todavía no hay ingresos. Tocá <strong>Nuevo ingreso</strong> para cargar el primero.</td></tr>";
+            '<tr><td colspan="' + tblVisibleCount(T) + '" style="text-align:center;color:var(--muted);padding:24px">' +
+            (allIngresos.length ? "Ningún ingreso coincide con los filtros." : "Todavía no hay ingresos. Tocá <strong>Nuevo ingreso</strong> para cargar el primero.") + "</td></tr>";
+        tblSelSync(T, list, "id");
         return;
     }
-    tb.innerHTML = allIngresos
+    tb.innerHTML = list
         .map(function (i) {
             var f = new Date(i.created_at.replace(" ", "T"));
+            var sel = TBL.ingresos.sel.has(String(i.id));
             return (
-                "<tr><td><strong>#" + i.id + "</strong></td>" +
-                "<td>" + f.toLocaleDateString("es-AR") + ' <span style="color:var(--muted);font-size:11px">' +
-                f.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) + "</span> " +
-                ingresoOrigenBadge(i.origen) + "</td>" +
-                '<td class="col-hide-1" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
-                esc(i.nota || "") + "</td>" +
-                '<td style="text-align:center;font-weight:700">' + i.n_articulos + "</td>" +
-                '<td class="col-hide-1" style="text-align:center">' + i.n_pedidos + "</td>" +
-                '<td class="col-hide-2" style="text-align:center">' + i.n_unidades + "</td>" +
-                '<td style="text-align:center">' + impresoChip(i.impreso_at, "ingreso", i.id) + "</td>" +
-                '<td style="text-align:center">' + armadoChip(i.armado_at, i.id) + "</td>" +
-                '<td><button class="btn btn-edit" onclick="openIngresoDetalle(' + i.id + ')">Ver</button></td></tr>'
+                "<tr" + (sel ? ' class="sel-row"' : "") + ">" +
+                (tcol(T, "sel") ? '<td class="sel-cell"><input type="checkbox" ' + (sel ? "checked " : "") + "onchange=\"tblSelToggle('ingresos'," + i.id + ',this.checked)"></td>' : "") +
+                (tcol(T, "id") ? "<td><strong>#" + i.id + "</strong></td>" : "") +
+                (tcol(T, "fecha")
+                    ? "<td>" + f.toLocaleDateString("es-AR") + ' <span style="color:var(--muted);font-size:11px">' +
+                      f.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) + "</span> " + ingresoOrigenBadge(i.origen) + "</td>"
+                    : "") +
+                (tcol(T, "nota")
+                    ? '<td class="col-hide-1" style="max-width:260px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(i.nota || "") + "</div>" +
+                      (i.coincidencias ? '<div style="font-size:11px;color:var(--blue);font-weight:600">Coincide: ' + esc(i.coincidencias) + "</div>" : "") + "</td>"
+                    : "") +
+                (tcol(T, "articulos") ? '<td style="text-align:center;font-weight:700">' + i.n_articulos + "</td>" : "") +
+                (tcol(T, "pedidos") ? '<td class="col-hide-1" style="text-align:center">' + i.n_pedidos + "</td>" : "") +
+                (tcol(T, "unidades") ? '<td class="col-hide-2" style="text-align:center">' + i.n_unidades + "</td>" : "") +
+                (tcol(T, "impreso") ? '<td style="text-align:center">' + impresoChip(i.impreso_at, "ingreso", i.id) + "</td>" : "") +
+                (tcol(T, "armado") ? '<td style="text-align:center">' + armadoChip(i.armado_at, i.id) + "</td>" : "") +
+                (tcol(T, "acciones") ? '<td><button class="btn btn-edit" onclick="openIngresoDetalle(' + i.id + ')">Ver</button></td>' : "") +
+                "</tr>"
             );
         })
         .join("");
+    tblSelSync(T, list, "id");
 }
 
-function toggleNuevoIngreso() {
-    var box = document.getElementById("nuevoIngresoBox");
-    var abrir = box.style.display === "none";
-    box.style.display = abrir ? "" : "none";
-    if (abrir) document.getElementById("ingresoAutoInput").focus();
+function abrirNuevoIngreso() {
+    document.getElementById("nuevoIngresoModalBg").classList.add("open");
+    var inp = document.getElementById("ingresoAutoInput");
+    if (inp) inp.focus();
+}
+
+function cerrarNuevoIngreso() {
+    document.getElementById("nuevoIngresoModalBg").classList.remove("open");
 }
 
 async function openIngresoDetalle(id) {
@@ -3634,175 +3920,6 @@ async function fetchYMostrarPedidosPorProductos(codigos) {
     _lookupReportData = await cargarPedidosPorProductos(codigos);
     renderLookupModal(_lookupReportData.codigosBuscados, _lookupReportData.grupos);
     document.getElementById("lookupModalBg").classList.add("open");
-}
-
-// ── Sección "¿Quién pidió?" — carga de artículos con autocompletado ────────
-// En vez de un textarea "en crudo" (donde un typo se pierde en silencio),
-// esta sección arma la lista contra el catálogo real (allProducts, ya en
-// memoria): de a uno con sugerencias mientras se tipea, o pegando/escaneando
-// varios de una — en los tres casos, solo entran códigos que existen de
-// verdad. Al generar el reporte, reusa el mismo modal/impresión de siempre.
-var _qpCodigos = []; // [{codigo, descripcion}] — lo que ya se cargó
-var _qpSuggestions = [];
-var _qpActiveIndex = -1;
-
-function qpOnInput() {
-    var q = document.getElementById("qpInput").value.trim().toLowerCase();
-    if (!q) {
-        _qpSuggestions = [];
-        _qpActiveIndex = -1;
-        renderQpSuggestions();
-        return;
-    }
-    var yaCargados = _qpCodigos.map(function (c) { return c.codigo; });
-    _qpSuggestions = allProducts
-        .filter(function (p) {
-            return (
-                yaCargados.indexOf(p.codigo) === -1 &&
-                (p.codigo.toLowerCase().indexOf(q) !== -1 || (p.descripcion || "").toLowerCase().indexOf(q) !== -1)
-            );
-        })
-        .slice(0, 8);
-    _qpActiveIndex = _qpSuggestions.length ? 0 : -1;
-    renderQpSuggestions();
-}
-
-function renderQpSuggestions() {
-    var box = document.getElementById("qpSuggestions");
-    if (!_qpSuggestions.length) {
-        box.style.display = "none";
-        box.innerHTML = "";
-        return;
-    }
-    box.innerHTML = _qpSuggestions
-        .map(function (p, i) {
-            return (
-                '<div class="qp-suggestion-item' + (i === _qpActiveIndex ? " active" : "") +
-                '" onmousedown="qpSeleccionar(' + i + ')"><code>' + esc(p.codigo) + "</code><span>" +
-                esc(p.descripcion || "") + "</span></div>"
-            );
-        })
-        .join("");
-    box.style.display = "block";
-}
-
-function qpOnKeydown(e) {
-    if (e.key === "ArrowDown") {
-        if (_qpSuggestions.length) {
-            e.preventDefault();
-            _qpActiveIndex = (_qpActiveIndex + 1) % _qpSuggestions.length;
-            renderQpSuggestions();
-        }
-    } else if (e.key === "ArrowUp") {
-        if (_qpSuggestions.length) {
-            e.preventDefault();
-            _qpActiveIndex = (_qpActiveIndex - 1 + _qpSuggestions.length) % _qpSuggestions.length;
-            renderQpSuggestions();
-        }
-    } else if (e.key === "Enter") {
-        e.preventDefault();
-        if (_qpActiveIndex >= 0 && _qpSuggestions[_qpActiveIndex]) {
-            qpSeleccionar(_qpActiveIndex);
-        } else {
-            // Sin sugerencia resaltada: solo agrega si el texto matchea EXACTO
-            // un código real — evita que un typo se cuele igual con Enter.
-            var val = document.getElementById("qpInput").value.trim();
-            var exact = val && allProducts.find(function (p) { return p.codigo.toLowerCase() === val.toLowerCase(); });
-            if (exact) qpAgregar(exact.codigo, exact.descripcion);
-            else if (val) toast("Código no reconocido — elegí una sugerencia de la lista", "#c62828");
-        }
-    } else if (e.key === "Escape") {
-        _qpSuggestions = [];
-        renderQpSuggestions();
-    }
-}
-
-function qpSeleccionar(i) {
-    var p = _qpSuggestions[i];
-    if (p) qpAgregar(p.codigo, p.descripcion);
-}
-
-function qpAgregar(codigo, descripcion) {
-    if (_qpCodigos.some(function (c) { return c.codigo === codigo; })) {
-        toast("Ese código ya está en la lista", "#e65100");
-    } else {
-        _qpCodigos.push({ codigo: codigo, descripcion: descripcion || "" });
-        renderQpChips();
-    }
-    var input = document.getElementById("qpInput");
-    input.value = "";
-    _qpSuggestions = [];
-    renderQpSuggestions();
-    input.focus();
-}
-
-function qpQuitar(codigo) {
-    _qpCodigos = _qpCodigos.filter(function (c) { return c.codigo !== codigo; });
-    renderQpChips();
-}
-
-function renderQpChips() {
-    var el = document.getElementById("qpChips");
-    var btn = document.getElementById("btnQpGenerar");
-    if (!el || !btn) return;
-    if (!_qpCodigos.length) {
-        el.innerHTML = '<p style="color:var(--muted);font-size:13px">Todavía no cargaste ningún artículo.</p>';
-    } else {
-        el.innerHTML = _qpCodigos
-            .map(function (c) {
-                return (
-                    '<span class="qp-chip"><code>' + esc(c.codigo) + "</code> " + esc(c.descripcion || "") +
-                    '<button type="button" onclick="qpQuitar(\'' + esc(c.codigo) + '\')" title="Quitar">' +
-                    icon("x", { size: 12 }) + "</button></span>"
-                );
-            })
-            .join("");
-    }
-    btn.disabled = !_qpCodigos.length;
-    btn.innerHTML = icon("search") + " Generar reporte (" + _qpCodigos.length + ")";
-}
-
-// Pegar/escanear una lista completa de una — cada código se valida contra el
-// catálogo real antes de agregarse; los que no matchean quedan en el cuadro
-// de texto (no se pierden) para poder corregirlos y reintentar.
-async function qpAgregarLista() {
-    var raw = document.getElementById("qpListaTextarea").value;
-    var codigos = parsearListaCodigos(raw);
-    if (!codigos.length) return;
-    var noReconocidos = [];
-    codigos.forEach(function (codigo) {
-        var p = allProducts.find(function (pp) { return pp.codigo.toLowerCase() === codigo.toLowerCase(); });
-        if (!p) { noReconocidos.push(codigo); return; }
-        if (!_qpCodigos.some(function (c) { return c.codigo === p.codigo; })) {
-            _qpCodigos.push({ codigo: p.codigo, descripcion: p.descripcion });
-        }
-    });
-    renderQpChips();
-    document.getElementById("qpListaTextarea").value = noReconocidos.join("\n");
-    if (noReconocidos.length) {
-        toast(noReconocidos.length + " código(s) no reconocido(s) — quedaron en el cuadro para revisar", "#e65100");
-    } else {
-        toast("Códigos agregados a la lista");
-    }
-}
-
-function qpAgregarEscaneado(code) {
-    var p = allProducts.find(function (pp) { return pp.codigo.toLowerCase() === code.toLowerCase(); });
-    if (!p) {
-        toast("Código escaneado no reconocido: " + code, "#c62828");
-        return;
-    }
-    qpAgregar(p.codigo, p.descripcion);
-}
-
-function qpVaciarLista() {
-    _qpCodigos = [];
-    renderQpChips();
-}
-
-async function qpGenerarReporte() {
-    if (!_qpCodigos.length) return;
-    await fetchYMostrarPedidosPorProductos(_qpCodigos.map(function (c) { return c.codigo; }));
 }
 
 // ── Autocompletado para "Marcar productos como ingresados" ─────────────────

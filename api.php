@@ -2276,7 +2276,18 @@ switch ($action) {
         $data = json_decode(file_get_contents('php://input'), true);
         checkAuth($data);
         sincronizar_ingresos($db, 'manual', null); // autocorrige cualquier marca suelta
-        $r = $db->query("SELECT i.id, i.origen, i.nota, i.created_at, i.armado_at, i.impreso_at,
+        // Búsqueda por artículo (código, descripción o código de barras): solo los
+        // ingresos que lo contienen, con la lista de códigos que coinciden.
+        $qArt = trim($data['q'] ?? '');
+        $filtroQ = '';
+        $coinc = 'NULL';
+        if ($qArt !== '') {
+            $likeQ = "'%" . $db->real_escape_string($qArt) . "%'";
+            $condQ = "(p.codigo LIKE $likeQ OR p.descripcion LIKE $likeQ OR p.codigo_barras LIKE $likeQ)";
+            $filtroQ = " WHERE EXISTS (SELECT 1 FROM productos p WHERE p.ingreso_id = i.id AND $condQ)";
+            $coinc = "(SELECT GROUP_CONCAT(p.codigo ORDER BY p.codigo SEPARATOR ', ') FROM productos p WHERE p.ingreso_id = i.id AND $condQ)";
+        }
+        $r = $db->query("SELECT i.id, i.origen, i.nota, i.created_at, i.armado_at, i.impreso_at, $coinc AS coincidencias,
                 (SELECT COUNT(*) FROM productos p WHERE p.ingreso_id = i.id) AS n_articulos,
                 (SELECT COUNT(DISTINCT pi.pedido_id) FROM pedido_items pi
                     JOIN pedidos pe ON pe.id = pi.pedido_id
@@ -2294,7 +2305,7 @@ switch ($action) {
                     JOIN pedidos pe ON pe.id = pi.pedido_id
                     JOIN productos p ON p.codigo = pi.codigo
                     WHERE p.ingreso_id = i.id AND pe.estado != 'ELIMINADO' AND pi.armado = 1) AS n_armados
-            FROM ingresos i ORDER BY i.created_at DESC, i.id DESC");
+            FROM ingresos i" . $filtroQ . " ORDER BY i.created_at DESC, i.id DESC");
         echo json_encode(['ok' => true, 'ingresos' => $r->fetch_all(MYSQLI_ASSOC)]);
         break;
 
@@ -2537,6 +2548,61 @@ switch ($action) {
         }
         $row = $db->query("SELECT armado_at, armado_corte FROM ingresos WHERE id=$id")->fetch_assoc();
         echo json_encode(['ok' => true, 'armado_at' => $row['armado_at'] ?? null, 'armado_corte' => $row['armado_corte'] ?? null]);
+        break;
+
+    case 'pedidos_bulk':
+        // Cambio en bloque sobre pedidos: estado o impresión.
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $ids = array_values(array_unique(array_filter(array_map('intval', $data['ids'] ?? []))));
+        $campo = $data['campo'] ?? '';
+        $valor = $data['valor'] ?? '';
+        if (!$ids) { http_response_code(400); die(json_encode(['error' => 'Datos incompletos'])); }
+        $in = implode(',', $ids);
+        $n = 0;
+        if ($campo === 'estado') {
+            if (!in_array($valor, ['PENDIENTE', 'EN_PREPARACION', 'FACTURADO', 'ENVIADO'], true)) { http_response_code(400); die(json_encode(['error' => 'Estado inválido'])); }
+            // Solo los que cambian de verdad (y nunca los eliminados), con su registro en el historial.
+            $stmtSel = $db->prepare("SELECT id FROM pedidos WHERE id IN ($in) AND estado != 'ELIMINADO' AND estado != ?");
+            $stmtSel->bind_param('s', $valor);
+            $stmtSel->execute();
+            $cambiar = array_column($stmtSel->get_result()->fetch_all(MYSQLI_ASSOC), 'id');
+            foreach ($cambiar as $pid) {
+                $pid = intval($pid);
+                $u = $db->prepare("UPDATE pedidos SET estado=? WHERE id=?");
+                $u->bind_param('si', $valor, $pid);
+                $u->execute();
+                $es = $db->prepare("INSERT INTO pedido_estados (pedido_id,estado) VALUES (?,?)");
+                $es->bind_param('is', $pid, $valor);
+                $es->execute();
+                $n++;
+            }
+        } elseif ($campo === 'impreso') {
+            if (!empty($valor) && $valor !== 'no') $db->query("UPDATE pedidos SET impreso_at=NOW() WHERE id IN ($in)");
+            else $db->query("UPDATE pedidos SET impreso_at=NULL WHERE id IN ($in)");
+            $n = count($ids);
+        } else { http_response_code(400); die(json_encode(['error' => 'Campo inválido'])); }
+        echo json_encode(['ok' => true, 'actualizados' => $n]);
+        break;
+
+    case 'ingresos_bulk':
+        // Cambio en bloque sobre ingresos: estado de armado o impresión.
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $ids = array_values(array_unique(array_filter(array_map('intval', $data['ids'] ?? []))));
+        $campo = $data['campo'] ?? '';
+        $valor = $data['valor'] ?? '';
+        if (!$ids) { http_response_code(400); die(json_encode(['error' => 'Datos incompletos'])); }
+        $in = implode(',', $ids);
+        $si = !empty($valor) && $valor !== 'no';
+        if ($campo === 'armado') {
+            if ($si) $db->query("UPDATE ingresos SET armado_at=NOW(), armado_corte=COALESCE(impreso_at, NOW()) WHERE id IN ($in)");
+            else $db->query("UPDATE ingresos SET armado_at=NULL, armado_corte=NULL WHERE id IN ($in)");
+        } elseif ($campo === 'impreso') {
+            if ($si) $db->query("UPDATE ingresos SET impreso_at=NOW() WHERE id IN ($in)");
+            else $db->query("UPDATE ingresos SET impreso_at=NULL WHERE id IN ($in)");
+        } else { http_response_code(400); die(json_encode(['error' => 'Campo inválido'])); }
+        echo json_encode(['ok' => true, 'actualizados' => count($ids)]);
         break;
 
     case 'pedidos_por_productos':

@@ -161,14 +161,6 @@
                         </button>
                         <button
                             class="sidebar-item"
-                            data-section="quienpidio"
-                            onclick="showSection('quienpidio', this)"
-                        >
-                            <span class="si-icon"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span
-                            ><span class="si-label">¿Quién pidió?</span>
-                        </button>
-                        <button
-                            class="sidebar-item"
                             data-section="opiniones"
                             onclick="showSection('opiniones', this)"
                         >
@@ -436,6 +428,7 @@
                             </select>
                             <span id="bulkValorWrap"></span>
                             <button class="btn btn-primary" onclick="bulkAplicar()">Aplicar</button>
+                            <button class="btn" onclick="verPedidosDeSeleccion()" title="Ver qué pedidos incluyen los productos seleccionados">Ver pedidos</button>
                             <button class="btn" onclick="selLimpiar()">Limpiar selección</button>
                             <button class="btn btn-danger" style="margin-left:auto" onclick="bulkEliminar()">Eliminar seleccionados</button>
                         </div>
@@ -917,23 +910,13 @@
                                 <option value="sin">Sin imprimir</option>
                                 <option value="si">Impresos</option>
                             </select>
+                            <button class="btn" style="background:#fff;border:1.5px solid var(--border);color:#333" onclick="tblOpenCols('pedidos')" title="Columnas"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="M15 3v18"/></svg> <span class="btn-txt-larga">Columnas</span></button>
                         </div>
+                        <div id="bulkBar_pedidos" class="bulk-bar" style="display:none"></div>
                         <div class="table-wrap">
                             <div class="table-scroll">
                                 <table id="pedidosTable">
-                                    <thead>
-                                        <tr>
-                                            <th>#</th>
-                                            <th class="col-hide-2">Fecha</th>
-                                            <th class="sticky-col">Cliente</th>
-                                            <th class="col-hide-1">Teléfono</th>
-                                            <th>Total</th>
-                                            <th>Estado</th>
-                                            <th class="col-hide-1">Observaciones</th>
-                                            <th>Impreso</th>
-                                            <th>Acciones</th>
-                                        </tr>
-                                    </thead>
+                                    <thead id="pedidosThead"></thead>
                                     <tbody id="pedidosTbody"></tbody>
                                 </table>
                             </div>
@@ -944,90 +927,31 @@
                     <div class="wrap section" id="secIngresos">
                         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
                             <h2 style="font-size:16px;font-weight:800;color:var(--blue);margin:0">Ingresos</h2>
-                            <button class="btn btn-primary" id="btnNuevoIngreso" onclick="toggleNuevoIngreso()"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg> Nuevo ingreso</button>
+                            <button class="btn btn-primary" id="btnNuevoIngreso" onclick="abrirNuevoIngreso()"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg> Nuevo ingreso</button>
                         </div>
-                        <p style="font-size:13px;color:var(--muted);margin-bottom:16px;max-width:680px">
-                            Cada tanda de mercadería que llega queda registrada acá con su fecha y sus artículos.
-                            Entrá a un ingreso para ver qué pedidos lo necesitan, agregar o quitar artículos, o deshacerlo.
-                        </p>
-                        <div class="config-box" id="nuevoIngresoBox" style="display:none;max-width:680px;margin-bottom:18px">
-                            <h3>Nuevo ingreso</h3>
-                            <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
-                                Agregá de a uno con sugerencias (evita tipeos), o pegá/escaneá varios
-                                códigos de una vez (uno por línea, o separados por coma/espacio), y
-                                marcalos todos como ingresados.
-                            </p>
-                            <input type="text" id="ingresoNota" maxlength="255" placeholder="Nota (opcional): ej. camión del martes, proveedor Lautin..."
-                                style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;margin-bottom:10px">
-                            <div style="position:relative;margin-bottom:10px">
-                                <input type="text" id="ingresoAutoInput" placeholder="Escribí código o descripción..." autocomplete="off"
-                                    style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px"
-                                    oninput="ingresoAutoOnInput()" onkeydown="ingresoAutoOnKeydown(event)">
-                                <div id="ingresoAutoSuggestions" class="qp-suggestions" style="display:none"></div>
-                            </div>
-                            <textarea id="ingresoSkuList" rows="4" style="width:100%;box-sizing:border-box;padding:10px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;resize:vertical" placeholder="Ej:&#10;529508&#10;529509&#10;R201-CRCA"></textarea>
-                            <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
-                                <button class="btn" style="padding:9px 12px" onclick="openBarcodeScanner(function(code){ingresoAutoAgregarEscaneado(code);})" title="Escanear código de barras"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg></button>
-                                <button class="btn" style="background:#198754;color:#fff" onclick="previsualizarIngresoBulk()"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg> Vista previa</button>
-                                <button class="btn" style="background:#eee" onclick="toggleNuevoIngreso()">Cancelar</button>
-                            </div>
+                        <div class="toolbar" style="margin-bottom:16px;flex-wrap:wrap">
+                            <input type="text" id="ingFiltQ" placeholder="Buscar por artículo (código o descripción)..." oninput="ingresosBuscar()" style="flex:1;min-width:200px" />
+                            <label class="toolbar-date">Desde <input type="date" id="ingFiltDesde" onchange="renderIngresos()"></label>
+                            <label class="toolbar-date">Hasta <input type="date" id="ingFiltHasta" onchange="renderIngresos()"></label>
+                            <select id="ingFiltArmado" onchange="renderIngresos()">
+                                <option value="">Armado: todos</option>
+                                <option value="no">Pendientes de armar</option>
+                                <option value="si">Armados</option>
+                            </select>
+                            <select id="ingFiltImp" onchange="renderIngresos()">
+                                <option value="">Impresión: todos</option>
+                                <option value="sin">Sin imprimir</option>
+                                <option value="si">Impresos</option>
+                            </select>
+                            <button class="btn" style="background:#fff;border:1.5px solid var(--border);color:#333" onclick="tblOpenCols('ingresos')" title="Columnas"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="M15 3v18"/></svg> <span class="btn-txt-larga">Columnas</span></button>
                         </div>
+                        <div id="bulkBar_ingresos" class="bulk-bar" style="display:none"></div>
                         <div class="table-wrap">
                             <div class="table-scroll">
                                 <table id="ingresosTable">
-                                    <thead>
-                                        <tr>
-                                            <th>#</th>
-                                            <th>Fecha</th>
-                                            <th class="col-hide-1">Nota</th>
-                                            <th style="text-align:center">Artículos</th>
-                                            <th class="col-hide-1" style="text-align:center">Pedidos</th>
-                                            <th class="col-hide-2" style="text-align:center">Unidades pedidas</th>
-                                            <th style="text-align:center">Impreso</th>
-                                            <th style="text-align:center">Armado</th>
-                                            <th>Acciones</th>
-                                        </tr>
-                                    </thead>
+                                    <thead id="ingresosThead"></thead>
                                     <tbody id="ingresosTbody"></tbody>
                                 </table>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- ¿QUIÉN PIDIÓ? -->
-                    <div class="wrap section" id="secQuienpidio">
-                        <h2 style="font-size:16px;font-weight:800;color:var(--blue);margin-bottom:12px">¿Quién pidió estos artículos?</h2>
-                        <p style="font-size:13px;color:var(--muted);margin-bottom:20px;max-width:640px">
-                            Cargá acá los artículos que van llegando al local para controlarlos contra los
-                            pedidos pendientes — de a uno, con sugerencias mientras tipeás (así se evitan
-                            errores de tipeo), o pegando/escaneando varios de una.
-                        </p>
-                        <div style="max-width:640px">
-                            <label style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:6px">Agregar de a uno</label>
-                            <div style="position:relative;margin-bottom:20px">
-                                <input type="text" id="qpInput" placeholder="Escribí código o descripción..." autocomplete="off"
-                                    style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px"
-                                    oninput="qpOnInput()" onkeydown="qpOnKeydown(event)">
-                                <div id="qpSuggestions" class="qp-suggestions" style="display:none"></div>
-                            </div>
-
-                            <label style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:6px">O pegar / escanear varios de una</label>
-                            <textarea id="qpListaTextarea" rows="3" style="width:100%;box-sizing:border-box;padding:10px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;resize:vertical" placeholder="Ej:&#10;529508&#10;529509"></textarea>
-                            <div style="display:flex;gap:8px;margin-top:10px;margin-bottom:24px">
-                                <button class="btn" style="padding:9px 12px" onclick="openBarcodeScanner(function(code){qpAgregarEscaneado(code);})" title="Escanear código de barras">
-                                    <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
-                                </button>
-                                <button class="btn" style="background:#0d6efd;color:#fff" onclick="qpAgregarLista()">Agregar lista</button>
-                            </div>
-
-                            <label style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:8px">Artículos cargados</label>
-                            <div id="qpChips" style="margin-bottom:20px"></div>
-
-                            <div style="display:flex;gap:8px">
-                                <button class="btn" style="background:#eee" onclick="qpVaciarLista()">Vaciar lista</button>
-                                <button class="btn" style="background:#198754;color:#fff" id="btnQpGenerar" onclick="qpGenerarReporte()" disabled>
-                                    <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> Generar reporte (0)
-                                </button>
                             </div>
                         </div>
                     </div>
@@ -1176,6 +1100,44 @@
                                 <button class="btn" style="background:#198754;color:#fff" id="btnConfirmarIngresoBulk" onclick="confirmarIngresoBulk()">
                                     <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> Marcar seleccionados
                                 </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- MODAL NUEVO INGRESO -->
+                    <div class="modal-bg" id="nuevoIngresoModalBg">
+                        <div class="modal" style="width: min(640px, 95vw); max-width: 640px">
+                            <h2>Nuevo ingreso</h2>
+                            <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
+                                Agregá de a uno con sugerencias (evita tipeos), o pegá/escaneá varios
+                                códigos de una vez (uno por línea, o separados por coma/espacio), y
+                                marcalos todos como ingresados.
+                            </p>
+                            <input type="text" id="ingresoNota" maxlength="255" placeholder="Nota (opcional): ej. camión del martes, proveedor Lautin..."
+                                style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;margin-bottom:10px">
+                            <div style="position:relative;margin-bottom:10px">
+                                <input type="text" id="ingresoAutoInput" placeholder="Escribí código o descripción..." autocomplete="off"
+                                    style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px"
+                                    oninput="ingresoAutoOnInput()" onkeydown="ingresoAutoOnKeydown(event)">
+                                <div id="ingresoAutoSuggestions" class="qp-suggestions" style="display:none"></div>
+                            </div>
+                            <textarea id="ingresoSkuList" rows="4" style="width:100%;box-sizing:border-box;padding:10px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;resize:vertical" placeholder="Ej:&#10;529508&#10;529509&#10;R201-CRCA"></textarea>
+                            <div class="modal-foot" style="flex-wrap:wrap">
+                                <button class="btn" style="padding:9px 12px;margin-right:auto" onclick="openBarcodeScanner(function(code){ingresoAutoAgregarEscaneado(code);})" title="Escanear código de barras"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg></button>
+                                <button class="btn" style="background:#eee" onclick="cerrarNuevoIngreso()">Cancelar</button>
+                                <button class="btn" style="background:#198754;color:#fff" onclick="previsualizarIngresoBulk()"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg> Vista previa</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- MODAL COLUMNAS (Pedidos / Ingresos) -->
+                    <div class="modal-bg" id="tblColModalBg">
+                        <div class="modal" style="max-width: 340px">
+                            <h2>Columnas visibles</h2>
+                            <div id="tblColModalBody" style="margin: 16px 0"></div>
+                            <div class="modal-foot">
+                                <button class="btn" style="background:#eee" onclick="tblCloseCols()">Cancelar</button>
+                                <button class="btn btn-primary" onclick="tblApplyCols()">Aplicar</button>
                             </div>
                         </div>
                     </div>
