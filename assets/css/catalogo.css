@@ -2214,52 +2214,17 @@ header {
 }
 
 
-/* ── Barra de preventas más compacta ─────────────────────────────────────── */
-/* "Todas las preventas" es solo una etiqueta de filtro: va chica, centrada, no como una portada */
+/* "Todas las preventas": mismo estilo de tarjeta de siempre, pero angosta (más chica
+   horizontalmente): texto más chico y una palabra debajo de la otra. */
 .prev-card.prev-card-all {
     min-width: 0;
-    min-height: 0;
-    align-self: center;
-    padding: 9px 14px;
-    border-radius: 999px
+    width: auto;
+    padding: 10px 14px
 }
 
 .prev-card-all .prev-card-name {
-    font-size: 12px;
-    white-space: nowrap
-}
-
-@media (max-width: 640px) {
-    .prev-selector {
-        gap: 8px;
-        padding: 10px 14px
-    }
-
-    .prev-card {
-        min-width: 118px;
-        max-width: 160px;
-        min-height: 52px;
-        padding: 7px 10px;
-        border-radius: 9px
-    }
-
-    .prev-card-name {
-        font-size: 11.5px
-    }
-
-    /* el detalle largo de cada preventa ocupa lugar y se ve mejor en el PDF / al entrar */
-    .prev-card-detalle {
-        display: none
-    }
-
-    .prev-card.prev-card-all {
-        padding: 8px 12px;
-        max-width: none
-    }
-
-    .prev-card-all .prev-card-name {
-        font-size: 11px
-    }
+    font-size: 11.5px;
+    line-height: 1.25
 }
 
 /* ── Botón destacado del PDF + barra de orden prolija ────────────────────── */
@@ -2271,22 +2236,21 @@ header {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 10px;
-    background: var(--blue);
-    color: #fff;
-    border: none;
-    border-radius: 12px;
-    padding: 13px 22px;
+    gap: 8px;
+    background: var(--pale);
+    color: var(--blue2);
+    border: 1.5px solid var(--blue);
+    border-radius: 10px;
+    padding: 10px 16px;
     font-family: inherit;
-    font-size: 15px;
-    font-weight: 800;
+    font-size: 14px;
+    font-weight: 700;
     cursor: pointer;
-    box-shadow: 0 4px 14px rgba(232, 78, 27, .35);
     transition: transform .1s, background .15s
 }
 
 .pdf-cta-btn:hover {
-    background: var(--blue2)
+    background: #f3dccd
 }
 
 .pdf-cta-btn:active {
@@ -2294,10 +2258,6 @@ header {
 }
 
 @media (max-width: 640px) {
-    .pdf-cta-btn {
-        width: 100%
-    }
-
     /* Barra de orden: una sola fila deslizable (antes se partía en 2-3 filas desparejas) */
     .sort-bar {
         flex-wrap: nowrap;

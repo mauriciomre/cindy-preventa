@@ -714,7 +714,7 @@ function renderPreventaSelector() {
     // blanca, la menos llamativa de toda la fila.
     var html =
         '<button class="prev-card prev-card-all' + (activePreventa === "TODAS" ? " on" : "") + '" onclick="setPreventa(\'TODAS\')">' +
-        '<span class="prev-card-name">Todas las preventas</span></button>';
+        '<span class="prev-card-name">Todas<br>las<br>preventas</span></button>';
     preventas.forEach(function (pv) {
         // ?v=<updated_at> como cache-buster — el archivo se llama siempre
         // igual (preventa_<id>.jpeg), así que sin esto el navegador seguía
