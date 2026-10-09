@@ -396,11 +396,27 @@ function showSection(s, btn) {
 // Precalienta los PDF del catálogo: pide uno por uno el de cada preventa activa para que
 // ya estén generados cuando un cliente los descargue (la primera vez tarda unos segundos).
 // Segundo plano, sin bloquear nada; si falla no pasa nada.
+var _pdfCalentando = false;
+var _pdfCalentarTimer = null;
 async function calentarPdfs() {
-    var activas = allPreventas.filter(function (pv) { return pv.activa == 1; });
-    for (var i = 0; i < activas.length; i++) {
-        try { await fetch("../catalogo_pdf.php?preventa=" + activas[i].id + "&calentar=1"); } catch (e) {}
+    if (_pdfCalentando) return; // ya hay uno en marcha: no se pisan
+    _pdfCalentando = true;
+    try {
+        var activas = allPreventas.filter(function (pv) { return pv.activa == 1; });
+        for (var i = 0; i < activas.length; i++) {
+            try { await fetch("../catalogo_pdf.php?preventa=" + activas[i].id + "&calentar=1"); } catch (e) {}
+        }
+    } finally {
+        _pdfCalentando = false;
     }
+}
+
+// Tras cargar o cambiar datos (importar Excel, subir imágenes, editar productos…) el PDF se
+// vuelve a preparar solo, unos segundos después del último cambio, así ya está listo cuando
+// un cliente lo pide. Si no cambió nada, el servidor responde al toque (204).
+function calentarPdfsLuego() {
+    clearTimeout(_pdfCalentarTimer);
+    _pdfCalentarTimer = setTimeout(calentarPdfs, 6000);
 }
 
 // Al abrir la plataforma se muestra el último menú que se usó (si todavía existe).
@@ -1589,6 +1605,7 @@ async function loadProducts() {
     var res = await fetch(API + "?action=productos&_user=" + encodeURIComponent(authUser) + "&_pass=" + encodeURIComponent(authPass) + (verArchivadas ? "&archivadas=1" : ""));
     allProducts = await res.json();
     renderTable(getFiltered());
+    calentarPdfsLuego();
 }
 function getFiltered() {
     var q = document.getElementById("srch").value.toLowerCase();

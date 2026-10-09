@@ -9,8 +9,9 @@
 //
 // Al cambiar el diseño, subir PDF_LAYOUT_VERSION para invalidar los PDF guardados.
 
-define('PDF_LAYOUT_VERSION', '3');
-define('PDF_THUMB_PX', 480); // 2 cards por fila: la foto sale grande
+define('PDF_LAYOUT_VERSION', '4');
+define('PDF_THUMB_PX', 360);  // calidad "liviana": ~40 % menos peso que 480 px y casi no se nota en pantalla
+define('PDF_THUMB_Q', 65);
 
 @set_time_limit(180);
 @ini_set('memory_limit', '256M');
@@ -70,7 +71,7 @@ function pdf_foto_path($foto, $codigo) {
 // una fracción de las fotos originales de 800 px.
 function pdf_thumb($src) {
     $dir = pdf_cache_dir('thumbs');
-    $dst = $dir . '/' . sha1($src) . '_' . filemtime($src) . '_' . PDF_THUMB_PX . '.jpg';
+    $dst = $dir . '/' . sha1($src) . '_' . filemtime($src) . '_' . PDF_THUMB_PX . 'q' . PDF_THUMB_Q . '.jpg';
     if (is_file($dst)) return $dst;
     $info = @getimagesize($src);
     if (!$info) return null;
@@ -89,7 +90,7 @@ function pdf_thumb($src) {
     $canvas = imagecreatetruecolor($S, $S);
     imagefill($canvas, 0, 0, imagecolorallocate($canvas, 255, 255, 255));
     imagecopyresampled($canvas, $im, (int)(($S - $nw) / 2), (int)(($S - $nh) / 2), 0, 0, $nw, $nh, $w, $h);
-    imagejpeg($canvas, $dst, 74);
+    imagejpeg($canvas, $dst, PDF_THUMB_Q);
     imagedestroy($im); imagedestroy($canvas);
     return is_file($dst) ? $dst : null;
 }

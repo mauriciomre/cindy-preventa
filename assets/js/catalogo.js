@@ -466,17 +466,47 @@ function pdfSufijoNombre() {
     return tildadas.length === 1 ? "-" + pdfNombreArchivo(tildadas[0].nombre).replace(/^catalogo-|\.pdf$/g, "") : "-seleccion";
 }
 
-function pdfDescargar() {
+// Mientras se arma el PDF, los dos botones quedan bloqueados (no se lanzan dos pedidos a la vez).
+function pdfBloquear(bloquear) {
+    ["pdfBtnDescargar", "pdfBtnCompartir"].forEach(function (id) {
+        var b = document.getElementById(id);
+        if (b) b.disabled = !!bloquear;
+    });
+}
+
+async function pdfDescargar() {
     var pv = getPreventas().find(function (x) { return String(x.id) === _pdfSel.pv; });
     if (!pv) return;
-    var a = document.createElement("a");
-    a.href = pdfUrlSeleccion();
-    a.download = pdfNombreArchivo(pv.nombre, pdfSufijoNombre());
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    cerrarPdfMenu();
-    toastCarrito("Preparando el PDF… la primera vez puede tardar unos segundos", "#171412");
+    var url = pdfUrlSeleccion();
+    var btn = document.getElementById("pdfBtnDescargar");
+    var etiqueta = '<span class="pdf-ic">' + icon("download", { size: 18 }) + "</span> Descargar";
+    var restaurar = function () { btn.innerHTML = etiqueta; pdfRender(); };
+    try {
+        var blob = _pdfCache[url];
+        if (!blob) {
+            // Mientras el servidor arma el PDF (la primera vez puede tardar unos segundos) el botón lo muestra.
+            pdfBloquear(true);
+            btn.innerHTML = '<span class="pdf-ic">' + icon("loader-circle", { size: 18 }) + "</span> Preparando…";
+            var res = await fetch(url);
+            if (!res.ok) throw new Error("No se pudo generar el PDF");
+            blob = await res.blob();
+            _pdfCache[url] = blob;
+        }
+        var a = document.createElement("a");
+        var objUrl = URL.createObjectURL(blob);
+        a.href = objUrl;
+        a.download = pdfNombreArchivo(pv.nombre, pdfSufijoNombre());
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(function () { URL.revokeObjectURL(objUrl); }, 60000);
+        restaurar();
+        cerrarPdfMenu();
+        toastCarrito("PDF listo: revisá tus descargas", "#171412");
+    } catch (e) {
+        restaurar();
+        toastCarrito("No se pudo preparar el PDF. Probá de nuevo en un momento.", "#c62828");
+    }
 }
 
 async function pdfCompartir() {
@@ -485,11 +515,11 @@ async function pdfCompartir() {
     var url = pdfUrlSeleccion();
     var btn = document.getElementById("pdfBtnCompartir");
     var etiqueta = '<span class="pdf-ic">' + icon("share-2", { size: 18 }) + "</span> Compartir";
-    var restaurar = function () { btn.disabled = false; btn.innerHTML = etiqueta; };
+    var restaurar = function () { btn.innerHTML = etiqueta; pdfRender(); };
     try {
         var blob = _pdfCache[url];
         if (!blob) {
-            btn.disabled = true;
+            pdfBloquear(true);
             btn.innerHTML = '<span class="pdf-ic">' + icon("loader-circle", { size: 18 }) + "</span> Preparando…";
             var res = await fetch(url);
             if (!res.ok) throw new Error("No se pudo generar el PDF");
@@ -507,7 +537,7 @@ async function pdfCompartir() {
                 if (e && e.name === "AbortError") { restaurar(); return; }
                 // Algunos teléfonos exigen un toque nuevo después de esperar la descarga: queda listo.
                 if (e && e.name === "NotAllowedError") {
-                    btn.disabled = false;
+                    pdfRender();
                     btn.innerHTML = '<span class="pdf-ic">' + icon("share-2", { size: 18 }) + "</span> PDF listo: tocá para compartir";
                     return;
                 }
