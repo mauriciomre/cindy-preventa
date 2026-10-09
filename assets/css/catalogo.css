@@ -2214,24 +2214,335 @@ header {
 }
 
 
-/* PDF del catálogo de la preventa (Descargar / Compartir) */
-.pdf-actions {
-    display: inline-flex;
-    gap: 8px;
-    margin-left: auto;
-    flex-wrap: wrap
+/* ── Barra de preventas más compacta ─────────────────────────────────────── */
+/* "Todas las preventas" es solo una etiqueta de filtro: va chica, centrada, no como una portada */
+.prev-card.prev-card-all {
+    min-width: 0;
+    min-height: 0;
+    align-self: center;
+    padding: 9px 14px;
+    border-radius: 999px
 }
 
-.pdf-btn {
+.prev-card-all .prev-card-name {
+    font-size: 12px;
+    white-space: nowrap
+}
+
+@media (max-width: 640px) {
+    .prev-selector {
+        gap: 8px;
+        padding: 10px 14px
+    }
+
+    .prev-card {
+        min-width: 118px;
+        max-width: 160px;
+        min-height: 52px;
+        padding: 7px 10px;
+        border-radius: 9px
+    }
+
+    .prev-card-name {
+        font-size: 11.5px
+    }
+
+    /* el detalle largo de cada preventa ocupa lugar y se ve mejor en el PDF / al entrar */
+    .prev-card-detalle {
+        display: none
+    }
+
+    .prev-card.prev-card-all {
+        padding: 8px 12px;
+        max-width: none
+    }
+
+    .prev-card-all .prev-card-name {
+        font-size: 11px
+    }
+}
+
+/* ── Botón destacado del PDF + barra de orden prolija ────────────────────── */
+.pdf-cta {
+    padding: 14px 0 4px
+}
+
+.pdf-cta-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: var(--blue);
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    padding: 13px 22px;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 800;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(232, 78, 27, .35);
+    transition: transform .1s, background .15s
+}
+
+.pdf-cta-btn:hover {
+    background: var(--blue2)
+}
+
+.pdf-cta-btn:active {
+    transform: scale(.98)
+}
+
+@media (max-width: 640px) {
+    .pdf-cta-btn {
+        width: 100%
+    }
+
+    /* Barra de orden: una sola fila deslizable (antes se partía en 2-3 filas desparejas) */
+    .sort-bar {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch
+    }
+
+    .sort-bar::-webkit-scrollbar {
+        display: none
+    }
+
+    .sort-bar > * {
+        flex: 0 0 auto;
+        white-space: nowrap
+    }
+}
+
+/* ── Menú del PDF (hoja que sube desde abajo en el teléfono) ─────────────── */
+.pdf-bg {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 350;
+    background: rgba(23, 20, 18, .55);
+    align-items: flex-end;
+    justify-content: center
+}
+
+.pdf-bg.open {
+    display: flex
+}
+
+.pdf-sheet {
+    width: 100%;
+    max-width: 540px;
+    max-height: 90vh;
+    background: #fff;
+    border-radius: 20px 20px 0 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: pdfSube .22s ease-out
+}
+
+@keyframes pdfSube {
+    from { transform: translateY(40px); opacity: .6 }
+    to { transform: none; opacity: 1 }
+}
+
+@media (min-width: 641px) {
+    .pdf-bg {
+        align-items: center
+    }
+
+    .pdf-sheet {
+        border-radius: 18px;
+        max-height: 85vh
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .pdf-sheet {
+        animation: none
+    }
+}
+
+.pdf-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 18px 12px;
+    border-bottom: 1px solid var(--border)
+}
+
+.pdf-head h3 {
+    font-size: 17px;
+    font-weight: 800
+}
+
+.pdf-x {
+    background: none;
+    border: none;
+    color: var(--muted);
+    padding: 8px;
+    margin: -8px;
+    cursor: pointer;
+    display: flex
+}
+
+.pdf-body {
+    padding: 14px 18px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    flex: 1
+}
+
+.pdf-lbl {
+    display: block;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px
+}
+
+.pdf-select {
+    width: 100%;
+    min-height: 48px;
+    padding: 10px 14px;
+    border: 1.5px solid var(--border);
+    border-radius: 12px;
+    background: #fff;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+    margin-bottom: 18px
+}
+
+.pdf-lbl-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px
+}
+
+.pdf-lbl-row .pdf-lbl {
+    margin: 0
+}
+
+.pdf-quick {
+    display: inline-flex;
+    gap: 4px
+}
+
+.pdf-quick button {
+    background: none;
+    border: none;
+    color: var(--blue);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 8px 10px;
+    margin: -8px 0;
+    cursor: pointer
+}
+
+.pdf-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px
+}
+
+.pdf-chip {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    text-decoration: none;
+    min-height: 44px;
+    padding: 9px 15px;
+    border: 1.5px solid var(--border);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--ink);
     font-family: inherit;
-    line-height: 1.2
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .12s, border-color .12s
 }
 
-.pdf-btn:disabled {
-    opacity: .6;
-    cursor: wait
+.pdf-chip .n {
+    font-size: 12px;
+    font-weight: 600;
+    opacity: .6
+}
+
+.pdf-chip.on {
+    background: var(--blue);
+    border-color: var(--blue);
+    color: #fff
+}
+
+.pdf-chip:focus-visible,
+.pdf-cta-btn:focus-visible,
+.pdf-btn-pri:focus-visible,
+.pdf-btn-sec:focus-visible {
+    outline: 3px solid var(--ink);
+    outline-offset: 2px
+}
+
+.pdf-resumen {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 14px;
+    min-height: 18px
+}
+
+.pdf-vacio {
+    font-size: 14px;
+    color: var(--muted)
+}
+
+.pdf-foot {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 12px 18px calc(14px + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--border);
+    background: #fff
+}
+
+.pdf-btn-pri,
+.pdf-btn-sec {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 50px;
+    border-radius: 12px;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 800;
+    cursor: pointer
+}
+
+.pdf-btn-pri {
+    background: var(--blue);
+    border: 2px solid var(--blue);
+    color: #fff
+}
+
+.pdf-btn-sec {
+    background: #fff;
+    border: 2px solid var(--ink);
+    color: var(--ink)
+}
+
+.pdf-btn-pri:disabled,
+.pdf-btn-sec:disabled {
+    opacity: .45;
+    cursor: not-allowed
+}
+
+.pdf-ic {
+    display: inline-flex
 }

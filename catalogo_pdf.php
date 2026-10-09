@@ -9,7 +9,8 @@
 //
 // Al cambiar el diseño, subir PDF_LAYOUT_VERSION para invalidar los PDF guardados.
 
-define('PDF_LAYOUT_VERSION', '1');
+define('PDF_LAYOUT_VERSION', '3');
+define('PDF_THUMB_PX', 480); // 2 cards por fila: la foto sale grande
 
 @set_time_limit(180);
 @ini_set('memory_limit', '256M');
@@ -65,11 +66,11 @@ function pdf_foto_path($foto, $codigo) {
     return is_file($p) ? $p : null;
 }
 
-// Miniatura (JPEG 360 px sobre fondo blanco) guardada en cache/thumbs: el PDF pesa
+// Miniatura (JPEG de PDF_THUMB_PX sobre fondo blanco) guardada en cache/thumbs: el PDF pesa
 // una fracción de las fotos originales de 800 px.
 function pdf_thumb($src) {
     $dir = pdf_cache_dir('thumbs');
-    $dst = $dir . '/' . sha1($src) . '_' . filemtime($src) . '.jpg';
+    $dst = $dir . '/' . sha1($src) . '_' . filemtime($src) . '_' . PDF_THUMB_PX . '.jpg';
     if (is_file($dst)) return $dst;
     $info = @getimagesize($src);
     if (!$info) return null;
@@ -82,13 +83,13 @@ function pdf_thumb($src) {
     }
     if (!$im) return null;
     $w = imagesx($im); $h = imagesy($im);
-    $S = 360;
+    $S = PDF_THUMB_PX;
     $scale = min($S / $w, $S / $h);
     $nw = max(1, (int)round($w * $scale)); $nh = max(1, (int)round($h * $scale));
     $canvas = imagecreatetruecolor($S, $S);
     imagefill($canvas, 0, 0, imagecolorallocate($canvas, 255, 255, 255));
     imagecopyresampled($canvas, $im, (int)(($S - $nw) / 2), (int)(($S - $nh) / 2), 0, 0, $nw, $nh, $w, $h);
-    imagejpeg($canvas, $dst, 72);
+    imagejpeg($canvas, $dst, 74);
     imagedestroy($im); imagedestroy($canvas);
     return is_file($dst) ? $dst : null;
 }
@@ -96,7 +97,6 @@ function pdf_thumb($src) {
 class CatalogoPDF extends tFPDF {
     public $titulo = '';
     public $detalle = '';
-    public $total = 0;
     public $fecha = '';
 
     const W = 210;
@@ -139,10 +139,7 @@ class CatalogoPDF extends tFPDF {
                 $this->Cell(self::W - 2 * self::MX, 4.5, $this->detalle, 0, 1, 'L');
                 $y += 5;
             }
-            $this->SetFont('Jost', '', 8);
-            $this->SetXY(self::MX, $y);
-            $this->Cell(self::W - 2 * self::MX, 4, $this->total . ' productos · Precios mayoristas + IVA', 0, 1, 'L');
-            $this->SetY($y + 7);
+            $this->SetY($y + 3);
         } else {
             $this->SetFillColor(255, 255, 255);
             $this->Rect(0, 0, self::W, 13, 'F');
@@ -231,6 +228,13 @@ class CatalogoPDF extends tFPDF {
 $idPv = intval($_GET['preventa'] ?? 0);
 if ($idPv <= 0) pdf_error(400, 'Falta indicar la preventa.');
 
+// Categorías elegidas (categorias[]=Mochilas&categorias[]=Botellas). Sin el parámetro van todas.
+$catsElegidas = null;
+if (isset($_GET['categorias'])) {
+    $catsElegidas = array_values(array_unique(array_filter(array_map('strval', (array)$_GET['categorias']), 'strlen')));
+    if (!$catsElegidas) pdf_error(400, 'Elegí al menos una categoría.');
+}
+
 $db = getDB();
 $stmt = $db->prepare("SELECT id, nombre, detalle FROM preventas WHERE id=? AND activa=1");
 $stmt->bind_param('i', $idPv);
@@ -238,13 +242,19 @@ $stmt->execute();
 $pv = $stmt->get_result()->fetch_assoc();
 if (!$pv) pdf_error(404, 'Esa preventa no está disponible.');
 
-$stmt = $db->prepare("SELECT p.id, p.codigo, p.descripcion, p.categoria, p.marca, p.precio_mayorista, p.multiplo, p.foto
+$stmt = $db->prepare("SELECT p.id, p.codigo, p.descripcion, p.categoria, p.precio_mayorista, p.multiplo, p.foto
     FROM productos p LEFT JOIN categorias c ON p.categoria = c.nombre
     WHERE p.preventa_id=? AND p.estado='DISPONIBLE'
     ORDER BY COALESCE(c.orden, 0), p.orden, p.codigo");
 $stmt->bind_param('i', $idPv);
 $stmt->execute();
 $productos = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+if ($catsElegidas !== null) {
+    $productos = array_values(array_filter($productos, function ($p) use ($catsElegidas) {
+        return in_array($p['categoria'], $catsElegidas, true);
+    }));
+    if (!$productos) pdf_error(404, 'No hay productos disponibles en las categorías elegidas.');
+}
 
 $colores = [];
 if ($productos) {
@@ -254,15 +264,20 @@ if ($productos) {
 }
 
 // ───────────────────────── caché ─────────────────────────
+// Un PDF guardado por preventa + selección de categorías; se renueva solo si cambia el contenido.
 $firma = [PDF_LAYOUT_VERSION, $pv['nombre'], $pv['detalle']];
 foreach ($productos as $p) {
     $path = pdf_foto_path($p['foto'], $p['codigo']);
-    $firma[] = [$p['codigo'], $p['descripcion'], $p['categoria'], $p['marca'], $p['precio_mayorista'], $p['multiplo'], $path ? filemtime($path) : 0, $colores[$p['id']] ?? []];
+    $firma[] = [$p['codigo'], $p['descripcion'], $p['categoria'], $p['precio_mayorista'], $p['multiplo'], $path ? filemtime($path) : 0, $colores[$p['id']] ?? []];
 }
-$hash = substr(md5(json_encode($firma)), 0, 16);
+$hash = substr(md5(json_encode($firma)), 0, 12);
+$sel = $catsElegidas === null ? 'all' : substr(md5(json_encode($catsElegidas)), 0, 8);
 $dirPdf = pdf_cache_dir('catalogo_pdf');
-$archivo = $dirPdf . '/' . $idPv . '_' . $hash . '.pdf';
-$nombreDescarga = 'catalogo-' . pdf_slug($pv['nombre']) . '.pdf';
+$prefijo = $idPv . '_' . $sel . '_';
+$archivo = $dirPdf . '/' . $prefijo . $hash . '.pdf';
+$sufijoNombre = '';
+if ($catsElegidas !== null) $sufijoNombre = count($catsElegidas) === 1 ? '-' . pdf_slug($catsElegidas[0]) : '-seleccion';
+$nombreDescarga = 'catalogo-' . pdf_slug($pv['nombre']) . $sufijoNombre . '.pdf';
 
 function pdf_enviar($archivo, $nombre) {
     // ?calentar=1: solo se asegura de que el PDF esté generado (lo pide el admin en segundo plano).
@@ -278,7 +293,7 @@ function pdf_enviar($archivo, $nombre) {
 if (is_file($archivo)) pdf_enviar($archivo, $nombreDescarga);
 
 // Un solo proceso genera a la vez: los demás esperan y reutilizan el resultado.
-$lock = fopen($dirPdf . '/' . $idPv . '.lock', 'c');
+$lock = fopen($dirPdf . '/' . $idPv . '_' . $sel . '.lock', 'c');
 if ($lock) flock($lock, LOCK_EX);
 if (is_file($archivo)) pdf_enviar($archivo, $nombreDescarga);
 
@@ -294,32 +309,34 @@ $pdf->SetMargins(CatalogoPDF::MX, 10, CatalogoPDF::MX);
 $pdf->AliasNbPages('{nb}');
 $pdf->titulo = $pv['nombre'];
 $pdf->detalle = (string)($pv['detalle'] ?? '');
-$pdf->total = count($productos);
 $pdf->fecha = date('d/m/Y');
 $pdf->AddPage();
 
-$COLS = 4; $GAP = 4;
+$COLS = 2; $GAP = 5;
 $cardW = (CatalogoPDF::W - 2 * CatalogoPDF::MX - ($COLS - 1) * $GAP) / $COLS;
-$padX = 2.6;
+$padX = 4;
 $limiteY = CatalogoPDF::H - 13;
 
-// Alto de una card según su contenido (nombre en hasta 3 líneas, colores, múltiplo…).
+// Alto del recuadro de la foto: un poco menos que el ancho de la card, para que entren 2 filas por hoja.
+// La foto (cuadrada) se muestra entera, centrada, sin recortar.
+function card_box_h($cardW) { return $cardW * 0.86; }
+
+// Contenido y alto de una card (nombre en hasta 2 líneas, colores, múltiplo…). Sin marca.
 function card_info($pdf, $p, $colores, $cardW, $padX) {
     $info = [];
-    $pdf->SetFont('JostSB', '', 7.6);
-    $info['nombre'] = $pdf->lineas($p['descripcion'], $cardW - 2 * $padX, 3);
+    $pdf->SetFont('JostSB', '', 10.5);
+    $info['nombre'] = $pdf->lineas($p['descripcion'], $cardW - 2 * $padX, 2);
     $info['colores'] = $colores[$p['id']] ?? [];
     $info['multiplo'] = max(1, intval($p['multiplo']));
-    $pdf->SetFont('Jost', '', 5.8);
+    $pdf->SetFont('Jost', '', 7.5);
     $nombresColor = array_map(function ($c) { return $c['nombre']; }, $info['colores']);
     $info['txtColores'] = $nombresColor ? $pdf->lineas(implode(' · ', $nombresColor), $cardW - 2 * $padX, 2) : [];
-    $h = ($cardW - 0.8) + 0.4 + 2.6;                  // foto + marco + aire
-    $h += 4.2;                                        // código
-    $h += count($info['nombre']) * 3.5 + 1;           // nombre
-    if (!empty($p['marca'])) $h += 3.4;               // marca
-    if ($info['colores']) $h += 3.6 + count($info['txtColores']) * 2.6; // puntos + nombres
-    if ($info['multiplo'] > 1) $h += 3;               // "Se pide de a N"
-    $h += 8.8;                                        // precio
+    $h = card_box_h($cardW) + 0.4 + 3.4;              // foto + marco + aire
+    $h += 5.6;                                        // código
+    $h += count($info['nombre']) * 4.8 + 1.2;         // nombre
+    if ($info['colores']) $h += 5 + count($info['txtColores']) * 3.4; // puntos + nombres
+    if ($info['multiplo'] > 1) $h += 4.2;             // "Se pide de a N"
+    $h += 10.5;                                       // precio
     $info['h'] = $h;
     return $info;
 }
@@ -328,94 +345,98 @@ function dibujar_card($pdf, $p, $info, $x, $y, $cardW, $padX, $rowH) {
     // Card blanca con borde
     $pdf->SetFillColor(255, 255, 255);
     $pdf->SetDrawColor(229, 222, 212);
-    $pdf->SetLineWidth(0.2);
-    $pdf->RoundedRect($x, $y, $cardW, $rowH, 2, 'FD');
-    // Foto
+    $pdf->SetLineWidth(0.25);
+    $pdf->RoundedRect($x, $y, $cardW, $rowH, 2.6, 'FD');
+    // Foto: recuadro gris claro (como el catálogo) con la foto cuadrada centrada
     $img = $cardW - 0.8;
+    $boxH = card_box_h($cardW);
     $pdf->SetFillColor(248, 249, 251);
-    $pdf->Rect($x + 0.4, $y + 0.4, $img, $img, 'F');
+    $pdf->Rect($x + 0.4, $y + 0.4, $img, $boxH, 'F');
     $src = pdf_foto_path($p['foto'], $p['codigo']);
     $thumb = $src ? pdf_thumb($src) : null;
     if ($thumb) {
-        $pdf->Image($thumb, $x + 0.4, $y + 0.4, $img, $img, 'JPG');
+        $pdf->Image($thumb, $x + 0.4 + ($img - $boxH) / 2, $y + 0.4, $boxH, $boxH, 'JPG');
     } else {
-        $pdf->SetFont('Jost', '', 6);
+        $pdf->SetFont('Jost', '', 8);
         $pdf->SetTextColor(170, 165, 160);
-        $pdf->SetXY($x + 0.4, $y + 0.4 + $img / 2 - 2);
-        $pdf->Cell($img, 4, 'Sin foto', 0, 0, 'C');
+        $pdf->SetXY($x + 0.4, $y + 0.4 + $boxH / 2 - 2.5);
+        $pdf->Cell($img, 5, 'Sin foto', 0, 0, 'C');
     }
     $pdf->SetDrawColor(229, 222, 212);
-    $pdf->Line($x + 0.4, $y + 0.4 + $img, $x + 0.4 + $img, $y + 0.4 + $img);
+    $pdf->Line($x + 0.4, $y + 0.4 + $boxH, $x + 0.4 + $img, $y + 0.4 + $boxH);
     // Cuerpo
-    $cy = $y + 0.4 + $img + 2.6;
+    $cy = $y + 0.4 + $boxH + 3.4;
     // código
-    $pdf->SetFont('Jost', '', 6);
-    $cw = min($cardW - 2 * $padX, $pdf->GetStringWidth($p['codigo']) + 3);
+    $pdf->SetFont('Jost', '', 7.5);
+    $cw = min($cardW - 2 * $padX, $pdf->GetStringWidth($p['codigo']) + 4);
     $pdf->SetFillColor(245, 245, 245);
-    $pdf->RoundedRect($x + $padX, $cy, $cw, 3.6, 0.8, 'F');
+    $pdf->RoundedRect($x + $padX, $cy, $cw, 4.4, 1, 'F');
     $pdf->SetTextColor(120, 112, 106);
-    $pdf->SetXY($x + $padX, $cy + 0.2);
-    $pdf->Cell($cw, 3.2, $p['codigo'], 0, 0, 'C');
-    $cy += 4.2;
+    $pdf->SetXY($x + $padX, $cy + 0.3);
+    $pdf->Cell($cw, 3.8, $p['codigo'], 0, 0, 'C');
+    $cy += 5.6;
     // nombre
-    $pdf->SetFont('JostSB', '', 7.6);
+    $pdf->SetFont('JostSB', '', 10.5);
     $pdf->SetTextColor(23, 20, 18);
     foreach ($info['nombre'] as $ln) {
         $pdf->SetXY($x + $padX, $cy);
-        $pdf->Cell($cardW - 2 * $padX, 3.5, $ln, 0, 0, 'L');
-        $cy += 3.5;
+        $pdf->Cell($cardW - 2 * $padX, 4.8, $ln, 0, 0, 'L');
+        $cy += 4.8;
     }
-    $cy += 1;
-    // marca
-    if (!empty($p['marca'])) {
-        $pdf->SetFont('Jost', '', 6.2);
-        $pdf->SetTextColor(120, 112, 106);
-        $pdf->SetXY($x + $padX, $cy);
-        $pdf->Cell($cardW - 2 * $padX, 3.2, $p['marca'], 0, 0, 'L');
-        $cy += 3.4;
-    }
+    $cy += 1.2;
     // colores (puntos como en el catálogo + nombres)
     if ($info['colores']) {
-        $dx = $x + $padX; $r = 1.35; $max = 9;
+        $dx = $x + $padX; $r = 1.8; $max = 12;
         $n = 0;
         foreach ($info['colores'] as $c) {
             if ($n >= $max) break;
             list($rr, $gg, $bb) = pdf_hex($c['hex']);
             $pdf->SetDrawColor(205, 200, 195);
             $pdf->SetFillColor($rr, $gg, $bb);
-            $pdf->SetLineWidth(0.15);
-            $pdf->RoundedRect($dx, $cy + 0.4, $r * 2, $r * 2, $r, 'FD');
-            $dx += $r * 2 + 0.9;
+            $pdf->SetLineWidth(0.18);
+            $pdf->RoundedRect($dx, $cy + 0.3, $r * 2, $r * 2, $r, 'FD');
+            $dx += $r * 2 + 1.2;
             $n++;
         }
-        $cy += 3.6;
-        $pdf->SetFont('Jost', '', 5.8);
+        $cy += 5;
+        $pdf->SetFont('Jost', '', 7.5);
         $pdf->SetTextColor(120, 112, 106);
         foreach ($info['txtColores'] as $ln) {
             $pdf->SetXY($x + $padX, $cy);
-            $pdf->Cell($cardW - 2 * $padX, 2.6, $ln, 0, 0, 'L');
-            $cy += 2.6;
+            $pdf->Cell($cardW - 2 * $padX, 3.4, $ln, 0, 0, 'L');
+            $cy += 3.4;
         }
     }
     if ($info['multiplo'] > 1) {
-        $pdf->SetFont('Jost', '', 5.8);
+        $pdf->SetFont('Jost', '', 7.5);
         $pdf->SetTextColor(120, 112, 106);
-        $pdf->SetXY($x + $padX, $cy + 0.3);
-        $pdf->Cell($cardW - 2 * $padX, 2.6, 'Se pide de a ' . $info['multiplo'] . ' u.', 0, 0, 'L');
-        $cy += 3;
+        $pdf->SetXY($x + $padX, $cy + 0.4);
+        $pdf->Cell($cardW - 2 * $padX, 3.4, 'Se pide de a ' . $info['multiplo'] . ' u.', 0, 0, 'L');
+        $cy += 4.2;
     }
     // precio (siempre pegado abajo de la card)
-    $py = $y + $rowH - 7.6;
-    $pdf->SetFont('Jost', 'B', 11.5);
+    $py = $y + $rowH - 9.6;
+    $pdf->SetFont('Jost', 'B', 16);
     $pdf->SetTextColor(23, 20, 18);
     $txt = pdf_fmt_precio($p['precio_mayorista']);
-    $w = $pdf->GetStringWidth($txt) + 1;
+    $w = $pdf->GetStringWidth($txt) + 1.5;
     $pdf->SetXY($x + $padX, $py);
-    $pdf->Cell($w, 5, $txt, 0, 0, 'L');
-    $pdf->SetFont('JostSB', '', 5.8);
+    $pdf->Cell($w, 7, $txt, 0, 0, 'L');
+    $pdf->SetFont('JostSB', '', 7.5);
     $pdf->SetTextColor(120, 112, 106);
-    $pdf->SetXY($x + $padX + $w, $py + 1.2);
-    $pdf->Cell(10, 3.6, '+ IVA', 0, 0, 'L');
+    $pdf->SetXY($x + $padX + $w, $py + 2.2);
+    $pdf->Cell(12, 4, '+ IVA', 0, 0, 'L');
+}
+
+// Título de categoría (barra naranja como en el catálogo). Se repite en cada hoja.
+function dibujar_titulo_categoria($pdf, $categoria, &$y) {
+    $pdf->SetFillColor(232, 78, 27);
+    $pdf->Rect(CatalogoPDF::MX, $y, 1.4, 6, 'F');
+    $pdf->SetFont('Jost', 'B', 13);
+    $pdf->SetTextColor(232, 78, 27);
+    $pdf->SetXY(CatalogoPDF::MX + 3.6, $y + 0.2);
+    $pdf->Cell(150, 5.6, mb_strtoupper((string)$categoria, 'UTF-8'), 0, 0, 'L');
+    $y += 9.5;
 }
 
 if (!$productos) {
@@ -429,21 +450,9 @@ if (!$productos) {
     $i = 0; $n = count($productos);
     while ($i < $n) {
         $p = $productos[$i];
-        // Título de categoría (con la barra naranja del catálogo)
-        if ($p['categoria'] !== $categoria) {
-            $categoria = $p['categoria'];
-            $primera = card_info($pdf, $p, $colores, $cardW, $padX);
-            if ($y + 12 + $primera['h'] > $limiteY) { $pdf->AddPage(); $y = $pdf->GetY(); }
-            $y += 2;
-            $pdf->SetFillColor(232, 78, 27);
-            $pdf->Rect(CatalogoPDF::MX, $y, 1.2, 5.2, 'F');
-            $pdf->SetFont('Jost', 'B', 11);
-            $pdf->SetTextColor(232, 78, 27);
-            $pdf->SetXY(CatalogoPDF::MX + 3, $y);
-            $pdf->Cell(150, 5.2, mb_strtoupper((string)$categoria, 'UTF-8'), 0, 0, 'L');
-            $y += 8;
-        }
-        // Fila de hasta 4 cards de la misma categoría
+        $nuevaCategoria = $p['categoria'] !== $categoria;
+        if ($nuevaCategoria) $categoria = $p['categoria'];
+        // Fila de hasta 2 cards de la misma categoría
         $fila = [];
         while ($i < $n && count($fila) < $COLS && $productos[$i]['categoria'] === $categoria) {
             $fila[] = [$productos[$i], card_info($pdf, $productos[$i], $colores, $cardW, $padX)];
@@ -451,7 +460,17 @@ if (!$productos) {
         }
         $rowH = 0;
         foreach ($fila as $f) $rowH = max($rowH, $f[1]['h']);
-        if ($y + $rowH > $limiteY) { $pdf->AddPage(); $y = $pdf->GetY(); }
+        $tituloH = 9.5;
+        if ($nuevaCategoria) {
+            // Título nuevo: si no entran el título y la primera fila, hoja nueva.
+            if ($y + 2 + $tituloH + $rowH > $limiteY) { $pdf->AddPage(); $y = $pdf->GetY(); }
+            $y += 2;
+            dibujar_titulo_categoria($pdf, $categoria, $y);
+        } elseif ($y + $rowH > $limiteY) {
+            // Sigue la misma categoría en otra hoja: se repite el título arriba.
+            $pdf->AddPage(); $y = $pdf->GetY();
+            dibujar_titulo_categoria($pdf, $categoria, $y);
+        }
         foreach ($fila as $k => $f) {
             $x = CatalogoPDF::MX + $k * ($cardW + $GAP);
             dibujar_card($pdf, $f[0], $f[1], $x, $y, $cardW, $padX, $rowH);
@@ -462,8 +481,8 @@ if (!$productos) {
 
 $tmp = $archivo . '.tmp' . getmypid();
 $pdf->Output('F', $tmp);
-// Se borran los PDF viejos de esta preventa y se publica el nuevo de forma atómica.
-foreach (glob($dirPdf . '/' . $idPv . '_*.pdf') ?: [] as $viejo) @unlink($viejo);
+// Se borran los PDF viejos de esta misma preventa + selección y se publica el nuevo de forma atómica.
+foreach (glob($dirPdf . '/' . $prefijo . '*.pdf') ?: [] as $viejo) @unlink($viejo);
 rename($tmp, $archivo);
 if ($lock) { flock($lock, LOCK_UN); fclose($lock); }
 pdf_enviar($archivo, $nombreDescarga);

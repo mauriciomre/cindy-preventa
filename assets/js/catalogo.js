@@ -337,77 +337,189 @@ function setView(v) {
     renderProds();
 }
 
-// ── PDF del catálogo de una preventa ─────────────────────────────────────────
-// "Descargar" baja el PDF; "Compartir" abre el menú de compartir del teléfono con
-// el PDF adjunto (ahí está WhatsApp). En compu, donde el navegador no puede
-// compartir archivos, abre WhatsApp Web con el link del PDF.
-var _pdfCache = {}; // id de preventa -> Blob ya descargado (para compartir al toque)
+// ── PDF del catálogo ─────────────────────────────────────────────────────────
+// El botón destacado abre un menú: se elige la preventa (por defecto la que se está
+// mirando; si es "Todas", la primera) y las categorías (por defecto todas) y recién
+// ahí se decide si se descarga o se comparte (menú de compartir del teléfono, donde
+// está WhatsApp; en compu, WhatsApp Web con el link al PDF).
+var _pdfCache = {};   // url del PDF -> Blob ya descargado (para compartir al toque)
+var _pdfSel = { pv: null, cats: {} }; // preventa elegida y categorías tildadas {nombre: true}
 
 function pdfUrl(id) {
     return "catalogo_pdf.php?preventa=" + encodeURIComponent(id);
 }
 
-function pdfNombreArchivo(nombre) {
+function pdfNombreArchivo(nombre, sufijo) {
     var t = String(nombre || "preventa").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-    return "catalogo-" + (t || "preventa") + ".pdf";
+    return "catalogo-" + (t || "preventa") + (sufijo || "") + ".pdf";
 }
 
-function pdfBotonesHTML() {
-    if (activePreventa === "TODAS") return "";
-    var pv = getPreventas().find(function (x) { return String(x.id) === String(activePreventa); });
-    if (!pv) return "";
-    var listo = !!_pdfCache[activePreventa];
+function pdfCtaHTML() {
+    if (!getPreventas().length) return "";
     return (
-        '<span class="pdf-actions">' +
-        '<a class="sort-btn pdf-btn" id="btnDescargarPdf" href="' + pdfUrl(activePreventa) + '" download="' + pdfNombreArchivo(pv.nombre) +
-        '" onclick="avisoPdf()" title="Descargar el catálogo de esta preventa en PDF">' + icon("download", { size: 13 }) + " Descargar PDF</a>" +
-        '<button type="button" class="sort-btn pdf-btn" id="btnCompartirPdf" onclick="compartirPdfPreventa()" title="Compartir el PDF por WhatsApp u otra app">' +
-        icon("share-2", { size: 13 }) + (listo ? " PDF listo: tocá para compartir" : " Compartir") + "</button>" +
-        "</span>"
+        '<div class="pdf-cta"><button type="button" class="pdf-cta-btn" onclick="abrirPdfMenu()">' +
+        icon("download", { size: 18 }) + "<span>Descargar catálogo en PDF</span></button></div>"
     );
 }
 
-function avisoPdf() {
+// Categorías con productos disponibles (los agotados no van en el PDF) de una preventa.
+function pdfCategoriasDe(pvId) {
+    var mapa = {};
+    products.forEach(function (p) {
+        if (String(p.PREVENTA_ID) !== String(pvId)) return;
+        if ((p.ESTADO || "").toUpperCase() === "AGOTADO" || !p.CATEGORIA) return;
+        if (!mapa[p.CATEGORIA]) mapa[p.CATEGORIA] = { nombre: p.CATEGORIA, n: 0, orden: p.CAT_ORDEN || 0 };
+        mapa[p.CATEGORIA].n++;
+    });
+    return Object.keys(mapa).map(function (k) { return mapa[k]; }).sort(function (a, b) {
+        return a.orden - b.orden || a.nombre.localeCompare(b.nombre);
+    });
+}
+
+function abrirPdfMenu() {
+    var preventas = getPreventas();
+    if (!preventas.length) return;
+    var def = activePreventa !== "TODAS" && preventas.some(function (x) { return String(x.id) === String(activePreventa); })
+        ? activePreventa : preventas[0].id;
+    pdfElegirPreventa(def);
+    document.getElementById("pdfModalBg").classList.add("open");
+    document.body.style.overflow = "hidden";
+}
+
+document.addEventListener("keydown", function (e) {
+    var m = document.getElementById("pdfModalBg");
+    if (e.key === "Escape" && m && m.classList.contains("open")) cerrarPdfMenu();
+});
+
+function cerrarPdfMenu() {
+    document.getElementById("pdfModalBg").classList.remove("open");
+    document.body.style.overflow = "";
+}
+
+function pdfElegirPreventa(id) {
+    _pdfSel.pv = String(id);
+    _pdfSel.cats = {};
+    pdfCategoriasDe(id).forEach(function (c) { _pdfSel.cats[c.nombre] = true; }); // por defecto, todas
+    pdfRender();
+}
+
+function pdfRender() {
+    var preventas = getPreventas();
+    var sel = document.getElementById("pdfPreventa");
+    sel.innerHTML = preventas.map(function (pv) {
+        return '<option value="' + pv.id + '"' + (String(pv.id) === _pdfSel.pv ? " selected" : "") + ">" +
+            String(pv.nombre).replace(/&/g, "&amp;").replace(/</g, "&lt;") + "</option>";
+    }).join("");
+    var cats = pdfCategoriasDe(_pdfSel.pv);
+    var tildadas = cats.filter(function (c) { return _pdfSel.cats[c.nombre]; });
+    document.getElementById("pdfChips").innerHTML = cats.length
+        ? cats.map(function (c, i) {
+              var on = !!_pdfSel.cats[c.nombre];
+              return '<button type="button" class="pdf-chip' + (on ? " on" : "") + '" aria-pressed="' + on + '" onclick="pdfToggleCat(' + i + ')">' +
+                  (on ? icon("check", { size: 15 }) : "") + "<span>" + String(c.nombre).replace(/&/g, "&amp;").replace(/</g, "&lt;") +
+                  '</span><span class="n">' + c.n + "</span></button>";
+          }).join("")
+        : '<p class="pdf-vacio">Esta preventa todavía no tiene productos disponibles.</p>';
+    var total = tildadas.reduce(function (a, c) { return a + c.n; }, 0);
+    var res = document.getElementById("pdfResumen");
+    res.textContent = !tildadas.length
+        ? (cats.length ? "Elegí al menos una categoría." : "")
+        : total + " producto" + (total === 1 ? "" : "s") + " en " + tildadas.length + " categoría" + (tildadas.length === 1 ? "" : "s") +
+          (tildadas.length === cats.length ? " (todas)" : "") + ". Solo se incluyen los disponibles.";
+    var puede = tildadas.length > 0;
+    document.getElementById("pdfBtnDescargar").disabled = !puede;
+    document.getElementById("pdfBtnCompartir").disabled = !puede;
+}
+
+function pdfToggleCat(i) {
+    var c = pdfCategoriasDe(_pdfSel.pv)[i];
+    if (!c) return;
+    if (_pdfSel.cats[c.nombre]) delete _pdfSel.cats[c.nombre]; else _pdfSel.cats[c.nombre] = true;
+    pdfRender();
+}
+
+function pdfTodas() {
+    pdfCategoriasDe(_pdfSel.pv).forEach(function (c) { _pdfSel.cats[c.nombre] = true; });
+    pdfRender();
+}
+
+function pdfNinguna() {
+    _pdfSel.cats = {};
+    pdfRender();
+}
+
+// URL del PDF con la selección actual; si están todas las categorías, no se manda el filtro.
+function pdfUrlSeleccion() {
+    var cats = pdfCategoriasDe(_pdfSel.pv);
+    var tildadas = cats.filter(function (c) { return _pdfSel.cats[c.nombre]; });
+    var url = pdfUrl(_pdfSel.pv);
+    if (tildadas.length !== cats.length) {
+        url += tildadas.map(function (c) { return "&categorias[]=" + encodeURIComponent(c.nombre); }).join("");
+    }
+    return url;
+}
+
+function pdfSufijoNombre() {
+    var tildadas = pdfCategoriasDe(_pdfSel.pv).filter(function (c) { return _pdfSel.cats[c.nombre]; });
+    var todas = pdfCategoriasDe(_pdfSel.pv).length;
+    if (tildadas.length === todas) return "";
+    return tildadas.length === 1 ? "-" + pdfNombreArchivo(tildadas[0].nombre).replace(/^catalogo-|\.pdf$/g, "") : "-seleccion";
+}
+
+function pdfDescargar() {
+    var pv = getPreventas().find(function (x) { return String(x.id) === _pdfSel.pv; });
+    if (!pv) return;
+    var a = document.createElement("a");
+    a.href = pdfUrlSeleccion();
+    a.download = pdfNombreArchivo(pv.nombre, pdfSufijoNombre());
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    cerrarPdfMenu();
     toastCarrito("Preparando el PDF… la primera vez puede tardar unos segundos", "#171412");
 }
 
-async function compartirPdfPreventa() {
-    var id = activePreventa;
-    var pv = getPreventas().find(function (x) { return String(x.id) === String(id); });
+async function pdfCompartir() {
+    var pv = getPreventas().find(function (x) { return String(x.id) === _pdfSel.pv; });
     if (!pv) return;
-    var btn = document.getElementById("btnCompartirPdf");
-    var etiqueta = btn ? btn.innerHTML : "";
+    var url = pdfUrlSeleccion();
+    var btn = document.getElementById("pdfBtnCompartir");
+    var etiqueta = '<span class="pdf-ic">' + icon("share-2", { size: 18 }) + "</span> Compartir";
+    var restaurar = function () { btn.disabled = false; btn.innerHTML = etiqueta; };
     try {
-        var blob = _pdfCache[id];
+        var blob = _pdfCache[url];
         if (!blob) {
-            if (btn) { btn.disabled = true; btn.innerHTML = icon("loader-circle", { size: 13 }) + " Preparando PDF…"; }
-            var res = await fetch(pdfUrl(id));
+            btn.disabled = true;
+            btn.innerHTML = '<span class="pdf-ic">' + icon("loader-circle", { size: 18 }) + "</span> Preparando…";
+            var res = await fetch(url);
             if (!res.ok) throw new Error("No se pudo generar el PDF");
             blob = await res.blob();
-            _pdfCache[id] = blob;
+            _pdfCache[url] = blob;
         }
-        var archivo = new File([blob], pdfNombreArchivo(pv.nombre), { type: "application/pdf" });
+        var archivo = new File([blob], pdfNombreArchivo(pv.nombre, pdfSufijoNombre()), { type: "application/pdf" });
         if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
             try {
                 await navigator.share({ files: [archivo], title: pv.nombre, text: "Catálogo " + pv.nombre });
-                if (btn) { btn.disabled = false; btn.innerHTML = etiqueta; }
+                restaurar();
+                cerrarPdfMenu();
                 return;
             } catch (e) {
-                if (e && e.name === "AbortError") { if (btn) { btn.disabled = false; btn.innerHTML = etiqueta; } return; }
-                // Algunos teléfonos exigen un toque nuevo después de esperar la descarga: queda listo para compartir.
+                if (e && e.name === "AbortError") { restaurar(); return; }
+                // Algunos teléfonos exigen un toque nuevo después de esperar la descarga: queda listo.
                 if (e && e.name === "NotAllowedError") {
-                    if (btn) { btn.disabled = false; btn.innerHTML = icon("share-2", { size: 13 }) + " PDF listo: tocá para compartir"; }
+                    btn.disabled = false;
+                    btn.innerHTML = '<span class="pdf-ic">' + icon("share-2", { size: 18 }) + "</span> PDF listo: tocá para compartir";
                     return;
                 }
                 throw e;
             }
         }
         // Sin soporte para compartir archivos (compu): WhatsApp Web con el link al PDF.
-        var link = new URL(pdfUrl(id), window.location.href).href;
+        var link = new URL(url, window.location.href).href;
         window.open("https://wa.me/?text=" + encodeURIComponent("Catálogo " + pv.nombre + ": " + link), "_blank");
-        if (btn) { btn.disabled = false; btn.innerHTML = etiqueta; }
+        restaurar();
     } catch (e) {
-        if (btn) { btn.disabled = false; btn.innerHTML = etiqueta; }
+        restaurar();
         toastCarrito("No se pudo preparar el PDF. Probá de nuevo en un momento.", "#c62828");
     }
 }
@@ -1194,8 +1306,8 @@ function renderProds() {
         '<button class="sort-btn' +
         (sortMode === "price_desc" ? " on" : "") +
         '" data-sort="price_desc" onclick="setSort(\'price_desc\')">$ ' + icon("arrow-down", {size: 13}) + '</button>' +
-        pdfBotonesHTML() +
         "</div>";
+    sortBar = pdfCtaHTML() + sortBar;
 
     if (viewMode === "grid") renderGrid(list, el, sortBar);
     else renderList(list, el, sortBar);
