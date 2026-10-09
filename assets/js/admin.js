@@ -183,6 +183,7 @@ async function doLogin() {
             initToolsDragDrop();
             initFiltrosPanel();
             restaurarUltimoMenu();
+            calentarPdfs();
         } else {
             document.getElementById("lerr").textContent =
                 "Usuario o contraseña incorrectos";
@@ -229,6 +230,7 @@ async function tryAutoLogin() {
             initToolsDragDrop();
             initFiltrosPanel();
             restaurarUltimoMenu();
+            calentarPdfs();
         } else {
             localStorage.removeItem("tb_admin_user");
             localStorage.removeItem("tb_admin_pass");
@@ -389,6 +391,16 @@ function showSection(s, btn) {
     if (s === "opiniones") loadOpiniones();
     if (s === "ingresos") loadIngresos();
     if (window.innerWidth <= 860) closeSidebarMobile();
+}
+
+// Precalienta los PDF del catálogo: pide uno por uno el de cada preventa activa para que
+// ya estén generados cuando un cliente los descargue (la primera vez tarda unos segundos).
+// Segundo plano, sin bloquear nada; si falla no pasa nada.
+async function calentarPdfs() {
+    var activas = allPreventas.filter(function (pv) { return pv.activa == 1; });
+    for (var i = 0; i < activas.length; i++) {
+        try { await fetch("../catalogo_pdf.php?preventa=" + activas[i].id + "&calentar=1"); } catch (e) {}
+    }
 }
 
 // Al abrir la plataforma se muestra el último menú que se usó (si todavía existe).
@@ -1156,6 +1168,8 @@ function renderPreventaTable() {
         html += '<td><div class="actions">';
         html += '<button class="btn" style="background:#e3f2fd;color:#0d47a1" onclick="openPrevProductosModal(' + pv.id + ')">' + icon("package") + ' Productos</button>';
         html += '<button class="btn btn-edit" onclick="openPrevModal(' + pv.id + ')">' + icon("pencil") + ' Editar</button>';
+        if (pv.activa == 1)
+            html += '<a class="btn" style="background:#f3e5f5;color:#6a1b9a;text-decoration:none" href="../catalogo_pdf.php?preventa=' + pv.id + '" target="_blank" rel="noopener" title="Descargar el catálogo de esta preventa en PDF">' + icon("download") + " PDF</a>";
         html += archivada
             ? '<button class="btn" style="background:#e8f5e9;color:#2e7d32" onclick="archivarPreventa(' + pv.id + ',false)">' + icon("archive-restore") + " Desarchivar</button>"
             : '<button class="btn" style="background:#eceff1;color:#455a64" onclick="archivarPreventa(' + pv.id + ',true)">' + icon("archive") + " Archivar</button>";
@@ -1397,6 +1411,7 @@ async function togglePreventaActiva(id, activa) {
         toast(activa ? "Preventa activada — sus productos ya se ven en el catálogo" : "Preventa desactivada — sus productos se ocultaron del catálogo");
         await loadPreventas();
         await loadProducts();
+        if (activa) calentarPdfs(); // ya con la lista actualizada
     } else { toast("Error: " + (json.error || "desconocido"), "#c62828"); renderPreventaTable(); }
 }
 async function eliminarPreventa(id, nombre, count) {

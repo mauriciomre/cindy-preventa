@@ -2212,3 +2212,26 @@ header {
     font-weight: 600;
     opacity: .7
 }
+
+
+/* PDF del catálogo de la preventa (Descargar / Compartir) */
+.pdf-actions {
+    display: inline-flex;
+    gap: 8px;
+    margin-left: auto;
+    flex-wrap: wrap
+}
+
+.pdf-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    text-decoration: none;
+    font-family: inherit;
+    line-height: 1.2
+}
+
+.pdf-btn:disabled {
+    opacity: .6;
+    cursor: wait
+}

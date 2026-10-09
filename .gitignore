@@ -1,2 +1,6 @@
 db.php
 imgs/
+cache/
+vendor/tfpdf/font/unifont/*.mtx.php
+vendor/tfpdf/font/unifont/*.cw.dat
+vendor/tfpdf/font/unifont/*.cw127.php

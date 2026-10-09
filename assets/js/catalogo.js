@@ -337,6 +337,81 @@ function setView(v) {
     renderProds();
 }
 
+// ── PDF del catálogo de una preventa ─────────────────────────────────────────
+// "Descargar" baja el PDF; "Compartir" abre el menú de compartir del teléfono con
+// el PDF adjunto (ahí está WhatsApp). En compu, donde el navegador no puede
+// compartir archivos, abre WhatsApp Web con el link del PDF.
+var _pdfCache = {}; // id de preventa -> Blob ya descargado (para compartir al toque)
+
+function pdfUrl(id) {
+    return "catalogo_pdf.php?preventa=" + encodeURIComponent(id);
+}
+
+function pdfNombreArchivo(nombre) {
+    var t = String(nombre || "preventa").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    return "catalogo-" + (t || "preventa") + ".pdf";
+}
+
+function pdfBotonesHTML() {
+    if (activePreventa === "TODAS") return "";
+    var pv = getPreventas().find(function (x) { return String(x.id) === String(activePreventa); });
+    if (!pv) return "";
+    var listo = !!_pdfCache[activePreventa];
+    return (
+        '<span class="pdf-actions">' +
+        '<a class="sort-btn pdf-btn" id="btnDescargarPdf" href="' + pdfUrl(activePreventa) + '" download="' + pdfNombreArchivo(pv.nombre) +
+        '" onclick="avisoPdf()" title="Descargar el catálogo de esta preventa en PDF">' + icon("download", { size: 13 }) + " Descargar PDF</a>" +
+        '<button type="button" class="sort-btn pdf-btn" id="btnCompartirPdf" onclick="compartirPdfPreventa()" title="Compartir el PDF por WhatsApp u otra app">' +
+        icon("share-2", { size: 13 }) + (listo ? " PDF listo: tocá para compartir" : " Compartir") + "</button>" +
+        "</span>"
+    );
+}
+
+function avisoPdf() {
+    toastCarrito("Preparando el PDF… la primera vez puede tardar unos segundos", "#171412");
+}
+
+async function compartirPdfPreventa() {
+    var id = activePreventa;
+    var pv = getPreventas().find(function (x) { return String(x.id) === String(id); });
+    if (!pv) return;
+    var btn = document.getElementById("btnCompartirPdf");
+    var etiqueta = btn ? btn.innerHTML : "";
+    try {
+        var blob = _pdfCache[id];
+        if (!blob) {
+            if (btn) { btn.disabled = true; btn.innerHTML = icon("loader-circle", { size: 13 }) + " Preparando PDF…"; }
+            var res = await fetch(pdfUrl(id));
+            if (!res.ok) throw new Error("No se pudo generar el PDF");
+            blob = await res.blob();
+            _pdfCache[id] = blob;
+        }
+        var archivo = new File([blob], pdfNombreArchivo(pv.nombre), { type: "application/pdf" });
+        if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
+            try {
+                await navigator.share({ files: [archivo], title: pv.nombre, text: "Catálogo " + pv.nombre });
+                if (btn) { btn.disabled = false; btn.innerHTML = etiqueta; }
+                return;
+            } catch (e) {
+                if (e && e.name === "AbortError") { if (btn) { btn.disabled = false; btn.innerHTML = etiqueta; } return; }
+                // Algunos teléfonos exigen un toque nuevo después de esperar la descarga: queda listo para compartir.
+                if (e && e.name === "NotAllowedError") {
+                    if (btn) { btn.disabled = false; btn.innerHTML = icon("share-2", { size: 13 }) + " PDF listo: tocá para compartir"; }
+                    return;
+                }
+                throw e;
+            }
+        }
+        // Sin soporte para compartir archivos (compu): WhatsApp Web con el link al PDF.
+        var link = new URL(pdfUrl(id), window.location.href).href;
+        window.open("https://wa.me/?text=" + encodeURIComponent("Catálogo " + pv.nombre + ": " + link), "_blank");
+        if (btn) { btn.disabled = false; btn.innerHTML = etiqueta; }
+    } catch (e) {
+        if (btn) { btn.disabled = false; btn.innerHTML = etiqueta; }
+        toastCarrito("No se pudo preparar el PDF. Probá de nuevo en un momento.", "#c62828");
+    }
+}
+
 function setSort(v) {
     sortMode = v;
     document.querySelectorAll(".sort-btn").forEach(function (b) {
@@ -1119,6 +1194,7 @@ function renderProds() {
         '<button class="sort-btn' +
         (sortMode === "price_desc" ? " on" : "") +
         '" data-sort="price_desc" onclick="setSort(\'price_desc\')">$ ' + icon("arrow-down", {size: 13}) + '</button>' +
+        pdfBotonesHTML() +
         "</div>";
 
     if (viewMode === "grid") renderGrid(list, el, sortBar);
