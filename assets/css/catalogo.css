@@ -2228,10 +2228,6 @@ header {
 }
 
 /* ── Botón destacado del PDF + barra de orden prolija ────────────────────── */
-.pdf-cta {
-    padding: 14px 0 4px
-}
-
 .pdf-cta-btn {
     display: inline-flex;
     align-items: center;
@@ -2255,25 +2251,6 @@ header {
 
 .pdf-cta-btn:active {
     transform: scale(.98)
-}
-
-@media (max-width: 640px) {
-    /* Barra de orden: una sola fila deslizable (antes se partía en 2-3 filas desparejas) */
-    .sort-bar {
-        flex-wrap: nowrap;
-        overflow-x: auto;
-        scrollbar-width: none;
-        -webkit-overflow-scrolling: touch
-    }
-
-    .sort-bar::-webkit-scrollbar {
-        display: none
-    }
-
-    .sort-bar > * {
-        flex: 0 0 auto;
-        white-space: nowrap
-    }
 }
 
 /* ── Menú del PDF (hoja que sube desde abajo en el teléfono) ─────────────── */
@@ -2505,4 +2482,98 @@ header {
 
 .pdf-ic {
     display: inline-flex
+}
+
+
+/* Barra: "Ordenar por" (popover) a la izquierda, PDF a la derecha, misma línea */
+.sort-bar {
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    position: relative
+}
+
+.sort-pop-wrap {
+    position: relative;
+    min-width: 0
+}
+
+.sort-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: #fff;
+    border: 1.5px solid var(--border);
+    color: var(--ink, #171412);
+    border-radius: 10px;
+    padding: 9px 11px;
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    white-space: nowrap
+}
+
+.sort-trigger b {
+    font-weight: 700
+}
+
+.sort-trigger:hover,
+.sort-trigger[aria-expanded="true"] {
+    border-color: var(--blue)
+}
+
+.sort-pop {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 60;
+    min-width: 220px;
+    max-width: calc(100vw - 16px);
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(23, 20, 18, .16);
+    padding: 6px
+}
+
+.sort-pop.open {
+    display: block
+}
+
+.sort-opt {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    background: none;
+    border: 0;
+    border-radius: 8px;
+    padding: 11px 12px;
+    font-family: inherit;
+    font-size: 14px;
+    color: var(--ink, #171412);
+    text-align: left;
+    cursor: pointer
+}
+
+.sort-opt:hover {
+    background: var(--pale)
+}
+
+.sort-opt.on {
+    font-weight: 700;
+    color: var(--blue2)
+}
+
+.sort-bar .pdf-cta-btn {
+    flex: 0 0 auto;
+    padding: 9px 12px;
+    font-size: 13px;
+    white-space: nowrap
+}
+
+@media (max-width: 380px) {
+    .sort-trigger b { display: none }
 }

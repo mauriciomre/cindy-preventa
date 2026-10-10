@@ -357,8 +357,8 @@ function pdfNombreArchivo(nombre, sufijo) {
 function pdfCtaHTML() {
     if (!getPreventas().length) return "";
     return (
-        '<div class="pdf-cta"><button type="button" class="pdf-cta-btn" onclick="abrirPdfMenu()">' +
-        icon("download", { size: 18 }) + "<span>Descargar catálogo en PDF</span></button></div>"
+        '<button type="button" class="pdf-cta-btn" onclick="abrirPdfMenu()" title="Descargar el catálogo en PDF">' +
+        icon("download", { size: 16 }) + "<span>Descargar PDF</span></button>"
     );
 }
 
@@ -554,11 +554,63 @@ async function pdfCompartir() {
     }
 }
 
+var SORT_LABELS = {
+    "default": "Por defecto",
+    "newest": "Más nuevo",
+    "alpha": "A → Z",
+    "price_asc": "Precio: menor a mayor",
+    "price_desc": "Precio: mayor a menor"
+};
+
+function toggleSortPop(ev) {
+    if (ev) ev.stopPropagation();
+    var pop = document.getElementById("sortPop"), tr = document.getElementById("sortTrigger");
+    if (!pop) return;
+    var abrir = !pop.classList.contains("open");
+    pop.classList.toggle("open", abrir);
+    if (tr) tr.setAttribute("aria-expanded", abrir ? "true" : "false");
+    if (abrir) ajustarSortPop();
+}
+
+// Mantiene el popover completo dentro de la pantalla (corre a la izquierda o lo abre hacia arriba si hace falta).
+function ajustarSortPop() {
+    var pop = document.getElementById("sortPop"), wrap = pop && pop.parentNode;
+    if (!pop || !pop.classList.contains("open")) return;
+    pop.style.left = "0"; pop.style.top = ""; pop.style.bottom = "";
+    var m = 8, vw = document.documentElement.clientWidth, vh = window.innerHeight;
+    var w = wrap.getBoundingClientRect(), r = pop.getBoundingClientRect();
+    var dx = 0;
+    if (r.right > vw - m) dx = (vw - m) - r.right;
+    if (r.left + dx < m) dx = m - r.left;
+    if (dx) pop.style.left = dx + "px";
+    // Vertical: abajo si entra; si no, hacia donde haya más lugar, con alto máximo y scroll propio.
+    pop.style.maxHeight = "";
+    r = pop.getBoundingClientRect();
+    var top = 0, hdr = document.querySelector("header, .header, .topbar");
+    var topLimit = Math.max(m, hdr ? hdr.getBoundingClientRect().bottom + m : m);
+    var abajo = vh - m - w.bottom - 6, arriba = w.top - topLimit - 6;
+    if (r.height > abajo && arriba > abajo) {
+        pop.style.top = "auto"; pop.style.bottom = "calc(100% + 6px)";
+        pop.style.maxHeight = Math.max(120, arriba) + "px";
+    } else if (r.height > abajo) {
+        pop.style.maxHeight = Math.max(120, abajo) + "px";
+    }
+}
+window.addEventListener("resize", ajustarSortPop);
+
+function cerrarSortPop() {
+    var pop = document.getElementById("sortPop"), tr = document.getElementById("sortTrigger");
+    if (pop) pop.classList.remove("open");
+    if (tr) tr.setAttribute("aria-expanded", "false");
+}
+
+document.addEventListener("click", function (e) {
+    if (!e.target.closest || !e.target.closest(".sort-pop-wrap")) cerrarSortPop();
+});
+document.addEventListener("keydown", function (e) { if (e.key === "Escape") cerrarSortPop(); });
+
 function setSort(v) {
     sortMode = v;
-    document.querySelectorAll(".sort-btn").forEach(function (b) {
-        b.classList.toggle("on", b.dataset.sort === v);
-    });
     renderProds();
 }
 
@@ -1317,27 +1369,21 @@ function renderProds() {
         return;
     }
 
-    // Barra de ordenamiento
+    // Barra de ordenamiento: botón "Ordenar por" con popover + botón del PDF a la derecha
     var sortBar =
         '<div class="sort-bar">' +
-        '<span class="sort-lbl">Ordenar:</span>' +
-        '<button class="sort-btn' +
-        (sortMode === "default" ? " on" : "") +
-        '" data-sort="default" onclick="setSort(\'default\')">Por defecto</button>' +
-        '<button class="sort-btn' +
-        (sortMode === "newest" ? " on" : "") +
-        '" data-sort="newest" onclick="setSort(\'newest\')">Más nuevo</button>' +
-        '<button class="sort-btn' +
-        (sortMode === "alpha" ? " on" : "") +
-        '" data-sort="alpha" onclick="setSort(\'alpha\')">A ' + icon("arrow-right", {size: 13}) + ' Z</button>' +
-        '<button class="sort-btn' +
-        (sortMode === "price_asc" ? " on" : "") +
-        '" data-sort="price_asc" onclick="setSort(\'price_asc\')">$ ' + icon("arrow-up", {size: 13}) + '</button>' +
-        '<button class="sort-btn' +
-        (sortMode === "price_desc" ? " on" : "") +
-        '" data-sort="price_desc" onclick="setSort(\'price_desc\')">$ ' + icon("arrow-down", {size: 13}) + '</button>' +
+        '<div class="sort-pop-wrap">' +
+        '<button type="button" class="sort-trigger" id="sortTrigger" aria-haspopup="true" aria-expanded="false" onclick="toggleSortPop(event)">' +
+        '<span class="sort-lbl">Ordenar por:</span> <b>' + SORT_LABELS[sortMode] + "</b>" + icon("chevron-down", {size: 14}) + "</button>" +
+        '<div class="sort-pop" id="sortPop" role="menu">' +
+        Object.keys(SORT_LABELS).map(function (k) {
+            return '<button type="button" role="menuitemradio" aria-checked="' + (sortMode === k) + '" class="sort-opt' + (sortMode === k ? " on" : "") +
+                '" data-sort="' + k + '" onclick="setSort(\'' + k + '\')">' + SORT_LABELS[k] +
+                (sortMode === k ? icon("check", {size: 15}) : "") + "</button>";
+        }).join("") +
+        "</div></div>" +
+        pdfCtaHTML() +
         "</div>";
-    sortBar = pdfCtaHTML() + sortBar;
 
     if (viewMode === "grid") renderGrid(list, el, sortBar);
     else renderList(list, el, sortBar);
