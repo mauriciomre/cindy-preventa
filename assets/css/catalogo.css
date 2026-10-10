@@ -2407,6 +2407,18 @@ header {
     transition: background .12s, border-color .12s
 }
 
+.pdf-chip .chk {
+    display: inline-flex;
+    width: 15px;
+    height: 15px;
+    flex: 0 0 15px;
+    visibility: hidden
+}
+
+.pdf-chip.on .chk {
+    visibility: visible
+}
+
 .pdf-chip .n {
     font-size: 12px;
     font-weight: 600;

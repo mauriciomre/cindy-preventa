@@ -416,7 +416,7 @@ function pdfRender() {
         ? cats.map(function (c, i) {
               var on = !!_pdfSel.cats[c.nombre];
               return '<button type="button" class="pdf-chip' + (on ? " on" : "") + '" aria-pressed="' + on + '" onclick="pdfToggleCat(' + i + ')">' +
-                  (on ? icon("check", { size: 15 }) : "") + "<span>" + String(c.nombre).replace(/&/g, "&amp;").replace(/</g, "&lt;") +
+                  '<span class="chk">' + icon("check", { size: 15 }) + "</span><span>" + String(c.nombre).replace(/&/g, "&amp;").replace(/</g, "&lt;") +
                   '</span><span class="n">' + c.n + "</span></button>";
           }).join("")
         : '<p class="pdf-vacio">Esta preventa todavía no tiene productos disponibles.</p>';
