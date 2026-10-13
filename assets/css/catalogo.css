@@ -1358,7 +1358,7 @@ header {
 }
 
 .cart-toast.show {
-    max-height: 60px;
+    max-height: 200px;
     opacity: 1;
     padding: 10px 16px
 }
@@ -2588,4 +2588,97 @@ header {
 
 @media (max-width: 380px) {
     .sort-trigger b { display: none }
+}
+
+
+/* ── Letra grande del teléfono (accesibilidad) ───────────────────────────────
+   Con "tamaño de fuente" grande en Android todo el texto crece: nada puede tener
+   ancho/alto fijo ni forzarse en una sola línea. El precio pasa a otra línea antes
+   de salirse de la tarjeta y las filas con texto + botón se parten en vez de desbordar. */
+.prices {
+    flex-wrap: wrap;
+    column-gap: 6px;
+    row-gap: 2px
+}
+
+.price {
+    white-space: normal;
+    min-width: 0;
+    overflow-wrap: anywhere
+}
+
+.iva {
+    white-space: nowrap
+}
+
+.badge {
+    max-width: 100%;
+    overflow-wrap: anywhere
+}
+
+.total-row {
+    flex-wrap: wrap
+}
+
+.total-lbl,
+.total-val {
+    white-space: normal;
+    overflow-wrap: anywhere
+}
+
+.total-val {
+    margin-left: auto
+}
+
+.sort-bar {
+    flex-wrap: wrap;
+    row-gap: 8px
+}
+
+.sort-pop-wrap {
+    max-width: 100%
+}
+
+.sort-trigger {
+    max-width: 100%;
+    flex-wrap: wrap;
+    white-space: normal
+}
+
+@media (max-width: 640px) {
+    .prices {
+        flex-wrap: wrap;
+        align-items: flex-end
+    }
+
+    .price {
+        white-space: normal
+    }
+}
+
+/* Menú del PDF con letra grande: "Todas / Ninguna" pasa abajo del título y los botones del
+   pie se apilan en vez de apretarse; el texto de los botones puede partirse. */
+.pdf-lbl-row {
+    flex-wrap: wrap;
+    row-gap: 4px
+}
+
+/* El ancho mínimo de cada botón va en "em": crece con la letra y, cuando ya no entran
+   dos lado a lado, se apilan (en vez de cortar las palabras). */
+.pdf-foot {
+    font-size: 15px;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 9em), 1fr))
+}
+
+.pdf-btn-pri,
+.pdf-btn-sec {
+    font-size: 1em;
+    padding: 6px 8px;
+    line-height: 1.15;
+    text-align: center
+}
+
+.pdf-btn-pri .pdf-ic,
+.pdf-btn-sec .pdf-ic {
+    flex: none
 }

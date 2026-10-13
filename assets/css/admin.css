@@ -1899,3 +1899,39 @@ td.editing {
 tr.sel-row td { background: var(--pale) }
 .toolbar-date { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); font-weight: 600 }
 .toolbar-date input { padding: 8px 10px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 13px; font-family: inherit }
+
+
+/* ── Letra grande del teléfono (accesibilidad) ───────────────────────────────
+   La barra de arriba tiene alto fijo (52px) porque el resto del panel se acomoda a ella:
+   en vez de crecer, lo que no entra se acorta con "…" y "Salir" nunca se sale de la pantalla. */
+.topbar-brand {
+    flex: 0 0 auto
+}
+
+.topbar-right {
+    min-width: 0;
+    flex: 0 10 auto
+}
+
+.catalog-link {
+    min-width: 0;
+    flex: 0 10 auto;
+    overflow: hidden;
+    text-overflow: ellipsis
+}
+
+.logout {
+    flex: none
+}
+
+/* Formularios de los modales con letra grande: las columnas pueden achicarse y los
+   botones tipo interruptor no empujan al vecino. */
+.modal .field {
+    min-width: 0
+}
+
+.btn-toggle {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere
+}
