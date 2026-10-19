@@ -535,18 +535,13 @@ header {
 /* GRID */
 .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 12px
-}
-
-/* Desktop: 5 por fila siempre, no "las que entren" — a pedido de Mauricio.
-   Con .body a max-width:960px, auto-fill+200px daba 4 anchas con espacio
-   de sobra; acá se fuerza el número de columnas y cada una se acomoda al
-   ancho disponible. */
-@media (min-width: 860px) {
-    .grid {
-        grid-template-columns: repeat(5, 1fr)
-    }
+    gap: 12px;
+    /* Hasta 5 por fila (a pedido de Mauricio), pero nunca cards más angostas que
+       --card-min. Si el ancho no alcanza para 5 baja a 4, 3, 2 por fila. Las cards entre
+       200 y ~240px usan la fila de cantidad/botón apilada (ver @container más abajo),
+       porque "− 1 +  + Agregar" en una sola línea necesita ~212px libres. */
+    --card-min: 200px;
+    grid-template-columns: repeat(auto-fill, minmax(max(var(--card-min), calc((100% - 4 * 12px) / 5)), 1fr))
 }
 
 .card {
@@ -2681,4 +2676,33 @@ header {
 .pdf-btn-pri .pdf-ic,
 .pdf-btn-sec .pdf-ic {
     flex: none
+}
+
+
+/* Card angosta (grilla de 5 con el panel de marcas, tablets, etc.): cantidad arriba y
+   botón abajo, igual que en el celular, en vez de dejar que "+ Agregar" se salga de la
+   card. Se decide por el ancho REAL de la card, no por el ancho de la pantalla. */
+.card-body {
+    container-type: inline-size;
+    container-name: cb
+}
+
+@container cb (max-width: 217px) {
+    .foot {
+        gap: 4px;
+        flex-direction: column;
+        align-items: stretch
+    }
+
+    .qty {
+        justify-content: center
+    }
+
+    .add {
+        text-align: center
+    }
+
+    .price {
+        font-size: 18px
+    }
 }
