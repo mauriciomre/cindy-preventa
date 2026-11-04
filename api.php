@@ -413,6 +413,17 @@ function setupDB($db) {
         $db->query("ALTER TABLE productos ADD COLUMN ingreso TINYINT(1) NOT NULL DEFAULT 0");
     }
 
+    // "Agotado por ingreso": al ingresar un artículo pasa a AGOTADO en la preventa
+    // (ya se vende en la página oficial). Esta marca recuerda que se agotó POR ESO,
+    // para que al deshacer el ingreso vuelva a disponible solo ese caso y no los
+    // agotados a mano ni los agotados por stock.
+    $colCheck = $db->query("SHOW COLUMNS FROM productos LIKE 'agotado_por_ingreso'");
+    if ($colCheck && $colCheck->num_rows === 0) {
+        $db->query("ALTER TABLE productos ADD COLUMN agotado_por_ingreso TINYINT(1) NOT NULL DEFAULT 0");
+        // Lo que ya estaba ingresado y agotado (a mano) cuenta como agotado por ingreso.
+        $db->query("UPDATE productos SET agotado_por_ingreso=1 WHERE ingreso=1 AND estado='AGOTADO'");
+    }
+
     // Registro de INGRESOS: cada tanda de mercadería que llega queda como un
     // ingreso con su fecha y sus artículos (productos.ingreso_id). La marca
     // productos.ingreso sigue siendo la fuente de verdad para el resto de la
@@ -668,7 +679,17 @@ function eliminar_producto_y_foto($db, $id) {
 // tanda pertenece): lo desmarcado sale de su ingreso, lo marcado sin ingreso
 // entra en UNO nuevo (todos los de la misma operación juntos) y los ingresos
 // que quedan vacíos se borran. Devuelve el id del ingreso nuevo, si se creó.
+// Pasa a AGOTADO los productos que cumplan $cond (SQL fijo, nunca input del usuario).
+// Si estaban DISPONIBLES queda anotado que se agotaron por ingreso; si ya estaban
+// agotados (a mano o por stock) no se marca, así no se reactivan al deshacer.
+function agotar_por_ingreso($db, $cond) {
+    $db->query("UPDATE productos SET agotado_por_ingreso=IF(estado='DISPONIBLE',1,agotado_por_ingreso), estado='AGOTADO', updated_at=NOW() WHERE $cond");
+}
+
 function sincronizar_ingresos($db, $origen = 'manual', $nota = null) {
+    // Los que dejaron de estar ingresados y se habían agotado por el ingreso vuelven
+    // a DISPONIBLE (si todavía tienen stock de preventa).
+    $db->query("UPDATE productos SET estado=IF(stock_preventa<=0,'AGOTADO','DISPONIBLE'), agotado_por_ingreso=0, updated_at=NOW() WHERE ingreso=0 AND agotado_por_ingreso=1");
     $db->query("UPDATE productos SET ingreso_id=NULL WHERE ingreso=0 AND ingreso_id IS NOT NULL");
     $r = $db->query("SELECT COUNT(*) AS n FROM productos WHERE ingreso=1 AND ingreso_id IS NULL");
     $row = $r ? $r->fetch_assoc() : null;
@@ -678,6 +699,8 @@ function sincronizar_ingresos($db, $origen = 'manual', $nota = null) {
         $stmt->bind_param('ss', $origen, $nota);
         $stmt->execute();
         $nuevoId = $db->insert_id;
+        // Recién ingresados: ya están en la página oficial, no se ofrecen más en preventa.
+        agotar_por_ingreso($db, "ingreso=1 AND ingreso_id IS NULL");
         $db->query("UPDATE productos SET ingreso_id=" . intval($nuevoId) . " WHERE ingreso=1 AND ingreso_id IS NULL");
     }
     $db->query("DELETE FROM ingresos WHERE id NOT IN (SELECT DISTINCT ingreso_id FROM productos WHERE ingreso_id IS NOT NULL)");
@@ -786,7 +809,7 @@ $db = getDB();
 // correrlas en CADA llamada a la API volvía lenta a toda la plataforma. Ahora
 // corren una sola vez por versión. IMPORTANTE: al agregar una migración nueva en
 // setupDB(), subir SCHEMA_VERSION para que se aplique en el próximo request.
-define('SCHEMA_VERSION', '2026-10-08.1');
+define('SCHEMA_VERSION', '2026-11-04.1');
 
 function schema_actualizado($db) {
     try {
@@ -961,6 +984,10 @@ switch ($action) {
         // producto que el admin pausó a mano a propósito.
         $estado = $data['estado'];
         if ($stock <= 0) $estado = 'AGOTADO';
+        // Si el estado lo cambia el admin a mano, deja de contar como "agotado por ingreso".
+        if (in_array($estado, ['DISPONIBLE', 'AGOTADO'], true)) {
+            $db->query("UPDATE productos SET agotado_por_ingreso=0 WHERE id=" . intval($id) . " AND estado<>'$estado'");
+        }
         $stmt = $db->prepare("UPDATE productos SET codigo=?,descripcion=?,categoria=?,marca=?,precio_mayorista=?,foto=?,estado=?,orden=?,multiplo=?,codigo_barras=?,stock_preventa=?,preventa_id=?,ingreso=?,updated_at=NOW() WHERE id=?");
         $stmt->bind_param('ssssdssiisiiii', $data['codigo'], $data['descripcion'], $data['categoria'], $marca, $data['precio_mayorista'], $data['foto'], $estado, $orden, $multiplo, $codigoBarras, $stock, $preventaId, $ingreso, $id);
         if ($stmt->execute()) {
@@ -2373,6 +2400,10 @@ switch ($action) {
             $noEnc = array_values(array_diff($codigos, $ex));
             if ($ex) {
                 $ph2 = implode(',', array_fill(0, count($ex), '?'));
+                // Los que todavía no estaban ingresados pasan a AGOTADO (mismo criterio que un ingreso nuevo).
+                $stmt = $db->prepare("UPDATE productos SET agotado_por_ingreso=IF(estado='DISPONIBLE',1,agotado_por_ingreso), estado='AGOTADO', updated_at=NOW() WHERE ingreso=0 AND codigo IN ($ph2)");
+                $stmt->bind_param(str_repeat('s', count($ex)), ...$ex);
+                $stmt->execute();
                 $stmt = $db->prepare("UPDATE productos SET ingreso=1, ingreso_id=? WHERE codigo IN ($ph2)");
                 $stmt->bind_param('i' . str_repeat('s', count($ex)), $id, ...$ex);
                 $stmt->execute();
@@ -2476,9 +2507,9 @@ switch ($action) {
                     // Igual que al editar un producto: sin stock no puede quedar disponible.
                     $r = $db->query("SELECT COUNT(*) AS n FROM productos WHERE id IN ($in) AND stock_preventa <= 0")->fetch_assoc();
                     $omitidos = intval($r['n']);
-                    $db->query("UPDATE productos SET estado=IF(stock_preventa<=0,'AGOTADO','DISPONIBLE'), updated_at=NOW() WHERE id IN ($in)");
+                    $db->query("UPDATE productos SET estado=IF(stock_preventa<=0,'AGOTADO','DISPONIBLE'), agotado_por_ingreso=0, updated_at=NOW() WHERE id IN ($in)");
                 } else {
-                    $db->query("UPDATE productos SET estado='AGOTADO', updated_at=NOW() WHERE id IN ($in)");
+                    $db->query("UPDATE productos SET estado='AGOTADO', agotado_por_ingreso=0, updated_at=NOW() WHERE id IN ($in)");
                 }
                 break;
             case 'ingreso':

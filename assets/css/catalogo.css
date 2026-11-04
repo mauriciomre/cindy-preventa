@@ -2706,3 +2706,22 @@ header {
         font-size: 18px
     }
 }
+
+
+/* Producto ya ingresado: está en la página oficial de Cindy */
+.badge-web {
+    background: #e8f5e9;
+    color: #2e7d32
+}
+
+.na-web {
+    white-space: normal;
+    line-height: 1.35
+}
+
+.ya-web {
+    color: var(--blue2);
+    font-weight: 700;
+    text-decoration: underline;
+    overflow-wrap: anywhere
+}

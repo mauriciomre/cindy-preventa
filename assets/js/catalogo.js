@@ -647,6 +647,7 @@ function start() {
                     MARCA: p.marca || null,
                     FOTO: p.foto,
                     ESTADO: p.estado,
+                    INGRESO: parseInt(p.ingreso) === 1,
                     ORDEN: p.orden,
                     MULTIPLO: parseInt(p.multiplo) || 1,
                     STOCK_PREVENTA: parseInt(p.stock_preventa) || 0,
@@ -1389,6 +1390,21 @@ function renderProds() {
     else renderList(list, el, sortBar);
 }
 
+
+// Un producto ingresado ya está en la página oficial: en vez del genérico "Agotado"
+// se muestra dónde comprarlo.
+var URL_WEB_OFICIAL = "https://www.cindymayorista.com.ar/";
+
+function yaEnWebHTML(p, variante) {
+    var a = '<a class="ya-web" href="' + URL_WEB_OFICIAL + '" target="_blank" rel="noopener">';
+    if (variante === "card") return '<div class="na na-web">Ya disponible en la página oficial. ' + a + "Comprar en cindymayorista.com.ar</a></div>";
+    return a + "Ya en la página oficial</a>";
+}
+
+function badgeAgotadoHTML(p) {
+    return p.INGRESO ? '<span class="badge badge-web">YA EN LA WEB</span>' : '<span class="badge">AGOTADO</span>';
+}
+
 function renderGrid(list, el, sortBar) {
     // Si está en TODOS y es orden por defecto, agrupar por categoría
     var useGroups = activeCat === "TODOS" && sortMode === "default";
@@ -1518,7 +1534,7 @@ function cardHTML(p) {
         '<div class="c-top"><span class="code">' +
         p.CODIGO +
         "</span>" +
-        (sold ? '<span class="badge">AGOTADO</span>' : "") +
+        (sold ? badgeAgotadoHTML(p) : "") +
         "</div>";
     if (activePreventa === "TODAS" && p.PREVENTA_NOMBRE)
         html += '<div class="badge-preventa">' + p.PREVENTA_NOMBRE + "</div>";
@@ -1612,7 +1628,7 @@ function cardHTML(p) {
     } else {
         html += infoHtml;
         if (sold) {
-            html += '<div class="na">No disponible por ahora</div>';
+            html += p.INGRESO ? yaEnWebHTML(p, "card") : '<div class="na">No disponible por ahora</div>';
         } else {
             html += '<div class="foot"><div class="qty">';
             html +=
@@ -1694,7 +1710,7 @@ function listCardHTML(p) {
         p.DESCRIPCION +
         '</div><div class="lc-code">' +
         p.CODIGO +
-        (sold ? ' <span class="badge">AGOTADO</span>' : "") +
+        (sold ? " " + badgeAgotadoHTML(p) : "") +
         (activePreventa === "TODAS" && p.PREVENTA_NOMBRE
             ? '<div class="badge-preventa" style="margin-top:4px">' + p.PREVENTA_NOMBRE + "</div>"
             : "") +
@@ -1716,7 +1732,7 @@ function listCardHTML(p) {
     }
     var hasColores = p.COLORES && p.COLORES.length > 0;
     if (sold) {
-        html += '<div style="color:#aaa;font-size:11px">No disponible</div>';
+        html += p.INGRESO ? '<div style="font-size:11px">' + yaEnWebHTML(p, "lista") + "</div>" : '<div style="color:#aaa;font-size:11px">No disponible</div>';
     } else if (hasColores) {
         html += '<div class="lc-foot lc-foot-colores">';
         html += colorQtyRowsHTML(p);
@@ -1793,7 +1809,7 @@ function listRowHTML(p) {
         '<td><span class="code">' +
         p.CODIGO +
         "</span>" +
-        (sold ? ' <span class="badge">AGOTADO</span>' : "") +
+        (sold ? " " + badgeAgotadoHTML(p) : "") +
         "</td>";
     html +=
         '<td style="font-weight:600">' +
@@ -1810,7 +1826,7 @@ function listRowHTML(p) {
     var hasColores = p.COLORES && p.COLORES.length > 0;
     if (sold) {
         html +=
-            '<td colspan="2"><span style="color:#aaa;font-size:12px">No disponible</span></td>';
+            '<td colspan="2">' + (p.INGRESO ? '<span style="font-size:12px">' + yaEnWebHTML(p, "lista") + "</span>" : '<span style="color:#aaa;font-size:12px">No disponible</span>') + "</td>";
     } else if (hasColores) {
         html +=
             '<td>' +

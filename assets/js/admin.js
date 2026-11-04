@@ -3905,7 +3905,7 @@ async function agregarAIngreso() {
 async function deshacerIngreso() {
     if (!_ingresoActual) return;
     var n = _ingresoActual.productos.length;
-    if (!confirm("¿Deshacer el ingreso #" + _ingresoActual.ingreso.id + "? Sus " + n + " artículo(s) vuelven a quedar como NO ingresados.")) return;
+    if (!confirm("¿Deshacer el ingreso #" + _ingresoActual.ingreso.id + "? Sus " + n + " artículo(s) vuelven a quedar como NO ingresados y, los que se habían agotado por el ingreso, vuelven a estar disponibles en la preventa.")) return;
     var json = await ingresoApi("ingreso_deshacer", { id: _ingresoActual.ingreso.id });
     if (!json.ok) return toast("Error", "#c62828");
     toast("Ingreso deshecho");
