@@ -12,14 +12,12 @@ define('MAX_ZIP',    100 * 1024 * 1024);   // 100 MB ZIP
 
 // ── Auth ──────────────────────────────────────────────────────────────────
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/helpers.php';
 $db = getDB();
 
 $user = $_POST['_user'] ?? '';
 $pass = $_POST['_pass'] ?? '';
-$r = $db->query("SELECT valor FROM config WHERE clave='admin_pass' LIMIT 1");
-$row = $r ? $r->fetch_assoc() : null;
-$validPass = $row ? $row['valor'] : 'travelblue2025';
-if ($user !== 'admin' || $pass !== $validPass) {
+if (!auth_validar($db, $user, $pass, 'preventa2026')) {
     http_response_code(401);
     die(json_encode(['error' => 'No autorizado']));
 }

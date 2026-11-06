@@ -37,4 +37,40 @@ function redimensionar_preventa_cover($src, $maxW = 1200, $maxH = 900) {
     imagecopyresampled($dst, $src, 0, 0, 0, 0, $nw, $nh, $ow, $oh);
     return $dst;
 }
-?>
+
+// ── Login del panel (tabla `usuarios`) ───────────────────────────────────────
+// Compartido por api.php, upload.php y upload_bulk.php. Si la tabla todavía no existe o
+// está vacía (antes de la primera migración) se usa el login viejo del único usuario
+// "admin" (config.admin_pass o la contraseña por defecto), para no dejar a nadie afuera.
+function auth_validar($db, $u, $p, $passDefecto = 'preventa2026') {
+    $u = trim((string)$u);
+    $p = (string)$p;
+    if ($u === '' || $p === '') return false;
+    $hayUsuarios = false;
+    try {
+        $r = $db->query("SELECT COUNT(*) AS n FROM usuarios");
+        $hayUsuarios = $r && intval($r->fetch_assoc()['n']) > 0;
+    } catch (Throwable $e) {
+        $hayUsuarios = false;
+    }
+    if (!$hayUsuarios) {
+        $valida = $passDefecto;
+        try {
+            $r = $db->query("SELECT valor FROM config WHERE clave='admin_pass' LIMIT 1");
+            $row = $r ? $r->fetch_assoc() : null;
+            if ($row) $valida = $row['valor'];
+        } catch (Throwable $e) {}
+        return $u === 'admin' && hash_equals($valida, $p);
+    }
+    $st = $db->prepare("SELECT pass_hash FROM usuarios WHERE nombre=? AND activo=1 LIMIT 1");
+    $st->bind_param('s', $u);
+    $st->execute();
+    $row = $st->get_result()->fetch_assoc();
+    return $row && password_verify($p, $row['pass_hash']);
+}
+
+// Hash de contraseña para `usuarios`. Costo 9 (en vez de 10): el panel manda las
+// credenciales en cada llamada y se verifica el hash en todas, así pesa menos.
+function hash_clave($clave) {
+    return password_hash($clave, PASSWORD_BCRYPT, ['cost' => 9]);
+}

@@ -10,7 +10,7 @@
             href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&family=Lora:wght@600&display=swap"
             rel="stylesheet"
         />
-        <link rel="stylesheet" href="../assets/css/admin.css?v=20261104" />
+        <link rel="stylesheet" href="../assets/css/admin.css?v=20261106c" />
         <style>
             /* ── Modal header / close button ── */
             .modal-head {
@@ -186,6 +186,14 @@
                         >
                             <span class="si-icon"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span
                             ><span class="si-label">Herramientas</span>
+                        </button>
+                        <button
+                            class="sidebar-item"
+                            data-section="notificaciones"
+                            onclick="showSection('notificaciones', this)"
+                        >
+                            <span class="si-icon"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg></span
+                            ><span class="si-label">Notificaciones</span>
                         </button>
                         <button
                             class="sidebar-item"
@@ -671,6 +679,10 @@
                                 <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
                                 Notificaciones
                             </button>
+                            <button class="cfg-tab" data-cfgtab="usuarios" onclick="showCfgTab('usuarios', this); loadUsuarios()">
+                                <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                                Usuarios
+                            </button>
                             <button class="cfg-tab" data-cfgtab="seguridad" onclick="showCfgTab('seguridad', this)">
                                 <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                                 Seguridad
@@ -715,22 +727,12 @@
 
                         <!-- TAB: NOTIFICACIONES -->
                         <div class="cfg-tab-panel" id="cfgTabNotificaciones" style="display:none">
-                            <div class="config-box" style="max-width:600px;margin-bottom:16px">
-                                <h3><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg> WhatsApp</h3>
-                                <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
-                                    Número completo con código de país, sin espacios
-                                    ni signos. Ej: <code>5493534140385</code>
-                                </p>
-                                <div class="config-row">
-                                    <input type="text" id="cfgWA" placeholder="5493534140385" />
-                                    <button class="btn btn-primary" onclick="saveWA()">Guardar</button>
-                                </div>
-                            </div>
                             <div class="config-box" style="max-width:600px">
                                 <h3><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"/></svg> WhatsApp — UltraMsg</h3>
                                 <p style="font-size:13px;color:var(--muted);margin-bottom:16px">
-                                    Avisa automáticamente por WhatsApp (al número configurado arriba) apenas se crea un pedido
-                                    nuevo, sin depender de que el cliente lo mande a mano.
+                                    Acá van las credenciales de la instancia. Qué avisa (pedido nuevo, preventa nueva,
+                                    ingreso nuevo) y a qué números llega se configura en el menú
+                                    <a href="#" onclick="showSection('notificaciones'); return false">Notificaciones</a>.
                                 </p>
 
                                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
@@ -757,6 +759,34 @@
                                 </div>
                                 <p style="font-size:12px;color:var(--muted);margin:-6px 0 12px">Panel de UltraMsg → tu instancia → API → Credentials.</p>
                                 <button class="btn btn-primary" onclick="saveUltraMsg()">Guardar</button>
+                            </div>
+                        </div>
+
+                        <!-- TAB: USUARIOS -->
+                        <div class="cfg-tab-panel" id="cfgTabUsuarios" style="display:none">
+                            <div class="config-box" style="max-width:820px">
+                                <h3>Usuarios del panel</h3>
+                                <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
+                                    Cada usuario entra con su usuario y contraseña. El WhatsApp que cargues acá es el
+                                    que usan las notificaciones (menú Notificaciones) para avisarle.
+                                </p>
+                                <button class="btn btn-primary" onclick="openUsuarioModal(0)">+ Nuevo usuario</button>
+                                <div class="table-wrap" style="margin-top:12px">
+                                    <div class="table-scroll">
+                                        <table>
+                                            <thead>
+                                                <tr>
+                                                    <th>Usuario</th>
+                                                    <th>Nombre</th>
+                                                    <th>WhatsApp</th>
+                                                    <th>Estado</th>
+                                                    <th>Acciones</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="usuariosTbody"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -863,6 +893,42 @@
                                             </tr>
                                         </thead>
                                         <tbody id="coloresTbody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- NOTIFICACIONES -->
+                    <div class="wrap section" id="secNotificaciones">
+                        <div style="max-width: 980px">
+                            <h2 style="font-size: 16px; font-weight: 800; color: var(--blue); margin-bottom: 8px">
+                                Notificaciones por WhatsApp
+                            </h2>
+                            <p style="font-size: 13px; color: var(--muted); margin-bottom: 12px">
+                                Cada notificación avisa por WhatsApp (UltraMsg) cuando pasa algo: entra un pedido,
+                                se crea una preventa o se crea un ingreso. Cada una puede avisar a uno o varios
+                                usuarios (al WhatsApp de cada uno) y con su propio mensaje. Las credenciales de UltraMsg se cargan en
+                                Configuración &rarr; Notificaciones.
+                            </p>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px">
+                                <button class="btn btn-primary" onclick="openNotifModal(0)">+ Nueva notificación</button>
+                                <span id="notifUltraEstado" style="font-size: 13px; color: var(--muted)"></span>
+                            </div>
+                            <div class="table-wrap">
+                                <div class="table-scroll">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>Nombre</th>
+                                                <th>Cuándo avisa</th>
+                                                <th>Avisa a</th>
+                                                <th>Estado</th>
+                                                <th>Último envío</th>
+                                                <th>Acciones</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="notifTbody"></tbody>
                                     </table>
                                 </div>
                             </div>
@@ -1603,6 +1669,76 @@
                     </div>
 
                     <!-- MODAL EDITAR COLOR -->
+                    <!-- MODAL USUARIO -->
+                    <div class="modal-bg" id="usuarioModalBg">
+                        <div class="modal" style="width: min(460px, 95vw); max-width: 460px">
+                            <h2 id="usuarioModalTitulo">Nuevo usuario</h2>
+                            <input type="hidden" id="usuarioId" />
+                            <div class="field">
+                                <label>Usuario (para iniciar sesión)</label>
+                                <input id="usuarioNombre" maxlength="40" placeholder="Ej: mariela" autocomplete="off" />
+                            </div>
+                            <div class="field">
+                                <label>Nombre</label>
+                                <input id="usuarioDisplay" maxlength="100" placeholder="Ej: Mariela" />
+                            </div>
+                            <div class="field">
+                                <label>Contraseña <span id="usuarioPassHint" style="font-weight:400;color:var(--muted)"></span></label>
+                                <input type="password" id="usuarioPass" autocomplete="new-password" placeholder="Mínimo 6 caracteres" />
+                            </div>
+                            <div class="field">
+                                <label>WhatsApp (para las notificaciones)</label>
+                                <input id="usuarioTelefono" placeholder="5493534140385" />
+                                <span style="font-size: 12px; color: var(--muted)">Número completo con código de país, sin espacios ni signos. Podés dejarlo vacío.</span>
+                            </div>
+                            <div class="field">
+                                <label class="chk-line">
+                                    <input type="checkbox" id="usuarioActivo" checked style="width: auto" /> Activo (puede iniciar sesión)
+                                </label>
+                            </div>
+                            <div class="modal-foot">
+                                <button class="btn" style="background: #eee" onclick="closeUsuarioModal()">Cancelar</button>
+                                <button class="btn btn-primary" onclick="guardarUsuario()">Guardar</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- MODAL NOTIFICACIÓN -->
+                    <div class="modal-bg" id="notifModalBg">
+                        <div class="modal" style="width: min(560px, 95vw); max-width: 560px">
+                            <h2 id="notifModalTitulo">Nueva notificación</h2>
+                            <input type="hidden" id="notifId" />
+                            <div class="field">
+                                <label>Nombre</label>
+                                <input id="notifNombre" maxlength="100" placeholder="Ej: Pedidos para Mariela" />
+                            </div>
+                            <div class="field">
+                                <label>Avisar cuando...</label>
+                                <select id="notifEvento" onchange="onNotifEventoChange()"></select>
+                            </div>
+                            <div class="field">
+                                <label>Avisar a</label>
+                                <div id="notifUsuarios" style="border: 1.5px solid var(--border); border-radius: 8px; padding: 8px 12px; max-height: 190px; overflow-y: auto"></div>
+                                <span style="font-size: 12px; color: var(--muted)">Le llega al WhatsApp cargado en cada usuario (Configuración &rarr; Usuarios).</span>
+                            </div>
+                            <div class="field">
+                                <label>Mensaje</label>
+                                <textarea id="notifMensaje" rows="6" style="width: 100%; box-sizing: border-box; padding: 10px; border: 1.5px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 14px; resize: vertical"></textarea>
+                                <div id="notifVariables" style="font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.7"></div>
+                                <button type="button" class="btn" style="background: #eee; margin-top: 6px; font-size: 12px; padding: 4px 10px" onclick="notifMensajeDefecto()">Restablecer mensaje</button>
+                            </div>
+                            <div class="field">
+                                <label class="chk-line">
+                                    <input type="checkbox" id="notifActivo" checked style="width: auto" /> Activa
+                                </label>
+                            </div>
+                            <div class="modal-foot">
+                                <button class="btn" style="background: #eee" onclick="closeNotifModal()">Cancelar</button>
+                                <button class="btn btn-primary" onclick="guardarNotif()">Guardar</button>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="modal-bg" id="colorModalBg">
                         <div class="modal" style="max-width: 360px">
                             <h2>Editar color</h2>
@@ -2065,8 +2201,8 @@
         </div>
 
         <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-        <script src="../assets/js/icons.js?v=20261104"></script>
-        <script src="../assets/js/admin.js?v=20261104"></script>
+        <script src="../assets/js/icons.js?v=20261106c"></script>
+        <script src="../assets/js/admin.js?v=20261106c"></script>
         <script>
             var DATA_INICIAL = [
                 {

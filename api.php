@@ -17,10 +17,7 @@ define('ADMIN_PASS', 'preventa2026');
 // según si quien pregunta es el admin o un cliente (ver acción "productos").
 function isAdminAuth($u, $p) {
     global $db;
-    $r = $db->query("SELECT valor FROM config WHERE clave='admin_pass' LIMIT 1");
-    $row = $r ? $r->fetch_assoc() : null;
-    $validPass = $row ? $row['valor'] : ADMIN_PASS;
-    return $u === ADMIN_USER && $p !== '' && hash_equals($validPass, (string)$p);
+    return auth_validar($db, $u, $p, ADMIN_PASS);
 }
 
 function checkAuth($data) {
@@ -413,6 +410,66 @@ function setupDB($db) {
         $db->query("ALTER TABLE productos ADD COLUMN ingreso TINYINT(1) NOT NULL DEFAULT 0");
     }
 
+    // USUARIOS del panel (antes había uno solo, "admin", con la contraseña en config).
+    // Cada usuario tiene su contraseña (hash) y un WhatsApp, que es el que usan las
+    // notificaciones. El "admin" de siempre pasa a ser el primer usuario, con la misma
+    // contraseña, y el número de aviso que estaba en Configuración pasa a ser su WhatsApp.
+    $db->query("CREATE TABLE IF NOT EXISTS usuarios (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        nombre VARCHAR(80) NOT NULL UNIQUE,
+        nombre_display VARCHAR(100) NOT NULL,
+        pass_hash VARCHAR(255) NOT NULL,
+        telefono VARCHAR(60) NOT NULL DEFAULT '',
+        activo TINYINT(1) NOT NULL DEFAULT 1,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) CHARACTER SET utf8mb4");
+    $nUsr = $db->query("SELECT COUNT(*) AS n FROM usuarios")->fetch_assoc();
+    if (intval($nUsr['n']) === 0) {
+        $rp = $db->query("SELECT valor FROM config WHERE clave='admin_pass' LIMIT 1");
+        $rp = $rp ? $rp->fetch_assoc() : null;
+        $passActual = $rp ? $rp['valor'] : ADMIN_PASS;
+        $hashAdmin = hash_clave($passActual);
+        $rw = $db->query("SELECT valor FROM config WHERE clave='whatsapp' LIMIT 1");
+        $rw = $rw ? $rw->fetch_assoc() : null;
+        $telAdmin = $rw ? preg_replace('/\D/', '', (string)$rw['valor']) : '';
+        $nomAdmin = ADMIN_USER;
+        $dispAdmin = 'Administrador';
+        $stA = $db->prepare("INSERT INTO usuarios (nombre, nombre_display, pass_hash, telefono, activo) VALUES (?,?,?,?,1)");
+        $stA->bind_param('ssss', $nomAdmin, $dispAdmin, $hashAdmin, $telAdmin);
+        $stA->execute();
+        // config.admin_pass (texto plano) ya no se usa para iniciar sesión: la fila queda sin tocar
+        // a propósito, por si hubiera que volver a la versión anterior (que sí la lee).
+    }
+
+    // Reglas de NOTIFICACIÓN por WhatsApp (UltraMsg): cada regla = un evento
+    // (pedido nuevo / preventa nueva / ingreso nuevo) + a qué usuarios avisar (al WhatsApp
+    // de cada uno) + el mensaje. La primera vez, el aviso fijo de pedidos que existía
+    // pasa a ser una regla "Pedido nuevo" que avisa al admin, para no perderlo ni duplicarlo.
+    $existiaNotif = $db->query("SHOW TABLES LIKE 'notificaciones'");
+    $existiaNotif = $existiaNotif && $existiaNotif->num_rows > 0;
+    $db->query("CREATE TABLE IF NOT EXISTS notificaciones (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        nombre VARCHAR(100) NOT NULL,
+        evento VARCHAR(30) NOT NULL,
+        usuarios VARCHAR(255) NOT NULL DEFAULT '',
+        mensaje TEXT NOT NULL,
+        activo TINYINT(1) NOT NULL DEFAULT 1,
+        ultimo_envio_at DATETIME DEFAULT NULL,
+        ultimo_resultado VARCHAR(255) DEFAULT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) CHARACTER SET utf8mb4");
+    if (!$existiaNotif) {
+        $adm = $db->query("SELECT id, telefono FROM usuarios WHERE nombre='" . ADMIN_USER . "' LIMIT 1");
+        $adm = $adm ? $adm->fetch_assoc() : null;
+        if ($adm && trim((string)$adm['telefono']) !== '') {
+            $uids = (string)$adm['id'];
+            $msgDef = '{pedido_completo}';
+            $stN = $db->prepare("INSERT INTO notificaciones (nombre, evento, usuarios, mensaje, activo) VALUES ('Pedido nuevo', 'pedido_nuevo', ?, ?, 1)");
+            $stN->bind_param('ss', $uids, $msgDef);
+            $stN->execute();
+        }
+    }
+
     // "Agotado por ingreso": al ingresar un artículo pasa a AGOTADO en la preventa
     // (ya se vende en la página oficial). Esta marca recuerda que se agotó POR ESO,
     // para que al deshacer el ingreso vuelva a disponible solo ese caso y no los
@@ -704,6 +761,26 @@ function sincronizar_ingresos($db, $origen = 'manual', $nota = null) {
         $db->query("UPDATE productos SET ingreso_id=" . intval($nuevoId) . " WHERE ingreso=1 AND ingreso_id IS NULL");
     }
     $db->query("DELETE FROM ingresos WHERE id NOT IN (SELECT DISTINCT ingreso_id FROM productos WHERE ingreso_id IS NOT NULL)");
+    // Aviso de ingreso nuevo (no para el "ingreso histórico" de la migración).
+    if ($nuevoId && $origen !== 'historico') {
+        try {
+            $rp = $db->query("SELECT codigo, descripcion FROM productos WHERE ingreso_id=" . intval($nuevoId) . " ORDER BY codigo");
+            $lista = []; $cant = 0;
+            while ($rp && ($pp = $rp->fetch_assoc())) {
+                $cant++;
+                if ($cant <= 15) $lista[] = '• ' . $pp['codigo'] . ' - ' . mb_substr((string)$pp['descripcion'], 0, 45);
+            }
+            if ($cant > 15) $lista[] = '…y ' . ($cant - 15) . ' más';
+            $origenes = ['carga' => 'Carga manual', 'excel' => 'Importación de Excel', 'manual' => 'Marcado manual'];
+            notificar($db, 'ingreso_nuevo', [
+                'ingreso_id' => $nuevoId, 'cantidad' => $cant, 'nota' => (string)$nota,
+                'nota_linea' => $nota ? ('📝 ' . $nota . "\n") : '',
+                'origen' => $origenes[$origen] ?? $origen, 'productos' => implode("\n", $lista), 'fecha' => date('d/m/Y H:i'),
+            ]);
+        } catch (Throwable $e) {
+            error_log('Aviso de ingreso falló: ' . $e->getMessage());
+        }
+    }
     return $nuevoId;
 }
 
@@ -802,6 +879,125 @@ function armarMensajeWA($clienteData, $transporte, $obs, $itemsProcesados, $tota
     return $msg;
 }
 
+// ── Notificaciones por WhatsApp (reglas) ────────────────────────────────────
+// Eventos que pueden avisar, con las variables que se pueden usar en el mensaje.
+function notif_eventos() {
+    return [
+        'pedido_nuevo' => [
+            'label' => 'Pedido nuevo',
+            'variables' => [
+                'pedido_completo' => 'Todo el pedido con el formato de siempre (cliente, envío, artículos y total)',
+                'pedido_id' => 'Número de pedido',
+                'cliente' => 'Nombre del cliente',
+                'telefono' => 'Teléfono del cliente',
+                'cuit' => 'CUIT / DNI',
+                'domicilio' => 'Domicilio y localidad',
+                'transporte' => 'Transporte',
+                'notas' => 'Notas del pedido',
+                'total' => 'Total + IVA',
+                'cantidad_items' => 'Cantidad de artículos',
+                'link' => 'Link público del pedido',
+                'fecha' => 'Fecha y hora',
+            ],
+            'mensaje' => '{pedido_completo}',
+            'ejemplo' => [
+                'pedido_completo' => "🛍️ *PEDIDO PREVENTA*\n━━━━━━━━━━━━━━━━━━━━━━\n👤 *Cliente:* Cliente de Prueba\n📞 *Tel:* +5493534140385\n━━━━━━━━━━━━━━━━━━━━━━\n\n🏷️ *Preventa de ejemplo*\n• *Artículo de ejemplo*\n  Cód: EJ001  |  Cant: 2  |  $10.000 + IVA\n\n━━━━━━━━━━━━━━━━━━━━━━\n*TOTAL: $10.000 + IVA*",
+                'pedido_id' => '123', 'cliente' => 'Cliente de Prueba', 'telefono' => '+5493534140385', 'cuit' => '20-12345678-9',
+                'domicilio' => 'Calle Falsa 123, Villa María', 'transporte' => 'Retira en local', 'notas' => 'Pedido de prueba',
+                'total' => '$ 10.000 + IVA', 'cantidad_items' => '1', 'link' => 'https://bagsstore.com.ar/preventa/', 'fecha' => date('d/m/Y H:i'),
+            ],
+        ],
+        'preventa_nueva' => [
+            'label' => 'Preventa nueva',
+            'variables' => [
+                'nombre' => 'Nombre de la preventa',
+                'detalle' => 'Detalle de la preventa',
+                'estado' => 'Activa o inactiva',
+                'preventa_id' => 'Número de preventa',
+                'fecha' => 'Fecha y hora',
+            ],
+            'mensaje' => "🆕 *Nueva preventa:* {nombre}\n{detalle}\nEstado: {estado}\n📅 {fecha}",
+            'ejemplo' => ['nombre' => 'PREVENTA DE EJEMPLO', 'detalle' => 'Detalle de ejemplo', 'estado' => 'inactiva', 'preventa_id' => '99', 'fecha' => date('d/m/Y H:i')],
+        ],
+        'ingreso_nuevo' => [
+            'label' => 'Ingreso nuevo',
+            'variables' => [
+                'ingreso_id' => 'Número de ingreso',
+                'cantidad' => 'Cantidad de artículos',
+                'nota' => 'Nota del ingreso',
+                'nota_linea' => 'Nota con su ícono (vacío si no hay nota)',
+                'origen' => 'De dónde vino (carga, Excel o manual)',
+                'productos' => 'Lista de artículos (hasta 15)',
+                'fecha' => 'Fecha y hora',
+            ],
+            'mensaje' => "📦 *Nuevo ingreso #{ingreso_id}*\n{cantidad} artículo(s)\n{nota_linea}{productos}\n📅 {fecha}",
+            'ejemplo' => ['ingreso_id' => '99', 'cantidad' => '2', 'nota' => 'camión del martes', 'nota_linea' => "📝 camión del martes\n", 'origen' => 'Carga manual',
+                'productos' => "• EJ001 - Artículo de ejemplo\n• EJ002 - Otro artículo", 'fecha' => date('d/m/Y H:i')],
+        ],
+    ];
+}
+
+function notif_render($tpl, $vars) {
+    return preg_replace_callback('/\{([a-z_]+)\}/', function ($m) use ($vars) {
+        return array_key_exists($m[1], $vars) ? (string)$vars[$m[1]] : $m[0];
+    }, (string)$tpl);
+}
+
+// Valida el WhatsApp de un usuario. Devuelve [destino o null, error o null]. Un destino es
+// un número con código de país (sólo dígitos) o el ID de un grupo de WhatsApp (…@g.us).
+function notif_destino($texto) {
+    $t = trim((string)$texto);
+    if ($t === '') return [null, null];
+    if (preg_match('/^[0-9]+(-[0-9]+)*@g\.us$/i', $t)) return [strtolower($t), null];
+    $d = preg_replace('/\D/', '', $t);
+    if (strlen($d) >= 10 && strlen($d) <= 15) return [$d, null];
+    return [null, 'Número inválido: ' . $t . '. Usá el número completo con código de país, sin espacios ni signos (ej. 5493534140385).'];
+}
+
+// Manda el mensaje de UNA regla al WhatsApp de cada usuario elegido y deja anotado el resultado.
+function notif_enviar_regla($db, $n, $vars, $prefijo = '') {
+    $msg = $prefijo . notif_render($n['mensaje'], $vars);
+    $ids = array_values(array_filter(array_map('intval', explode(',', (string)$n['usuarios']))));
+    $destinos = []; $sinTel = [];
+    if ($ids) {
+        $rs = $db->query("SELECT nombre_display, telefono FROM usuarios WHERE activo=1 AND id IN (" . implode(',', $ids) . ")");
+        while ($rs && ($u = $rs->fetch_assoc())) {
+            list($d) = notif_destino($u['telefono']);
+            if ($d) $destinos[$u['nombre_display']] = $d; else $sinTel[] = $u['nombre_display'];
+        }
+    }
+    $enviados = 0; $fallos = [];
+    foreach ($destinos as $nombre => $d) {
+        $res = enviarUltraMsg($db, $d, $msg);
+        if (!empty($res['ok'])) $enviados++;
+        else $fallos[] = $nombre . ': ' . mb_substr(is_string($res['error'] ?? '') ? ($res['error'] ?? 'error') : 'error', 0, 80);
+    }
+    $total = count($destinos);
+    $resultado = $enviados . '/' . $total . ' enviados';
+    if ($fallos) $resultado .= ' — ' . implode('; ', $fallos);
+    if ($sinTel) $resultado .= ' — sin WhatsApp cargado: ' . implode(', ', $sinTel);
+    $resultado = mb_substr($resultado, 0, 250);
+    $st = $db->prepare("UPDATE notificaciones SET ultimo_envio_at=NOW(), ultimo_resultado=? WHERE id=?");
+    $idn = intval($n['id']);
+    $st->bind_param('si', $resultado, $idn);
+    $st->execute();
+    return ['enviados' => $enviados, 'total' => $total, 'fallos' => $fallos, 'sin_telefono' => $sinTel, 'mensaje' => $msg];
+}
+
+// Dispara todas las reglas ACTIVAS de un evento. Best-effort: nunca rompe la operación
+// que la llama (un pedido, una preventa, un ingreso) si UltraMsg falla.
+function notificar($db, $evento, $vars) {
+    try {
+        $stmt = $db->prepare("SELECT * FROM notificaciones WHERE evento=? AND activo=1");
+        $stmt->bind_param('s', $evento);
+        $stmt->execute();
+        $reglas = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        foreach ($reglas as $n) notif_enviar_regla($db, $n, $vars);
+    } catch (Throwable $e) {
+        error_log('Notificación "' . $evento . '" falló: ' . $e->getMessage());
+    }
+}
+
 $action = $_GET['action'] ?? '';
 $db = getDB();
 
@@ -809,7 +1005,7 @@ $db = getDB();
 // correrlas en CADA llamada a la API volvía lenta a toda la plataforma. Ahora
 // corren una sola vez por versión. IMPORTANTE: al agregar una migración nueva en
 // setupDB(), subir SCHEMA_VERSION para que se aplique en el próximo request.
-define('SCHEMA_VERSION', '2026-11-04.1');
+define('SCHEMA_VERSION', '2026-11-06.1');
 
 function schema_actualizado($db) {
     try {
@@ -891,8 +1087,11 @@ switch ($action) {
         checkAuth($data);
         $nueva = trim($data['nueva'] ?? '');
         if (strlen($nueva) < 6) { http_response_code(400); die(json_encode(['error' => 'Contraseña muy corta'])); }
-        $stmt = $db->prepare("INSERT INTO config (clave, valor) VALUES ('admin_pass', ?) ON DUPLICATE KEY UPDATE valor=?");
-        $stmt->bind_param('ss', $nueva, $nueva);
+        // Cambia la contraseña del usuario que está logueado (cada usuario tiene la suya).
+        $hashNueva = hash_clave($nueva);
+        $quien = trim((string)($data['_user'] ?? ''));
+        $stmt = $db->prepare("UPDATE usuarios SET pass_hash=? WHERE nombre=?");
+        $stmt->bind_param('ss', $hashNueva, $quien);
         $stmt->execute();
         echo json_encode(['ok' => true]);
         break;
@@ -901,10 +1100,13 @@ switch ($action) {
         $data = json_decode(file_get_contents('php://input'), true);
         $u = $data['user'] ?? '';
         $p = $data['pass'] ?? '';
-        $r = $db->query("SELECT valor FROM config WHERE clave='admin_pass' LIMIT 1");
-        $row = $r ? $r->fetch_assoc() : null;
-        $validPass = $row ? $row['valor'] : ADMIN_PASS;
-        if ($u === ADMIN_USER && $p === $validPass) echo json_encode(['ok' => true]);
+        if (isAdminAuth($u, $p)) {
+            $stU = $db->prepare("SELECT nombre_display FROM usuarios WHERE nombre=? LIMIT 1");
+            $stU->bind_param('s', $u);
+            $stU->execute();
+            $rowU = $stU->get_result()->fetch_assoc();
+            echo json_encode(['ok' => true, 'nombre' => $rowU['nombre_display'] ?? $u]);
+        }
         else { http_response_code(401); echo json_encode(['error' => 'Credenciales inválidas']); }
         break;
 
@@ -1075,7 +1277,7 @@ switch ($action) {
     case 'importar':
         $data = json_decode(file_get_contents('php://input'), true);
         $creds = $data['creds'] ?? [];
-        if (($creds['user'] ?? '') !== ADMIN_USER || ($creds['pass'] ?? '') !== ADMIN_PASS) {
+        if (!isAdminAuth($creds['user'] ?? '', $creds['pass'] ?? '')) {
             http_response_code(401); die(json_encode(['error' => 'No autorizado']));
         }
         $productos = $data['productos'] ?? [];
@@ -1354,7 +1556,14 @@ switch ($action) {
         if (!$nombre) { http_response_code(400); die(json_encode(['error' => 'Nombre requerido'])); }
         $stmt = $db->prepare("INSERT INTO preventas (nombre, detalle, imagen, color_portada, activa, mostrar_stock, orden) VALUES (?, ?, ?, ?, ?, ?, ?)");
         $stmt->bind_param('ssssiii', $nombre, $detalle, $imagen, $colorPortada, $activa, $mostrarStock, $orden);
-        if ($stmt->execute()) echo json_encode(['ok' => true, 'id' => $db->insert_id]);
+        if ($stmt->execute()) {
+            $nuevaPreventaId = $db->insert_id;
+            notificar($db, 'preventa_nueva', [
+                'nombre' => $nombre, 'detalle' => (string)$detalle, 'estado' => $activa ? 'activa' : 'inactiva',
+                'preventa_id' => $nuevaPreventaId, 'fecha' => date('d/m/Y H:i'),
+            ]);
+            echo json_encode(['ok' => true, 'id' => $nuevaPreventaId]);
+        }
         else { http_response_code(400); echo json_encode(['error' => 'Ya existe esa preventa']); }
         break;
 
@@ -1828,6 +2037,146 @@ switch ($action) {
         break;
 
     // ── TRANSPORTES ───────────────────────────────────────────────────────────
+    // ── USUARIOS del panel ───────────────────────────────────────────────────
+    case 'usuarios':
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $us = $db->query("SELECT id, nombre, nombre_display, telefono, activo, created_at FROM usuarios ORDER BY activo DESC, nombre_display")->fetch_all(MYSQLI_ASSOC);
+        echo json_encode(['usuarios' => $us, 'yo' => trim((string)($data['_user'] ?? ''))]);
+        break;
+
+    case 'usuario_guardar':
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $yo = trim((string)($data['_user'] ?? ''));
+        $id = intval($data['id'] ?? 0);
+        $nombre = trim($data['nombre'] ?? '');
+        $display = trim($data['nombre_display'] ?? '');
+        $pass = (string)($data['pass'] ?? '');
+        $activo = isset($data['activo']) ? (!empty($data['activo']) ? 1 : 0) : 1;
+        if (!preg_match('/^[A-Za-z0-9._-]{3,40}$/', $nombre)) { http_response_code(400); die(json_encode(['error' => 'El usuario debe tener entre 3 y 40 caracteres: letras, números, punto, guion o guion bajo'])); }
+        if ($display === '') $display = $nombre;
+        list($tel, $errTel) = notif_destino($data['telefono'] ?? '');
+        if ($errTel) { http_response_code(400); die(json_encode(['error' => $errTel])); }
+        $tel = (string)$tel;
+        if (!$id && strlen($pass) < 6) { http_response_code(400); die(json_encode(['error' => 'La contraseña es obligatoria para un usuario nuevo (mínimo 6 caracteres)'])); }
+        if ($pass !== '' && strlen($pass) < 6) { http_response_code(400); die(json_encode(['error' => 'Contraseña muy corta (mínimo 6 caracteres)'])); }
+        $dup = $db->prepare("SELECT id FROM usuarios WHERE nombre=? AND id<>?");
+        $dup->bind_param('si', $nombre, $id);
+        $dup->execute();
+        if ($dup->get_result()->fetch_assoc()) { http_response_code(400); die(json_encode(['error' => 'Ya existe un usuario con ese nombre (puede estar inactivo)'])); }
+        if ($id) {
+            $actual = $db->query("SELECT nombre FROM usuarios WHERE id=$id")->fetch_assoc();
+            if (!$actual) { http_response_code(404); die(json_encode(['error' => 'Usuario no encontrado'])); }
+            // No te podés dejar a vos mismo sin acceso: ni desactivarte ni renombrarte.
+            if (strcasecmp($actual['nombre'], $yo) === 0 && (!$activo || strcasecmp($nombre, $yo) !== 0)) {
+                http_response_code(400); die(json_encode(['error' => 'No podés desactivar ni cambiar el nombre de tu propio usuario']));
+            }
+            if ($pass !== '') {
+                $h = hash_clave($pass);
+                $stmt = $db->prepare("UPDATE usuarios SET nombre=?, nombre_display=?, telefono=?, activo=?, pass_hash=? WHERE id=?");
+                $stmt->bind_param('sssisi', $nombre, $display, $tel, $activo, $h, $id);
+            } else {
+                $stmt = $db->prepare("UPDATE usuarios SET nombre=?, nombre_display=?, telefono=?, activo=? WHERE id=?");
+                $stmt->bind_param('sssii', $nombre, $display, $tel, $activo, $id);
+            }
+        } else {
+            $h = hash_clave($pass);
+            $stmt = $db->prepare("INSERT INTO usuarios (nombre, nombre_display, pass_hash, telefono, activo) VALUES (?,?,?,?,?)");
+            $stmt->bind_param('ssssi', $nombre, $display, $h, $tel, $activo);
+        }
+        $stmt->execute();
+        echo json_encode(['ok' => true, 'id' => $id ?: $db->insert_id]);
+        break;
+
+    // "Eliminar" = desactivar (no puede entrar más, pero queda el registro y se puede reactivar).
+    case 'usuario_eliminar':
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $yo = trim((string)($data['_user'] ?? ''));
+        $id = intval($data['id'] ?? 0);
+        $u = $db->query("SELECT nombre FROM usuarios WHERE id=$id")->fetch_assoc();
+        if (!$u) { http_response_code(404); die(json_encode(['error' => 'Usuario no encontrado'])); }
+        if (strcasecmp($u['nombre'], $yo) === 0) { http_response_code(400); die(json_encode(['error' => 'No podés eliminar tu propio usuario'])); }
+        $db->query("UPDATE usuarios SET activo=0 WHERE id=$id");
+        echo json_encode(['ok' => true]);
+        break;
+
+    // ── NOTIFICACIONES (reglas de aviso por WhatsApp) ────────────────────────
+    case 'notificaciones':
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $reglas = $db->query("SELECT * FROM notificaciones ORDER BY id")->fetch_all(MYSQLI_ASSOC);
+        $eventos = [];
+        foreach (notif_eventos() as $k => $ev) {
+            $vars = [];
+            foreach ($ev['variables'] as $vn => $vd) $vars[] = ['nombre' => $vn, 'descripcion' => $vd];
+            $eventos[] = ['clave' => $k, 'label' => $ev['label'], 'variables' => $vars, 'mensaje' => $ev['mensaje']];
+        }
+        $usuarios = $db->query("SELECT id, nombre, nombre_display, telefono, activo FROM usuarios ORDER BY nombre_display")->fetch_all(MYSQLI_ASSOC);
+        echo json_encode(['reglas' => $reglas, 'eventos' => $eventos, 'usuarios' => $usuarios]);
+        break;
+
+    case 'notificacion_guardar':
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $id = intval($data['id'] ?? 0);
+        $nombre = trim($data['nombre'] ?? '');
+        $evento = $data['evento'] ?? '';
+        $evs = notif_eventos();
+        if (!isset($evs[$evento])) { http_response_code(400); die(json_encode(['error' => 'Evento inválido'])); }
+        if ($nombre === '') $nombre = $evs[$evento]['label'];
+        $uids = array_values(array_unique(array_filter(array_map('intval', (array)($data['usuarios'] ?? [])))));
+        if (!$uids) { http_response_code(400); die(json_encode(['error' => 'Elegí al menos un usuario para notificar'])); }
+        $existen = $db->query("SELECT id FROM usuarios WHERE id IN (" . implode(',', $uids) . ")")->num_rows;
+        if ($existen !== count($uids)) { http_response_code(400); die(json_encode(['error' => 'Hay un usuario que ya no existe'])); }
+        $usuariosCsv = implode(',', $uids);
+        $mensaje = trim($data['mensaje'] ?? '');
+        if ($mensaje === '') $mensaje = $evs[$evento]['mensaje'];
+        $activo = !empty($data['activo']) ? 1 : 0;
+        if ($id) {
+            $stmt = $db->prepare("UPDATE notificaciones SET nombre=?, evento=?, usuarios=?, mensaje=?, activo=? WHERE id=?");
+            $stmt->bind_param('ssssii', $nombre, $evento, $usuariosCsv, $mensaje, $activo, $id);
+        } else {
+            $stmt = $db->prepare("INSERT INTO notificaciones (nombre, evento, usuarios, mensaje, activo) VALUES (?,?,?,?,?)");
+            $stmt->bind_param('ssssi', $nombre, $evento, $usuariosCsv, $mensaje, $activo);
+        }
+        $stmt->execute();
+        echo json_encode(['ok' => true, 'id' => $id ?: $db->insert_id]);
+        break;
+
+    case 'notificacion_activar':
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $id = intval($data['id'] ?? 0);
+        $activo = !empty($data['activo']) ? 1 : 0;
+        $db->query("UPDATE notificaciones SET activo=$activo WHERE id=$id");
+        echo json_encode(['ok' => true]);
+        break;
+
+    case 'notificacion_eliminar':
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $id = intval($data['id'] ?? 0);
+        $db->query("DELETE FROM notificaciones WHERE id=$id");
+        echo json_encode(['ok' => true]);
+        break;
+
+    // Manda un mensaje de prueba (con datos de ejemplo) a los números de la regla,
+    // aunque esté pausada.
+    case 'notificacion_probar':
+        $data = json_decode(file_get_contents('php://input'), true);
+        checkAuth($data);
+        $id = intval($data['id'] ?? 0);
+        $n = $db->query("SELECT * FROM notificaciones WHERE id=$id")->fetch_assoc();
+        if (!$n) { http_response_code(404); die(json_encode(['error' => 'Regla no encontrada'])); }
+        $evs = notif_eventos();
+        $ejemplo = $evs[$n['evento']]['ejemplo'] ?? [];
+        $res = notif_enviar_regla($db, $n, $ejemplo, "🧪 *PRUEBA* — así llegaría el aviso:\n\n");
+        echo json_encode(['ok' => $res['enviados'] > 0, 'enviados' => $res['enviados'], 'total' => $res['total'], 'fallos' => $res['fallos'], 'sin_telefono' => $res['sin_telefono'], 'mensaje' => $res['mensaje']]);
+        break;
+
+    // ── TRANSPORTES
     case 'transportes':
         $r = $db->query("SELECT * FROM transportes WHERE activo=1 ORDER BY orden, nombre");
         echo json_encode($r->fetch_all(MYSQLI_ASSOC));
@@ -2068,21 +2417,24 @@ switch ($action) {
             $basePath = rtrim(str_replace('api.php', '', $_SERVER['SCRIPT_NAME'] ?? ''), '/');
             $urlPublica = $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? '') . $basePath . '/pedido.php?t=' . $tokenPublico;
 
-            // Aviso a Cindy: best-effort, nunca debe romper la creación del
-            // pedido (credenciales de UltraMsg sin configurar, red caída,
-            // etc. quedan solo en el log, no llegan a la respuesta del cliente).
+            // Avisos de pedido nuevo (reglas del menú Notificaciones): best-effort,
+            // nunca debe romper la creación del pedido (credenciales de UltraMsg
+            // sin configurar, red caída, etc. quedan solo en el log).
             try {
                 $cliente = $db->query("SELECT nombre, telefono, cuit_dni, domicilio, localidad, cp, provincia, transporte FROM clientes WHERE id=" . intval($cliente_id))->fetch_assoc();
                 if ($cliente) {
                     $msgWA = armarMensajeWA($cliente, $cliente['transporte'] ?? '', $obs, $itemsProcesados, $totalReal, $urlPublica);
-                    $cfgWA = $db->query("SELECT valor FROM config WHERE clave='whatsapp'")->fetch_assoc();
-                    if (!empty($cfgWA['valor'])) {
-                        $resultWA = enviarUltraMsg($db, $cfgWA['valor'], $msgWA);
-                        if (!$resultWA['ok']) error_log('Aviso UltraMsg de pedido #' . $pedido_id . ' no se envió: ' . ($resultWA['error'] ?? ''));
-                    }
+                    notificar($db, 'pedido_nuevo', [
+                        'pedido_completo' => $msgWA, 'pedido_id' => $pedido_id, 'cliente' => $cliente['nombre'],
+                        'telefono' => '+' . $cliente['telefono'], 'cuit' => (string)($cliente['cuit_dni'] ?? ''),
+                        'domicilio' => trim((string)($cliente['domicilio'] ?? '') . ', ' . (string)($cliente['localidad'] ?? ''), ' ,'),
+                        'transporte' => (string)($cliente['transporte'] ?? ''), 'notas' => (string)$obs,
+                        'total' => '$ ' . number_format($totalReal, 0, ',', '.') . ' + IVA', 'cantidad_items' => count($itemsProcesados),
+                        'link' => $urlPublica, 'fecha' => date('d/m/Y H:i'),
+                    ]);
                 }
-            } catch (Exception $eWA) {
-                error_log('Aviso UltraMsg de pedido #' . $pedido_id . ' falló: ' . $eWA->getMessage());
+            } catch (Throwable $eWA) {
+                error_log('Aviso de pedido #' . $pedido_id . ' falló: ' . $eWA->getMessage());
             }
 
             // Para el cartel de opinión del catálogo público: es "primer

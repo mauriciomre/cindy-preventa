@@ -283,6 +283,7 @@ var ALL_SECTIONS = [
     { key: "opiniones", label: "Opiniones", icon: "star" },
     { key: "clientes", label: "Clientes", icon: "user" },
     { key: "herramientas", label: "Herramientas", icon: "wrench" },
+    { key: "notificaciones", label: "Notificaciones", icon: "bell" },
     { key: "configuracion", label: "Configuración", icon: "settings" },
 ];
 var favSections = [];
@@ -390,6 +391,7 @@ function showSection(s, btn) {
     if (s === "clientes") loadClientes();
     if (s === "opiniones") loadOpiniones();
     if (s === "ingresos") loadIngresos();
+    if (s === "notificaciones") loadNotificaciones();
     if (window.innerWidth <= 860) closeSidebarMobile();
 }
 
@@ -446,7 +448,6 @@ function showCfgTab(name, btn) {
 async function loadConfig() {
     var res = await fetch(API + "?action=config_get");
     var cfg = await res.json();
-    if (cfg.whatsapp) document.getElementById("cfgWA").value = cfg.whatsapp;
     // UltraMsg nunca se expone por config_get (público) — se lee de vuelta
     // con la variante autenticada, para no filtrar la credencial a cualquiera.
     var resAdmin = await fetch(API + "?action=config_get_admin", {
@@ -459,26 +460,6 @@ async function loadConfig() {
         if (cfgAdmin.ultramsg_instance) document.getElementById("cfgUltraInstance").value = cfgAdmin.ultramsg_instance;
         if (cfgAdmin.ultramsg_token) document.getElementById("cfgUltraToken").value = cfgAdmin.ultramsg_token;
     }
-}
-async function saveWA() {
-    var val = document.getElementById("cfgWA").value.trim();
-    if (!val) {
-        toast("Ingresá un número", "#c62828");
-        return;
-    }
-    var res = await fetch(API + "?action=config_set", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            _user: authUser,
-            _pass: authPass,
-            clave: "whatsapp",
-            valor: val,
-        }),
-    });
-    var json = await res.json();
-    if (json.ok) toast("Número de WhatsApp actualizado");
-    else toast("Error al guardar", "#c62828");
 }
 async function saveUltraMsg() {
     var instance = document.getElementById("cfgUltraInstance").value.trim();
@@ -6416,4 +6397,268 @@ function filterTools(inputEl, gridId) {
         var match = !q || text.toLowerCase().indexOf(q) !== -1;
         box.classList.toggle("tools-hidden", !match);
     });
+}
+
+// ── NOTIFICACIONES (reglas de aviso por WhatsApp) ────────────────────────────
+var allNotifs = [];
+var notifEventos = [];
+var notifUsuarios = [];
+
+function notifUsuarioChip(id) {
+    var u = notifUsuarios.find(function (x) { return parseInt(x.id) === id; });
+    if (!u) return '<div style="color:#c62828">Usuario eliminado</div>';
+    var sinTel = !String(u.telefono || "").trim();
+    var inactivo = parseInt(u.activo) !== 1;
+    var aviso = inactivo ? ' <span style="color:#c62828;font-size:12px">(inactivo)</span>' : (sinTel ? ' <span style="color:#c62828;font-size:12px">(sin WhatsApp)</span>' : "");
+    return "<div>" + escapeHtmlNotif(u.nombre_display) + (sinTel ? "" : ' <code style="font-size:12px">' + escapeHtmlNotif(u.telefono) + "</code>") + aviso + "</div>";
+}
+
+function renderNotifUsuarios(elegidos) {
+    var box = document.getElementById("notifUsuarios");
+    var activos = notifUsuarios.filter(function (u) { return parseInt(u.activo) === 1; });
+    if (!activos.length) { box.innerHTML = '<span style="color:#aaa;font-size:13px">No hay usuarios. Creá uno en Configuración → Usuarios.</span>'; return; }
+    box.innerHTML = activos.map(function (u) {
+        var sinTel = !String(u.telefono || "").trim();
+        return '<label class="chk-line" style="padding:4px 0">' +
+            '<input type="checkbox" value="' + u.id + '" style="width:auto"' + (elegidos.indexOf(parseInt(u.id)) >= 0 ? " checked" : "") + "> " +
+            escapeHtmlNotif(u.nombre_display) +
+            (sinTel ? ' <span style="color:#c62828;font-size:12px">— sin WhatsApp cargado</span>' : ' <code style="font-size:12px;color:var(--muted)">' + escapeHtmlNotif(u.telefono) + "</code>") +
+            "</label>";
+    }).join("");
+}
+
+async function notifApi(action, body) {
+    var res = await fetch(API + "?action=" + action, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(Object.assign({ _user: authUser, _pass: authPass }, body || {})),
+    });
+    var json = {};
+    try { json = await res.json(); } catch (e) {}
+    json._status = res.status;
+    return json;
+}
+
+function notifEventoLabel(clave) {
+    var ev = notifEventos.find(function (e) { return e.clave === clave; });
+    return ev ? ev.label : clave;
+}
+
+async function loadNotificaciones() {
+    var json = await notifApi("notificaciones");
+    if (json.reglas) {
+        allNotifs = json.reglas;
+        notifEventos = json.eventos || [];
+        notifUsuarios = json.usuarios || [];
+    }
+    renderNotificaciones();
+    // Estado de la instancia (credenciales): un vistazo rápido, sin molestar si falla.
+    var span = document.getElementById("notifUltraEstado");
+    if (span) {
+        span.textContent = "";
+        try {
+            var st = await notifApi("config_ultramsg_status");
+            if (st.status === "not_configured") span.innerHTML = '<span class="badge-agot">● UltraMsg sin credenciales</span>';
+            else if (st.connected) span.innerHTML = '<span class="badge-disp">● UltraMsg conectado</span>';
+            else span.innerHTML = '<span class="badge-agot">● UltraMsg desconectado</span>';
+        } catch (e) {}
+    }
+}
+
+function notifUltimoEnvio(n) {
+    if (!n.ultimo_envio_at) return '<span style="color:#aaa">Todavía no envió</span>';
+    var f = String(n.ultimo_envio_at).replace(" ", "T");
+    var d = new Date(f);
+    var txt = isNaN(d) ? n.ultimo_envio_at : d.toLocaleDateString("es-AR") + " " + d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+    var mal = n.ultimo_resultado && /—/.test(n.ultimo_resultado);
+    return txt + '<br><span style="font-size:12px;color:' + (mal ? "#c62828" : "var(--muted)") + '">' + escapeHtmlNotif(n.ultimo_resultado || "") + "</span>";
+}
+
+function escapeHtmlNotif(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+}
+
+function renderNotificaciones() {
+    var el = document.getElementById("notifTbody");
+    if (!el) return;
+    if (!allNotifs.length) {
+        el.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#aaa;padding:20px">Todavía no hay notificaciones. Creá una con el botón de arriba.</td></tr>';
+        return;
+    }
+    el.innerHTML = allNotifs.map(function (n) {
+        var activa = parseInt(n.activo) === 1;
+        var ids = String(n.usuarios || "").split(",").map(function (x) { return parseInt(x); }).filter(Boolean);
+        return "<tr>" +
+            "<td><strong>" + escapeHtmlNotif(n.nombre) + "</strong></td>" +
+            "<td>" + escapeHtmlNotif(notifEventoLabel(n.evento)) + "</td>" +
+            "<td>" + ids.map(notifUsuarioChip).join("") + "</td>" +
+            "<td>" + (activa ? '<span class="badge-disp">Activa</span>' : '<span class="badge-agot">Pausada</span>') + "</td>" +
+            "<td>" + notifUltimoEnvio(n) + "</td>" +
+            '<td><div class="actions">' +
+            '<button class="btn btn-edit" onclick="probarNotif(' + n.id + ')" title="Mandar un mensaje de prueba">' + icon("send") + " Probar</button>" +
+            '<button class="btn btn-edit" onclick="toggleNotif(' + n.id + ',' + (activa ? 0 : 1) + ')">' + icon(activa ? "pause" : "play") + (activa ? " Pausar" : " Activar") + "</button>" +
+            '<button class="btn btn-edit" onclick="openNotifModal(' + n.id + ')">' + icon("pencil") + " Editar</button>" +
+            '<button class="btn btn-danger" onclick="eliminarNotif(' + n.id + ')">' + icon("trash-2") + "</button>" +
+            "</div></td></tr>";
+    }).join("");
+}
+
+function openNotifModal(id) {
+    var sel = document.getElementById("notifEvento");
+    sel.innerHTML = notifEventos.map(function (e) { return '<option value="' + e.clave + '">' + escapeHtmlNotif(e.label) + "</option>"; }).join("");
+    var n = id ? allNotifs.find(function (x) { return parseInt(x.id) === parseInt(id); }) : null;
+    document.getElementById("notifModalTitulo").textContent = n ? "Editar notificación" : "Nueva notificación";
+    document.getElementById("notifId").value = n ? n.id : "";
+    document.getElementById("notifNombre").value = n ? n.nombre : "";
+    var elegidos = n ? String(n.usuarios || "").split(",").map(function (x) { return parseInt(x); }) : [];
+    renderNotifUsuarios(elegidos);
+    document.getElementById("notifActivo").checked = n ? parseInt(n.activo) === 1 : true;
+    if (n) sel.value = n.evento;
+    onNotifEventoChange(true);
+    document.getElementById("notifMensaje").value = n ? n.mensaje : notifMensajeDe(sel.value);
+    document.getElementById("notifModalBg").classList.add("open");
+}
+
+function notifMensajeDe(clave) {
+    var ev = notifEventos.find(function (e) { return e.clave === clave; });
+    return ev ? ev.mensaje : "";
+}
+
+// Al cambiar de evento se muestran sus variables; si el mensaje era el de otro evento
+// (sin editar), se cambia por el del nuevo.
+function onNotifEventoChange(soloVariables) {
+    var clave = document.getElementById("notifEvento").value;
+    var ev = notifEventos.find(function (e) { return e.clave === clave; });
+    var box = document.getElementById("notifVariables");
+    box.innerHTML = ev
+        ? "Variables: " + ev.variables.map(function (v) { return '<code title="' + escapeHtmlNotif(v.descripcion) + '">{' + v.nombre + "}</code>"; }).join(" · ") + "<br>Pasá el mouse por una variable para ver qué es."
+        : "";
+    if (soloVariables === true) return;
+    var msg = document.getElementById("notifMensaje");
+    var esDefecto = notifEventos.some(function (e) { return e.mensaje === msg.value; });
+    if (!msg.value.trim() || esDefecto) msg.value = notifMensajeDe(clave);
+}
+
+function notifMensajeDefecto() {
+    document.getElementById("notifMensaje").value = notifMensajeDe(document.getElementById("notifEvento").value);
+}
+
+function closeNotifModal() {
+    document.getElementById("notifModalBg").classList.remove("open");
+}
+
+async function guardarNotif() {
+    var body = {
+        id: parseInt(document.getElementById("notifId").value) || 0,
+        nombre: document.getElementById("notifNombre").value.trim(),
+        evento: document.getElementById("notifEvento").value,
+        usuarios: Array.prototype.map.call(document.querySelectorAll("#notifUsuarios input:checked"), function (c) { return parseInt(c.value); }),
+        mensaje: document.getElementById("notifMensaje").value,
+        activo: document.getElementById("notifActivo").checked ? 1 : 0,
+    };
+    var json = await notifApi("notificacion_guardar", body);
+    if (!json.ok) return toast(json.error || "Error al guardar", "#c62828");
+    toast("Notificación guardada");
+    closeNotifModal();
+    loadNotificaciones();
+}
+
+async function toggleNotif(id, activo) {
+    var json = await notifApi("notificacion_activar", { id: id, activo: activo });
+    if (!json.ok) return toast("Error", "#c62828");
+    toast(activo ? "Notificación activada" : "Notificación pausada");
+    loadNotificaciones();
+}
+
+async function eliminarNotif(id) {
+    var n = allNotifs.find(function (x) { return parseInt(x.id) === parseInt(id); });
+    if (!confirm('¿Eliminar la notificación "' + (n ? n.nombre : "") + '"?')) return;
+    var json = await notifApi("notificacion_eliminar", { id: id });
+    if (!json.ok) return toast("Error", "#c62828");
+    toast("Notificación eliminada");
+    loadNotificaciones();
+}
+
+async function probarNotif(id) {
+    toast("Enviando prueba…");
+    var json = await notifApi("notificacion_probar", { id: id });
+    if (json.enviados > 0 && !(json.fallos && json.fallos.length)) toast("Prueba enviada a " + json.enviados + " número(s)");
+    else if (json.enviados > 0) toast("Prueba enviada a " + json.enviados + " de " + json.total + " (hubo errores)", "#e65100");
+    else toast("No se pudo enviar: " + ((json.fallos && json.fallos[0]) || json.error || "revisá las credenciales de UltraMsg"), "#c62828");
+    loadNotificaciones();
+}
+
+// ── USUARIOS (Configuración → Usuarios) ──────────────────────────────────────
+var allUsuarios = [];
+
+async function loadUsuarios() {
+    var json = await notifApi("usuarios");
+    if (json.usuarios) allUsuarios = json.usuarios;
+    renderUsuarios();
+}
+
+function renderUsuarios() {
+    var el = document.getElementById("usuariosTbody");
+    if (!el) return;
+    if (!allUsuarios.length) {
+        el.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#aaa;padding:20px">No hay usuarios</td></tr>';
+        return;
+    }
+    el.innerHTML = allUsuarios.map(function (u) {
+        var activo = parseInt(u.activo) === 1;
+        var yo = String(u.nombre).toLowerCase() === String(authUser).toLowerCase();
+        return "<tr>" +
+            "<td><code>" + escapeHtmlNotif(u.nombre) + "</code>" + (yo ? ' <span style="font-size:12px;color:var(--muted)">(vos)</span>' : "") + "</td>" +
+            "<td><strong>" + escapeHtmlNotif(u.nombre_display) + "</strong></td>" +
+            "<td>" + (String(u.telefono || "").trim() ? "<code>" + escapeHtmlNotif(u.telefono) + "</code>" : '<span style="color:#aaa">—</span>') + "</td>" +
+            "<td>" + (activo ? '<span class="badge-disp">Activo</span>' : '<span class="badge-agot">Inactivo</span>') + "</td>" +
+            '<td><div class="actions">' +
+            '<button class="btn btn-edit" onclick="openUsuarioModal(' + u.id + ')">' + icon("pencil") + " Editar</button>" +
+            (yo || !activo ? "" : '<button class="btn btn-danger" onclick="eliminarUsuario(' + u.id + ')" title="Desactivar usuario">' + icon("trash-2") + "</button>") +
+            "</div></td></tr>";
+    }).join("");
+}
+
+function openUsuarioModal(id) {
+    var u = id ? allUsuarios.find(function (x) { return parseInt(x.id) === parseInt(id); }) : null;
+    document.getElementById("usuarioModalTitulo").textContent = u ? "Editar usuario" : "Nuevo usuario";
+    document.getElementById("usuarioId").value = u ? u.id : "";
+    document.getElementById("usuarioNombre").value = u ? u.nombre : "";
+    document.getElementById("usuarioDisplay").value = u ? u.nombre_display : "";
+    document.getElementById("usuarioPass").value = "";
+    document.getElementById("usuarioPassHint").textContent = u ? "(dejala vacía para no cambiarla)" : "";
+    document.getElementById("usuarioTelefono").value = u ? u.telefono : "";
+    document.getElementById("usuarioActivo").checked = u ? parseInt(u.activo) === 1 : true;
+    document.getElementById("usuarioModalBg").classList.add("open");
+}
+
+function closeUsuarioModal() {
+    document.getElementById("usuarioModalBg").classList.remove("open");
+}
+
+async function guardarUsuario() {
+    var body = {
+        id: parseInt(document.getElementById("usuarioId").value) || 0,
+        nombre: document.getElementById("usuarioNombre").value.trim(),
+        nombre_display: document.getElementById("usuarioDisplay").value.trim(),
+        pass: document.getElementById("usuarioPass").value,
+        telefono: document.getElementById("usuarioTelefono").value.trim(),
+        activo: document.getElementById("usuarioActivo").checked ? 1 : 0,
+    };
+    var json = await notifApi("usuario_guardar", body);
+    if (!json.ok) return toast(json.error || "Error al guardar", "#c62828");
+    toast("Usuario guardado");
+    closeUsuarioModal();
+    loadUsuarios();
+}
+
+async function eliminarUsuario(id) {
+    var u = allUsuarios.find(function (x) { return parseInt(x.id) === parseInt(id); });
+    if (!confirm('¿Desactivar al usuario "' + (u ? u.nombre_display : "") + '"? Ya no va a poder iniciar sesión ni va a recibir notificaciones (se puede reactivar editándolo).')) return;
+    var json = await notifApi("usuario_eliminar", { id: id });
+    if (!json.ok) return toast(json.error || "Error", "#c62828");
+    toast("Usuario desactivado");
+    loadUsuarios();
 }

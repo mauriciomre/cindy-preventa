@@ -1935,3 +1935,18 @@ tr.sel-row td { background: var(--pale) }
     white-space: normal;
     overflow-wrap: anywhere
 }
+
+
+/* Casilla con texto dentro de un .field (Activa, usuarios de una notificación) */
+.field label.chk-line,
+.chk-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ink)
+}

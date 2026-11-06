@@ -15,10 +15,7 @@ $pass = $_POST['_pass'] ?? '';
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/helpers.php';
 $db = getDB();
-$r = $db->query("SELECT valor FROM config WHERE clave='admin_pass' LIMIT 1");
-$row = $r ? $r->fetch_assoc() : null;
-$validPass = $row ? $row['valor'] : ADMIN_PASS_DEFAULT;
-if ($user !== ADMIN_USER || $pass !== $validPass) {
+if (!auth_validar($db, $user, $pass, ADMIN_PASS_DEFAULT)) {
     http_response_code(401);
     die(json_encode(['error' => 'No autorizado']));
 }
